@@ -1,23 +1,112 @@
 {
   "name": "gitcode-pull-request",
   "displayName": "gitcode-pull-request",
-  "description": "",
+  "description": "GitCode pull request integration for Visual Studio Code",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.120.0"
   },
   "categories": [
-    "Other"
+    "SCM"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:pr:gitcode",
+    "onCommand:gitcode.signIn",
+    "onCommand:gitcode.refreshPullRequests"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitcode-pull-requests",
+          "title": "GitCode Pull Requests",
+          "icon": "media/gitcode.svg"
+        }
+      ]
+    },
+    "views": {
+      "gitcode-pull-requests": [
+        {
+          "id": "pr:gitcode",
+          "name": "Pull Requests"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "gitcode-pull-request.helloWorld",
-        "title": "Hello World"
+        "command": "gitcode.signIn",
+        "title": "GitCode: Sign In"
+      },
+      {
+        "command": "gitcode.refreshPullRequests",
+        "title": "GitCode: Refresh Pull Requests"
+      },
+      {
+        "command": "gitcode.openPullRequest",
+        "title": "GitCode: Open Pull Request"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "gitcode.signIn",
+          "when": "view == pr:gitcode",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitcode.refreshPullRequests",
+          "when": "view == pr:gitcode",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "gitcode.openPullRequest",
+          "when": "view == pr:gitcode && viewItem == pullRequest",
+          "group": "inline@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "GitCode",
+      "properties": {
+        "gitcode.baseUrl": {
+          "type": "string",
+          "default": "https://api.gitcode.com",
+          "description": "Base URL for the GitCode API."
+        },
+        "gitcode.webUrl": {
+          "type": "string",
+          "default": "https://gitcode.com",
+          "description": "Base URL for GitCode web pages."
+        },
+        "gitcode.repository": {
+          "type": "string",
+          "default": "",
+          "description": "Optional GitCode repository override in owner/repo form for workspaces whose git remote is not hosted on gitcode.com."
+        },
+        "gitcode.pullRequests.pageSize": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of pull requests loaded into the tree."
+        },
+        "gitcode.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace outgoing GitCode API requests in the extension output."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "virtualWorkspaces": false
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

@@ -1,26 +1,50 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { AuthService } from './authentication/authService';
+import { PATAuthProvider } from './authentication/patAuthProvider';
+import { SessionStore } from './authentication/sessionStore';
+import { getExtensionConfiguration } from './common/configuration';
+import { EXTENSION_ID, VIEW_ID_PULL_REQUESTS } from './common/constants';
+import { Logger } from './common/logger';
+import { RepositoryContextService } from './common/git/repositoryContext';
+import { GitCodeClientImpl } from './gitcode/client/gitcodeClient';
+import { GitCodeRepositoryResolver } from './gitcode/resolver/gitcodeRepositoryResolver';
+import { PullRequestService } from './gitcode/services/pullRequestService';
+import { UserService } from './gitcode/services/userService';
+import { ViewController } from './view/viewController';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+	const logger = new Logger(vscode.window.createOutputChannel('GitCode Pull Request'));
+	const configuration = getExtensionConfiguration();
+	const sessionStore = new SessionStore(context.secrets);
+	const repositoryContext = new RepositoryContextService(logger);
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "gitcode-pull-request" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('gitcode-pull-request.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from gitcode-pull-request!');
+	const client = new GitCodeClientImpl(configuration, sessionStore, logger);
+	const userService = new UserService(client);
+	const authService = new AuthService(
+		new PATAuthProvider(sessionStore, userService),
+		sessionStore,
+	);
+	const repositoryResolver = new GitCodeRepositoryResolver(repositoryContext, configuration);
+	const pullRequestService = new PullRequestService(client);
+	const viewController = new ViewController({
+		context,
+		authService,
+		configuration,
+		repositoryContext,
+		repositoryResolver,
+		pullRequestService,
+		logger,
+		viewId: VIEW_ID_PULL_REQUESTS,
 	});
 
-	context.subscriptions.push(disposable);
+	context.subscriptions.push(
+		logger,
+		viewController,
+	);
+
+	await viewController.initialize();
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate(): void {
+	// VS Code disposes registered subscriptions during shutdown.
+}
