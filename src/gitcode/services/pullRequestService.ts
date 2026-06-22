@@ -1,5 +1,6 @@
-import { GitCodeRepository, PullRequestSummary } from '../../common/models';
+import { GitCodeRepository, PullRequestDetail, PullRequestSummary } from '../../common/models';
 import { GitCodeClient } from '../client/gitcodeClient';
+import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
 import { mapPullRequest } from '../mappers/pullRequestMapper';
 
 export interface PullRequestFilters {
@@ -20,5 +21,13 @@ export class PullRequestService {
 		);
 
 		return response.map((pullRequest) => mapPullRequest(pullRequest));
+	}
+
+	async getPullRequest(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestDetail> {
+		const response = await this.client.get<any>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}`,
+		);
+
+		return mapPullRequestDetail(response);
 	}
 }

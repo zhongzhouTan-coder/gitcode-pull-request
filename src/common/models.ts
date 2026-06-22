@@ -17,3 +17,57 @@ export interface PullRequestSummary {
 	url?: string;
 	isDraft?: boolean;
 }
+
+export interface PullRequestParticipant {
+	login: string;
+	name?: string;
+	avatarUrl?: string;
+	htmlUrl?: string;
+}
+
+export interface PullRequestLabel {
+	id: number;
+	name: string;
+	color?: string;
+}
+
+export interface PullRequestBranchRef {
+	label: string;
+	ref: string;
+	sha?: string;
+	repositoryFullName?: string;
+	repositoryUrl?: string;
+	owner?: string;
+}
+
+export interface PullRequestMergeabilityState {
+	mergeable: boolean;
+	canMergeCheck?: boolean;
+	hasConflicts?: boolean;
+	ciPassed?: boolean;
+	reviewPassed?: boolean;
+	reasons: string[];
+}
+
+export interface PullRequestDetail {
+	id: number;
+	number: number;
+	title: string;
+	state: 'open' | 'closed' | 'merged';
+	body: string;
+	url?: string;
+	htmlUrl?: string;
+	isDraft: boolean;
+	createdAt: string;
+	updatedAt: string;
+	closedAt?: string;
+	mergedAt?: string;
+	author: PullRequestParticipant;
+	source: PullRequestBranchRef;
+	target: PullRequestBranchRef;
+	assignees: PullRequestParticipant[];
+	reviewers: PullRequestParticipant[];
+	testers: PullRequestParticipant[];
+	labels: PullRequestLabel[];
+	mergeability: PullRequestMergeabilityState;
+}

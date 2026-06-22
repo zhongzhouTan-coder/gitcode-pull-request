@@ -5,7 +5,9 @@ import { Logger } from '../common/logger';
 import { RepositoryContextService } from '../common/git/repositoryContext';
 import { GitCodeRepositoryResolver } from '../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../gitcode/services/pullRequestService';
+import { registerOverviewCommands } from './commands/registerOverviewCommands';
 import { registerTreeCommands } from './commands/registerTreeCommands';
+import { PullRequestOverviewStore } from './overview/pullRequestOverviewStore';
 import { PullRequestTreeStore } from './state/pullRequestTreeStore';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
@@ -23,6 +25,7 @@ interface ViewControllerOptions {
 
 export class ViewController implements vscode.Disposable {
 	private readonly store: PullRequestTreeStore;
+	private readonly overviewStore: PullRequestOverviewStore;
 	private readonly treeDataProvider: PullRequestTreeDataProvider;
 	private readonly treeView: vscode.TreeView<import('./tree/nodes/baseNode').BaseNode>;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -33,6 +36,10 @@ export class ViewController implements vscode.Disposable {
 			options.repositoryResolver,
 			options.pullRequestService,
 			options.configuration,
+		);
+		this.overviewStore = new PullRequestOverviewStore(
+			options.authService,
+			options.pullRequestService,
 		);
 		this.treeDataProvider = new PullRequestTreeDataProvider(
 			this.store,
@@ -48,7 +55,12 @@ export class ViewController implements vscode.Disposable {
 			this.treeView,
 			registerTreeCommands({
 				authService: options.authService,
+				logger: options.logger,
+				overviewStore: this.overviewStore,
 				store: this.store,
+			}),
+			registerOverviewCommands({
+				logger: options.logger,
 			}),
 			options.authService.onDidChangeSession(() => {
 				void this.store.refreshAll();

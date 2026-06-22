@@ -7,6 +7,8 @@ export const COMMAND_ID = {
 	signIn: 'gitcode.signIn',
 	refreshPullRequests: 'gitcode.refreshPullRequests',
 	openPullRequest: 'gitcode.openPullRequest',
+	openPullRequestOnWeb: 'gitcode.openPullRequestOnWeb',
+	refreshPullRequest: 'gitcode.refreshPullRequest',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';
