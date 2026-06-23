@@ -71,3 +71,27 @@ export interface PullRequestDetail {
 	labels: PullRequestLabel[];
 	mergeability: PullRequestMergeabilityState;
 }
+
+export type PullRequestFileStatus =
+	| 'added'
+	| 'modified'
+	| 'deleted'
+	| 'renamed';
+
+export interface PullRequestFileChange {
+	sha: string;
+	path: string;
+	previousPath?: string;
+	status: PullRequestFileStatus;
+	additions: number;
+	deletions: number;
+	blobId?: string;
+	blobUrl?: string;
+	rawUrl?: string;
+	patch?: string;
+	tooLarge: boolean;
+	sourceBranch?: string;
+	targetBranch?: string;
+	sourceRepository?: string;
+	targetRepository?: string;
+}

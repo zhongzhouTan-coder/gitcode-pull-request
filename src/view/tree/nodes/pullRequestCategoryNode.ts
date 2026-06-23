@@ -13,6 +13,7 @@ export class PullRequestCategoryNode extends BaseNode {
 		private readonly repository: GitCodeRepository,
 		private readonly categoryKey: PullRequestCategoryKey,
 		private readonly label: string,
+		private readonly layoutSupplier: () => 'tree' | 'flat',
 		parent?: BaseNode,
 	) {
 		super(parent);
@@ -35,7 +36,7 @@ export class PullRequestCategoryNode extends BaseNode {
 				return [new EmptyStateNode('No open pull requests', undefined, undefined, this)];
 			}
 
-			return pullRequests.map((pullRequest) => new PullRequestNode(this.repository, pullRequest, this));
+			return pullRequests.map((pullRequest) => new PullRequestNode(this.repository, pullRequest, this.store, this.layoutSupplier, this));
 		} catch (error) {
 			return [this.toErrorNode(error)];
 		}

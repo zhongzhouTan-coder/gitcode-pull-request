@@ -1,16 +1,21 @@
 import * as vscode from 'vscode';
 import { DEFAULT_PAGE_SIZE } from './constants';
 
+export type FileListLayout = 'tree' | 'flat';
+
 export interface ExtensionConfiguration {
 	getBaseUrl(): string;
 	getWebUrl(): string;
 	getRepositoryOverride(): string | undefined;
 	getPullRequestPageSize(): number;
+	getPullRequestFileListLayout(): FileListLayout;
 	getTraceServerEnabled(): boolean;
 }
 
 class VsCodeExtensionConfiguration implements ExtensionConfiguration {
-	private readonly configuration = vscode.workspace.getConfiguration('gitcode');
+	private get configuration(): vscode.WorkspaceConfiguration {
+		return vscode.workspace.getConfiguration('gitcode');
+	}
 
 	getBaseUrl(): string {
 		return this.configuration.get<string>('baseUrl', 'https://api.gitcode.com');
@@ -27,6 +32,10 @@ class VsCodeExtensionConfiguration implements ExtensionConfiguration {
 
 	getPullRequestPageSize(): number {
 		return this.configuration.get<number>('pullRequests.pageSize', DEFAULT_PAGE_SIZE);
+	}
+
+	getPullRequestFileListLayout(): FileListLayout {
+		return this.configuration.get<FileListLayout>('pullRequests.fileListLayout', 'tree');
 	}
 
 	getTraceServerEnabled(): boolean {

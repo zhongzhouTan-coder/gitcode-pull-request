@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { ExtensionConfiguration } from '../../common/configuration';
 import { NotSignedInError } from '../../common/errors';
-import { GitCodeRepository, PullRequestSummary } from '../../common/models';
+import { GitCodeRepository, PullRequestFileChange, PullRequestSummary } from '../../common/models';
 import { GitCodeRepositoryResolver } from '../../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 
@@ -16,12 +16,14 @@ export interface PullRequestCategoryState {
 
 export type TreeRefreshTarget =
 	| { type: 'all' }
-	| { type: 'repository'; repositoryKey: string };
+	| { type: 'repository'; repositoryKey: string }
+	| { type: 'pullRequestFiles'; repositoryKey: string; pullRequestNumber: number };
 
 export class PullRequestTreeStore {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<TreeRefreshTarget | void>();
 	private repositoriesPromise?: Promise<GitCodeRepository[]>;
 	private readonly pullRequestListPromises = new Map<string, Promise<PullRequestSummary[]>>();
+	private readonly pullRequestFilesPromises = new Map<string, Promise<PullRequestFileChange[]>>();
 
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -82,6 +84,7 @@ export class PullRequestTreeStore {
 	async refreshAll(): Promise<void> {
 		this.repositoriesPromise = undefined;
 		this.pullRequestListPromises.clear();
+		this.pullRequestFilesPromises.clear();
 		this.onDidChangeEmitter.fire({ type: 'all' });
 	}
 
@@ -92,7 +95,49 @@ export class PullRequestTreeStore {
 			}
 		}
 
+		for (const key of [...this.pullRequestFilesPromises.keys()]) {
+			if (key.startsWith(`${repositoryKey}#`)) {
+				this.pullRequestFilesPromises.delete(key);
+			}
+		}
+
 		this.onDidChangeEmitter.fire({ type: 'repository', repositoryKey });
+	}
+
+	async getPullRequestFiles(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+	): Promise<PullRequestFileChange[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const key = this.getPullRequestFilesKey(repository, pullRequestNumber);
+		const existingPromise = this.pullRequestFilesPromises.get(key);
+		if (existingPromise) {
+			return existingPromise;
+		}
+
+		const requestPromise = this.pullRequestService
+			.listPullRequestFiles(repository, pullRequestNumber)
+			.catch((error) => {
+				this.pullRequestFilesPromises.delete(key);
+				throw error;
+			});
+
+		this.pullRequestFilesPromises.set(key, requestPromise);
+		return requestPromise;
+	}
+
+	async refreshPullRequestFiles(repositoryKey: string, pullRequestNumber: number): Promise<void> {
+		const filesKey = `${repositoryKey}#${pullRequestNumber}:files`;
+		this.pullRequestFilesPromises.delete(filesKey);
+		this.onDidChangeEmitter.fire({ type: 'pullRequestFiles', repositoryKey, pullRequestNumber });
+	}
+
+	private getPullRequestFilesKey(repository: GitCodeRepository, pullRequestNumber: number): string {
+		return `${repository.fullName}#${pullRequestNumber}:files`;
 	}
 
 	private getPullRequestListKey(repository: GitCodeRepository, category: PullRequestCategoryKey): string {

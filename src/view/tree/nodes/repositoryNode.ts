@@ -10,6 +10,7 @@ export class RepositoryNode extends BaseNode {
 	constructor(
 		private readonly store: PullRequestTreeStore,
 		readonly repository: GitCodeRepository,
+		private readonly layoutSupplier: () => 'tree' | 'flat',
 		parent?: BaseNode,
 	) {
 		super(parent);
@@ -28,7 +29,7 @@ export class RepositoryNode extends BaseNode {
 	getChildren(): BaseNode[] {
 		return this.store
 			.getCategories(this.repository)
-			.map((category) => new PullRequestCategoryNode(this.store, this.repository, category.key, category.label, this));
+			.map((category) => new PullRequestCategoryNode(this.store, this.repository, category.key, category.label, this.layoutSupplier, this));
 	}
 
 	private get label(): string {

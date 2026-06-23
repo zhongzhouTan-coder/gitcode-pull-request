@@ -48,6 +48,26 @@
       {
         "command": "gitcode.refreshPullRequest",
         "title": "GitCode: Refresh Pull Request"
+      },
+      {
+        "command": "gitcode.openPullRequestFile",
+        "title": "GitCode: Open Pull Request File"
+      },
+      {
+        "command": "gitcode.openPullRequestFileOnWeb",
+        "title": "GitCode: Open File On Web"
+      },
+      {
+        "command": "gitcode.refreshPullRequestFiles",
+        "title": "GitCode: Refresh Pull Request Files"
+      },
+      {
+        "command": "gitcode.setPullRequestFilesLayoutTree",
+        "title": "GitCode: Show Files as Tree"
+      },
+      {
+        "command": "gitcode.setPullRequestFilesLayoutFlat",
+        "title": "GitCode: Show Files as Flat List"
       }
     ],
     "menus": {
@@ -61,6 +81,16 @@
           "command": "gitcode.refreshPullRequests",
           "when": "view == pr:gitcode",
           "group": "navigation@2"
+        },
+        {
+          "command": "gitcode.setPullRequestFilesLayoutTree",
+          "when": "view == pr:gitcode && gitcodePullRequestFilesLayout == flat",
+          "group": "navigation@3"
+        },
+        {
+          "command": "gitcode.setPullRequestFilesLayoutFlat",
+          "when": "view == pr:gitcode && gitcodePullRequestFilesLayout == tree",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -73,6 +103,21 @@
           "command": "gitcode.openPullRequestOnWeb",
           "when": "view == pr:gitcode && viewItem == pullRequest",
           "group": "inline@2"
+        },
+        {
+          "command": "gitcode.openPullRequestFile",
+          "when": "view == pr:gitcode && viewItem =~ /^pullRequestFile:/",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitcode.openPullRequestFileOnWeb",
+          "when": "view == pr:gitcode && viewItem =~ /^pullRequestFile:/",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitcode.refreshPullRequestFiles",
+          "when": "view == pr:gitcode && viewItem == pullRequestFiles",
+          "group": "inline@1"
         }
       ]
     },
@@ -100,6 +145,12 @@
           "minimum": 1,
           "maximum": 100,
           "description": "Maximum number of pull requests loaded into the tree."
+        },
+        "gitcode.pullRequests.fileListLayout": {
+          "type": "string",
+          "enum": ["tree", "flat"],
+          "default": "tree",
+          "description": "Controls whether pull request files are shown as directories or a flat list."
         },
         "gitcode.trace.server": {
           "type": "string",

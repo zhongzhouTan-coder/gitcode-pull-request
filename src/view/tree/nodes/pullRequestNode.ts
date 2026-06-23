@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../../common/constants';
 import { GitCodeRepository, PullRequestSummary } from '../../../common/models';
+import { PullRequestTreeStore } from '../../state/pullRequestTreeStore';
 import { BaseNode } from './baseNode';
+import { PullRequestFilesNode } from './pullRequestFilesNode';
 
 export interface PullRequestNodeContext {
 	repository: GitCodeRepository;
@@ -15,6 +17,8 @@ export class PullRequestNode extends BaseNode {
 	constructor(
 		repository: GitCodeRepository,
 		private readonly pullRequest: PullRequestSummary,
+		private readonly store: PullRequestTreeStore,
+		private readonly layoutSupplier: () => 'tree' | 'flat',
 		parent?: BaseNode,
 	) {
 		super(parent);
@@ -25,7 +29,7 @@ export class PullRequestNode extends BaseNode {
 	getTreeItem(): vscode.TreeItem {
 		const item = new vscode.TreeItem(
 			`#${this.pullRequest.number} ${this.pullRequest.title}`,
-			vscode.TreeItemCollapsibleState.None,
+			vscode.TreeItemCollapsibleState.Collapsed,
 		);
 		item.id = this.id;
 		item.contextValue = 'pullRequest';
@@ -44,7 +48,15 @@ export class PullRequestNode extends BaseNode {
 	}
 
 	getChildren(): BaseNode[] {
-		return [];
+		return [
+			new PullRequestFilesNode(
+				this.store,
+				this.context.repository,
+				this.pullRequest.number,
+				this.layoutSupplier,
+				this,
+			),
+		];
 	}
 
 	private describe(): string | undefined {
