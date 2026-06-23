@@ -1,13 +1,18 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../authentication/authService';
+import { SessionStore } from '../authentication/sessionStore';
 import { ExtensionConfiguration } from '../common/configuration';
-import { COMMAND_ID, CONTEXT_KEY_FILE_LIST_LAYOUT } from '../common/constants';
+import { COMMAND_ID, CONTEXT_KEY_FILE_LIST_LAYOUT, GITCODE_PR_SCHEME } from '../common/constants';
 import { Logger } from '../common/logger';
 import { RepositoryContextService } from '../common/git/repositoryContext';
 import { GitCodeRepositoryResolver } from '../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../gitcode/services/pullRequestService';
+import { RawContentService } from '../gitcode/services/rawContentService';
 import { registerOverviewCommands } from './commands/registerOverviewCommands';
 import { registerTreeCommands } from './commands/registerTreeCommands';
+import { GitCodePullRequestFileSystemProvider } from './diff/gitcodePullRequestFileSystemProvider';
+import { PullRequestDiffController } from './diff/pullRequestDiffController';
+import { PullRequestDiffStore } from './diff/pullRequestDiffStore';
 import { PullRequestPatchContentProvider } from './diff/pullRequestPatchContentProvider';
 import { PullRequestOverviewStore } from './overview/pullRequestOverviewStore';
 import { PullRequestTreeStore } from './state/pullRequestTreeStore';
@@ -21,6 +26,7 @@ interface ViewControllerOptions {
 	repositoryContext: RepositoryContextService;
 	repositoryResolver: GitCodeRepositoryResolver;
 	pullRequestService: PullRequestService;
+	sessionStore: SessionStore;
 	logger: Logger;
 	viewId: string;
 }
@@ -31,6 +37,9 @@ export class ViewController implements vscode.Disposable {
 	private readonly treeDataProvider: PullRequestTreeDataProvider;
 	private readonly treeView: vscode.TreeView<import('./tree/nodes/baseNode').BaseNode>;
 	private readonly patchContentProvider: PullRequestPatchContentProvider;
+	private readonly diffStore: PullRequestDiffStore;
+	private readonly diffController: PullRequestDiffController;
+	private readonly fileSystemProvider: GitCodePullRequestFileSystemProvider;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly layoutSupplier: () => 'tree' | 'flat';
 
@@ -48,6 +57,23 @@ export class ViewController implements vscode.Disposable {
 		this.patchContentProvider = new PullRequestPatchContentProvider();
 		this.layoutSupplier = () => options.configuration.getPullRequestFileListLayout();
 
+		// Diff view components
+		const rawContentService = new RawContentService(
+			options.configuration,
+			options.sessionStore,
+			options.logger,
+		);
+		this.fileSystemProvider = new GitCodePullRequestFileSystemProvider(
+			rawContentService,
+			options.logger,
+		);
+		this.diffStore = new PullRequestDiffStore(options.pullRequestService);
+		this.diffController = new PullRequestDiffController(
+			this.diffStore,
+			this.patchContentProvider,
+			options.logger,
+		);
+
 		this.treeDataProvider = new PullRequestTreeDataProvider(
 			this.store,
 			new NodeFactory(this.store, this.layoutSupplier),
@@ -61,13 +87,19 @@ export class ViewController implements vscode.Disposable {
 		this.disposables.push(
 			this.treeView,
 			this.patchContentProvider,
+			this.fileSystemProvider,
 			vscode.workspace.registerTextDocumentContentProvider('gitcode-pr-diff', this.patchContentProvider),
+			vscode.workspace.registerFileSystemProvider(GITCODE_PR_SCHEME, this.fileSystemProvider, {
+				isReadonly: true,
+				isCaseSensitive: true,
+			}),
 			registerTreeCommands({
 				authService: options.authService,
 				logger: options.logger,
 				overviewStore: this.overviewStore,
 				store: this.store,
-				patchContentProvider: this.patchContentProvider,
+				diffController: this.diffController,
+				diffStore: this.diffStore,
 			}),
 			registerOverviewCommands({
 				logger: options.logger,
@@ -82,6 +114,20 @@ export class ViewController implements vscode.Disposable {
 				if (event.affectsConfiguration('gitcode.pullRequests.fileListLayout')) {
 					this.updateFileListLayoutContext();
 					void this.store.refreshAll();
+				}
+			}),
+			// Invalidate diff snapshot cache when the tree store refreshes
+			this.store.onDidChange((target) => {
+				if (!target) {
+					// Refresh all — clear entire diff store
+					this.diffStore.clear();
+				} else if (typeof target === 'object' && 'type' in target) {
+					const t = target as { type: string; repositoryKey?: string; pullRequestNumber?: number };
+					if (t.type === 'all') {
+						this.diffStore.clear();
+					} else if (t.type === 'pullRequestFiles' && t.repositoryKey && t.pullRequestNumber !== undefined) {
+						this.diffStore.invalidate(t.repositoryKey, t.pullRequestNumber);
+					}
 				}
 			}),
 		);

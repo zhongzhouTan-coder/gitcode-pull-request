@@ -95,3 +95,37 @@ export interface PullRequestFileChange {
 	sourceRepository?: string;
 	targetRepository?: string;
 }
+
+// ---- Diff View Types ----
+
+export interface PullRequestDiffRefs {
+	baseSha: string;
+	startSha?: string;
+	headSha: string;
+}
+
+export interface PullRequestDiffSnapshot {
+	refs: PullRequestDiffRefs;
+	fileTypes: ReadonlyMap<string, string>;
+}
+
+/** @internal for use by the snapshot service and mapper */
+export interface PullRequestFilesJsonDto {
+	diff_refs?: {
+		base_sha?: string;
+		start_sha?: string;
+		head_sha?: string;
+	};
+	diffs?: PullRequestFileJsonDto[];
+}
+
+export interface PullRequestFileJsonDto {
+	statistic?: {
+		type?: string;
+		path?: string;
+		old_path?: string;
+		new_path?: string;
+	};
+}
+
+export type DiffSide = 'base' | 'head' | 'empty';

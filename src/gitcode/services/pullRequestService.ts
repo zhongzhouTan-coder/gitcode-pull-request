@@ -1,5 +1,6 @@
-import { GitCodeRepository, PullRequestDetail, PullRequestFileChange, PullRequestSummary } from '../../common/models';
+import { GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestSummary } from '../../common/models';
 import { GitCodeClient } from '../client/gitcodeClient';
+import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
 import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
 import { mapPullRequest } from '../mappers/pullRequestMapper';
@@ -38,5 +39,13 @@ export class PullRequestService {
 		);
 
 		return mapPullRequestFiles(response);
+	}
+
+	async getPullRequestDiffSnapshot(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestDiffSnapshot> {
+		const response = await this.client.get<PullRequestFilesJsonDto>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/files.json`,
+		);
+
+		return mapDiffSnapshot(response);
 	}
 }

@@ -6,8 +6,9 @@ import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
 import { PullRequestNodeContext } from '../tree/nodes/pullRequestNode';
-import { PullRequestFileNodeContext } from '../tree/nodes/pullRequestFileNode';
-import { PullRequestPatchContentProvider } from '../diff/pullRequestPatchContentProvider';
+import { PullRequestFileNode, PullRequestFileNodeContext } from '../tree/nodes/pullRequestFileNode';
+import { PullRequestDiffController } from '../diff/pullRequestDiffController';
+import { PullRequestDiffStore } from '../diff/pullRequestDiffStore';
 import { PullRequestFilesNode } from '../tree/nodes/pullRequestFilesNode';
 
 interface RegisterTreeCommandsOptions {
@@ -15,7 +16,8 @@ interface RegisterTreeCommandsOptions {
 	logger: Logger;
 	overviewStore: PullRequestOverviewStore;
 	store: PullRequestTreeStore;
-	patchContentProvider: PullRequestPatchContentProvider;
+	diffController: PullRequestDiffController;
+	diffStore: PullRequestDiffStore;
 }
 
 function getPullRequestUrl(context: PullRequestNodeContext): string {
@@ -35,8 +37,26 @@ function isSafeUrl(url: string | undefined): url is string {
 	}
 }
 
+function resolvePullRequestFileContext(
+	value: PullRequestFileNodeContext | PullRequestFileNode | undefined,
+): PullRequestFileNodeContext | undefined {
+	if (!value) {
+		return undefined;
+	}
+
+	if (value instanceof PullRequestFileNode) {
+		return value.context;
+	}
+
+	if (value.repository && Number.isInteger(value.pullRequestNumber) && value.file) {
+		return value;
+	}
+
+	return undefined;
+}
+
 export function registerTreeCommands(options: RegisterTreeCommandsOptions): vscode.Disposable {
-	const { authService, logger, overviewStore, store, patchContentProvider } = options;
+	const { authService, logger, overviewStore, store, diffController, diffStore } = options;
 
 	return vscode.Disposable.from(
 		vscode.commands.registerCommand(COMMAND_ID.signIn, async () => {
@@ -69,28 +89,26 @@ export function registerTreeCommands(options: RegisterTreeCommandsOptions): vsco
 
 			await PullRequestOverviewPanel.openCurrentOnWeb();
 		}),
-		vscode.commands.registerCommand(COMMAND_ID.openPullRequestFile, async (context?: PullRequestFileNodeContext) => {
+		vscode.commands.registerCommand(COMMAND_ID.openPullRequestFile, async (
+			value?: PullRequestFileNodeContext | PullRequestFileNode,
+		) => {
+			const context = resolvePullRequestFileContext(value);
 			if (!context) {
+				logger.error('Cannot open pull request diff: invalid file command context.');
 				return;
 			}
 
 			const { repository, pullRequestNumber, file } = context;
 
-			if (file.tooLarge || !file.patch) {
-				if (isSafeUrl(file.blobUrl)) {
-					await vscode.env.openExternal(vscode.Uri.parse(file.blobUrl));
-				}
-
-				return;
-			}
-
-			const uri = patchContentProvider.registerPatch(file, repository.fullName, pullRequestNumber);
-			const doc = await vscode.workspace.openTextDocument(uri);
-			await vscode.languages.setTextDocumentLanguage(doc, 'diff');
-			await vscode.window.showTextDocument(doc, { preview: true });
+			// Use the native diff experience via the diff controller
+			await diffController.openDiff(repository, pullRequestNumber, file);
 		}),
-		vscode.commands.registerCommand(COMMAND_ID.openPullRequestFileOnWeb, async (context?: PullRequestFileNodeContext) => {
+		vscode.commands.registerCommand(COMMAND_ID.openPullRequestFileOnWeb, async (
+			value?: PullRequestFileNodeContext | PullRequestFileNode,
+		) => {
+			const context = resolvePullRequestFileContext(value);
 			if (!context) {
+				logger.error('Cannot open pull request file on the web: invalid file command context.');
 				return;
 			}
 
@@ -108,6 +126,8 @@ export function registerTreeCommands(options: RegisterTreeCommandsOptions): vsco
 			const prNumber = (context as any).pullRequestNumber;
 
 			if (fullName && prNumber) {
+				// Invalidate both list-files cache and diff snapshot
+				diffStore.invalidate(fullName, prNumber);
 				await store.refreshPullRequestFiles(fullName, prNumber);
 			}
 		}),

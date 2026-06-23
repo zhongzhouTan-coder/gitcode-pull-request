@@ -5,6 +5,7 @@ export type FileListLayout = 'tree' | 'flat';
 
 export interface ExtensionConfiguration {
 	getBaseUrl(): string;
+	getRawUrl(): string;
 	getWebUrl(): string;
 	getRepositoryOverride(): string | undefined;
 	getPullRequestPageSize(): number;
@@ -19,6 +20,10 @@ class VsCodeExtensionConfiguration implements ExtensionConfiguration {
 
 	getBaseUrl(): string {
 		return this.configuration.get<string>('baseUrl', 'https://api.gitcode.com');
+	}
+
+	getRawUrl(): string {
+		return this.configuration.get<string>('rawUrl', 'https://raw.gitcode.com');
 	}
 
 	getWebUrl(): string {

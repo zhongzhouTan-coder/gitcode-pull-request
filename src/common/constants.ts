@@ -25,4 +25,7 @@ export const DEFAULT_PAGE_SIZE = 20;
 
 export const PR_DIFF_SCHEME = 'gitcode-pr-diff';
 
+/** Scheme for the virtual read-only filesystem that serves raw PR content. */
+export const GITCODE_PR_SCHEME = 'gitcode-pr';
+
 export const CONTEXT_KEY_FILE_LIST_LAYOUT = 'gitcodePullRequestFilesLayout';

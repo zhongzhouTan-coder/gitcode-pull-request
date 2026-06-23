@@ -33,6 +33,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		repositoryContext,
 		repositoryResolver,
 		pullRequestService,
+		sessionStore,
 		logger,
 		viewId: VIEW_ID_PULL_REQUESTS,
 	});
