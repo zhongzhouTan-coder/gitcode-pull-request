@@ -31,19 +31,23 @@
     "commands": [
       {
         "command": "gitcode.signIn",
-        "title": "GitCode: Sign In"
+        "title": "GitCode: Sign In",
+        "icon": "$(sign-in)"
       },
       {
         "command": "gitcode.refreshPullRequests",
-        "title": "GitCode: Refresh Pull Requests"
+        "title": "GitCode: Refresh Pull Requests",
+        "icon": "$(refresh)"
       },
       {
         "command": "gitcode.openPullRequest",
-        "title": "GitCode: Open Pull Request"
+        "title": "GitCode: Open Pull Request",
+        "icon": "$(eye)"
       },
       {
         "command": "gitcode.openPullRequestOnWeb",
-        "title": "GitCode: Open Pull Request On Web"
+        "title": "GitCode: Open Pull Request On Web",
+        "icon": "$(globe)"
       },
       {
         "command": "gitcode.refreshPullRequest",
@@ -51,23 +55,28 @@
       },
       {
         "command": "gitcode.openPullRequestFile",
-        "title": "GitCode: Open Pull Request File"
+        "title": "GitCode: Open Pull Request File",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "gitcode.openPullRequestFileOnWeb",
-        "title": "GitCode: Open File On Web"
+        "title": "GitCode: Open File On Web",
+        "icon": "$(globe)"
       },
       {
         "command": "gitcode.refreshPullRequestFiles",
-        "title": "GitCode: Refresh Pull Request Files"
+        "title": "GitCode: Refresh Pull Request Files",
+        "icon": "$(refresh)"
       },
       {
         "command": "gitcode.setPullRequestFilesLayoutTree",
-        "title": "GitCode: Show Files as Tree"
+        "title": "GitCode: Show Files as Tree",
+        "icon": "$(list-tree)"
       },
       {
         "command": "gitcode.setPullRequestFilesLayoutFlat",
-        "title": "GitCode: Show Files as Flat List"
+        "title": "GitCode: Show Files as Flat List",
+        "icon": "$(list-flat)"
       }
     ],
     "menus": {

@@ -21,6 +21,17 @@ function keyFor(repository: GitCodeRepository, pullRequestNumber: number): strin
 	return `${repository.fullName}#${pullRequestNumber}`;
 }
 
+export function isTrustedGitCodeUrl(candidate: string, webUrl: string): boolean {
+	try {
+		const parsedCandidate = new URL(candidate);
+		const parsedWebUrl = new URL(webUrl);
+		const isWebProtocol = parsedCandidate.protocol === 'http:' || parsedCandidate.protocol === 'https:';
+		return isWebProtocol && parsedCandidate.origin === parsedWebUrl.origin;
+	} catch {
+		return false;
+	}
+}
+
 export class PullRequestOverviewPanel implements vscode.Disposable {
 	private static readonly panels = new Map<string, PullRequestOverviewPanel>();
 	private static activePanel: PullRequestOverviewPanel | undefined;
@@ -95,7 +106,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			}
 		});
 
-		this.panel.webview.onDidReceiveMessage(async (message: { command?: string }) => {
+		this.panel.webview.onDidReceiveMessage(async (message: { command?: string; url?: string }) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
 				return;
@@ -103,6 +114,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'openOnWeb') {
 				await this.openOnWeb();
+				return;
+			}
+
+			if (message.command === 'openUrl' && message.url) {
+				await this.openTrustedUrl(message.url);
 			}
 		});
 	}
@@ -166,6 +182,14 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private async openOnWeb(): Promise<void> {
 		const url = this.detail?.htmlUrl ?? this.detail?.url ?? this.context.url;
 		if (!url) {
+			return;
+		}
+
+		await vscode.env.openExternal(vscode.Uri.parse(url));
+	}
+
+	private async openTrustedUrl(url: string): Promise<void> {
+		if (!isTrustedGitCodeUrl(url, this.context.repository.webUrl)) {
 			return;
 		}
 

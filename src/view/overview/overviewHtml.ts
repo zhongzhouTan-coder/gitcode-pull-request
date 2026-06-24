@@ -36,17 +36,61 @@ function labelColor(color: string | undefined): string {
 	return color.startsWith('#') ? color : `#${color}`;
 }
 
+/** Derive a consistent hue from a login string for SVG avatar backgrounds. */
+function avatarColor(login: string): string {
+	let hash = 0;
+	for (let i = 0; i < login.length; i++) {
+		hash = login.charCodeAt(i) + ((hash << 5) - hash);
+	}
+	const hue = Math.abs(hash) % 360;
+	return `hsl(${hue}, 50%, 48%)`;
+}
+
+/** Generate an inline SVG avatar circle with the user's initial. */
+function renderSvgAvatar(login: string, name?: string, size: number = 24): string {
+	const initial = (name || login)[0]?.toUpperCase() || '?';
+	const color = avatarColor(login);
+	const half = Math.round(size / 2);
+	const fontSize = Math.round(size * 0.45);
+	return `<svg class="avatar-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+		<circle cx="${half}" cy="${half}" r="${half}" fill="${color}"/>
+		<text x="${half}" y="${half}" text-anchor="middle" dy=".35em" fill="white" font-size="${fontSize}" font-weight="600" font-family="var(--vscode-font-family, sans-serif)">${escapeHtml(initial)}</text>
+	</svg>`;
+}
+
+/** Refresh circular-arrow icon (16×16). */
+const REFRESH_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+	<path d="M2 8a6 6 0 0 1 10.9-3.5L14 6V2.1h1.6v5.8H9.8V6.4h2.5A4.4 4.4 0 1 0 13.3 11l1.2 1A6 6 0 1 1 2 8Z" fill="currentColor"/>
+</svg>`;
+
+/** External-link icon (16×16). */
+const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+	<path d="M3 2v11h11V8.5h1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5v1H3Zm5.5 0V1H15v6.5h-1V2.7L7.9 8.9l-.8-.8L13.3 2H8.5Z" fill="currentColor"/>
+</svg>`;
+
 function renderParticipants(participants: PullRequestParticipant[]): string {
 	if (!participants.length) {
 		return '<div class="empty">None</div>';
 	}
 
-	return `<ul class="meta-list">${participants.map((participant) => {
-		const primary = participant.name && participant.name !== participant.login
-			? `${escapeHtml(participant.name)} <span class="muted">@${escapeHtml(participant.login)}</span>`
-			: `@${escapeHtml(participant.login)}`;
-		return `<li>${primary}</li>`;
-	}).join('')}</ul>`;
+	return `<div class="participant-list">${participants.map((p) => {
+		const avatar = renderSvgAvatar(p.login, p.name);
+		const displayName = p.name && p.name !== p.login
+			? `${escapeHtml(p.name)} <span class="muted">@${escapeHtml(p.login)}</span>`
+			: `@${escapeHtml(p.login)}`;
+
+		if (p.htmlUrl) {
+			return `<button class="participant-btn" data-action="openUrl" data-url="${escapeHtml(p.htmlUrl)}" title="${escapeHtml(p.login)}">
+				${avatar}
+				<span class="participant-name">${displayName}</span>
+			</button>`;
+		}
+
+		return `<span class="participant-row">
+			${avatar}
+			<span class="participant-name">${displayName}</span>
+		</span>`;
+	}).join('')}</div>`;
 }
 
 function renderLabels(labels: PullRequestLabel[]): string {
@@ -279,12 +323,18 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.badge-draft { background: var(--badge-draft); }
 		.actions { margin-top: 16px; display: flex; gap: 12px; }
 		button {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
 			border: 1px solid var(--border);
 			background: var(--vscode-button-background);
 			color: var(--vscode-button-foreground);
 			padding: 8px 14px;
 			border-radius: 6px;
 			cursor: pointer;
+		}
+		.btn-icon {
+			flex-shrink: 0;
 		}
 		button.secondary {
 			background: transparent;
@@ -345,6 +395,44 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			border-radius: 999px;
 			background: color-mix(in srgb, var(--label-color) 18%, transparent);
 			border: 1px solid color-mix(in srgb, var(--label-color) 45%, transparent);
+		}
+		/* ---- Participants ---- */
+		.participant-list {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+		}
+		.participant-btn,
+		.participant-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding: 2px 0;
+		}
+		.participant-btn {
+			border: none;
+			background: none;
+			color: inherit;
+			font: inherit;
+			cursor: pointer;
+			text-align: left;
+			width: 100%;
+			border-radius: 6px;
+			padding: 4px 6px;
+			margin: -2px -6px;
+		}
+		.participant-btn:hover {
+			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 12%, transparent);
+		}
+		.avatar-svg {
+			flex-shrink: 0;
+			border-radius: 50%;
+		}
+		.participant-name {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 		.status-line {
 			display: flex;
@@ -470,8 +558,8 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			<span>Updated ${escapeHtml(formatDate(detail.updatedAt))}</span>
 		</div>
 		<div class="actions">
-			<button id="refresh-button" class="secondary">Refresh</button>
-			<button id="open-web-button" ${openOnWebDisabled}>Open on GitCode</button>
+			<button id="refresh-button" class="secondary">${REFRESH_ICON} Refresh</button>
+			<button id="open-web-button" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
 		</div>
 	</div>
 	<div class="layout">
@@ -532,6 +620,11 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		});
 		document.getElementById('open-web-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'openOnWeb' });
+		});
+		document.querySelectorAll('[data-action="openUrl"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				vscode.postMessage({ command: 'openUrl', url: el.dataset.url });
+			});
 		});
 	</script>` : ''}
 </body>
