@@ -1,4 +1,13 @@
-import { PullRequestDetail, PullRequestLabel, PullRequestParticipant } from '../../common/models';
+import {
+	PullRequestComment,
+	PullRequestCommentReply,
+	PullRequestCommentsSnapshot,
+	PullRequestDetail,
+	PullRequestDiffComment,
+	PullRequestGeneralComment,
+	PullRequestLabel,
+	PullRequestParticipant,
+} from '../../common/models';
 import { renderMarkdown } from '../webview/markdown';
 
 function escapeHtml(value: string): string {
@@ -84,10 +93,153 @@ function stateLabel(detail: PullRequestDetail): string {
 	}
 }
 
-export function getOverviewHtml(detail: PullRequestDetail, nonce: string): string {
+function renderInlineAuthors(authors: { login: string; name?: string }[]): string {
+	return authors.map((a) => {
+		if (a.name && a.name !== a.login) {
+			return `${escapeHtml(a.name)} <span class="muted">@${escapeHtml(a.login)}</span>`;
+		}
+		return `@${escapeHtml(a.login)}`;
+	}).join(', ');
+}
+
+function hasEditedMarker(comment: { createdAt: string; updatedAt: string }): boolean {
+	return comment.createdAt !== comment.updatedAt;
+}
+
+function renderDiffCommentLocation(comment: PullRequestDiffComment): string {
+	const parts: string[] = [];
+	if (comment.location.path) {
+		parts.push(`<span class="comment-file">${escapeHtml(comment.location.path)}</span>`);
+	}
+	parts.push(`line ${comment.location.startLine}`);
+	if (comment.location.endLine !== comment.location.startLine) {
+		parts.push(`-${comment.location.endLine}`);
+	}
+	return parts.join(' · ');
+}
+
+function renderDiffCommentBadges(comment: PullRequestDiffComment): string {
+	const badges: string[] = [];
+	if (comment.resolved) {
+		badges.push('<span class="badge badge-resolved">Resolved</span>');
+	}
+	if (comment.isOutdated) {
+		badges.push('<span class="badge badge-outdated">Outdated</span>');
+	}
+	return badges.join(' ');
+}
+
+function renderCommentAvatar(author: PullRequestComment['author']): string {
+	if (author.avatarUrl) {
+		try {
+			const url = new URL(author.avatarUrl);
+			if (url.protocol === 'https:') {
+				return `<img class="comment-avatar" src="${escapeHtml(author.avatarUrl)}" alt="${escapeHtml(author.login)}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=\\'avatar-initials\\'>${escapeHtml((author.name || author.login)[0]?.toUpperCase() || '?')}</span>'">`;
+			}
+		} catch {
+			// Fall through to initials for malformed API data.
+		}
+	}
+	const initial = (author.name || author.login)[0]?.toUpperCase() || '?';
+	return `<span class="avatar-initials">${escapeHtml(initial)}</span>`;
+}
+
+function renderCommentBody(body: string): string {
+	return renderMarkdown(body);
+}
+
+function renderConversationReplies(replies: PullRequestCommentReply[]): string {
+	if (!replies.length) {
+		return '';
+	}
+
+	return replies.map((reply) => `
+		<div class="comment-reply">
+			<div class="comment-header">
+				${renderCommentAvatar(reply.author)}
+				<span class="comment-author">${renderInlineAuthors([reply.author])}</span>
+				<span class="comment-time">${escapeHtml(formatDate(reply.createdAt))}</span>
+				${hasEditedMarker(reply) ? '<span class="edited-marker">edited</span>' : ''}
+			</div>
+			<div class="comment-body">${renderCommentBody(reply.body)}</div>
+		</div>
+	`).join('');
+}
+
+function renderConversationComment(comment: PullRequestComment): string {
+	if (comment.kind === 'pullRequest') {
+		return renderGeneralCommentCard(comment);
+	}
+	return renderDiffCommentCard(comment);
+}
+
+function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
+	return `
+		<div class="comment-card">
+			<div class="comment-header">
+				${renderCommentAvatar(comment.author)}
+				<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
+				<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
+				${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
+			</div>
+			<div class="comment-body">${renderCommentBody(comment.body)}</div>
+			${renderConversationReplies(comment.replies)}
+		</div>
+	`;
+}
+
+function renderDiffCommentCard(comment: PullRequestDiffComment): string {
+	return `
+		<div class="comment-card comment-card-diff">
+			<div class="comment-header">
+				${renderCommentAvatar(comment.author)}
+				<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
+				<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
+				${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
+			</div>
+			<div class="comment-meta">
+				<span class="comment-location">${renderDiffCommentLocation(comment)}</span>
+				${renderDiffCommentBadges(comment)}
+			</div>
+			<div class="comment-body">${renderCommentBody(comment.body)}</div>
+			${renderConversationReplies(comment.replies)}
+		</div>
+	`;
+}
+
+function renderConversationSection(snapshot: PullRequestCommentsSnapshot): string {
+	const comments = [...snapshot.comments].sort((a, b) => {
+		return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+	});
+
+	if (!comments.length) {
+		return '<section><h2>Conversation</h2><div class="empty">No comments yet.</div></section>';
+	}
+
+	const countText = `${comments.length}`;
+	return `
+		<section>
+			<h2>Conversation (${countText})</h2>
+			<div class="conversation-list">
+				${comments.map((c) => renderConversationComment(c)).join('')}
+			</div>
+		</section>
+	`;
+}
+
+function renderConversationLoading(): string {
+	return '<section><h2>Conversation</h2><div class="empty">Loading comments...</div></section>';
+}
+
+function renderConversationError(message: string): string {
+	return `<section><h2>Conversation</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
+}
+
+export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
 	const openOnWebDisabled = detail.htmlUrl ? '' : 'disabled';
+	const conversationSection = conversationHtml ?? '';
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -204,6 +356,102 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string): strin
 		.status-line:last-of-type { border-bottom: none; }
 		.status-name { color: var(--muted); }
 		.muted, .empty { color: var(--muted); }
+		/* ---- Conversation / Comments ---- */
+		.conversation-list { display: flex; flex-direction: column; gap: 16px; }
+		.comment-card {
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			padding: 16px;
+			background: var(--card);
+		}
+		.comment-card-diff {
+			border-left: 4px solid var(--vscode-textLink-foreground, #58a6ff);
+		}
+		.comment-header {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			margin-bottom: 10px;
+		}
+		.comment-avatar {
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			object-fit: cover;
+		}
+		.avatar-initials {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 30%, transparent);
+			font-size: 13px;
+			font-weight: 600;
+		}
+		.comment-author { font-weight: 600; }
+		.comment-time { color: var(--muted); font-size: 13px; }
+		.edited-marker { color: var(--muted); font-size: 12px; font-style: italic; }
+		.comment-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+			font-size: 13px;
+			color: var(--muted);
+			margin-bottom: 10px;
+		}
+		.comment-file {
+			font-family: var(--vscode-editor-font-family);
+			font-size: 13px;
+		}
+		.comment-location { color: var(--muted); }
+		.badge-resolved {
+			background: var(--badge-merged);
+			color: white;
+		}
+		.badge-outdated {
+			background: var(--badge-draft);
+			color: white;
+		}
+		.comment-body {
+			overflow-wrap: anywhere;
+		}
+		.comment-body pre {
+			overflow-x: auto;
+			padding: 10px;
+			border-radius: 8px;
+			background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.12));
+		}
+		.comment-body code {
+			font-family: var(--vscode-editor-font-family);
+			font-size: 0.95em;
+		}
+		.comment-body table {
+			width: 100%;
+			border-collapse: collapse;
+			display: block;
+			overflow-x: auto;
+		}
+		.comment-body th,
+		.comment-body td {
+			border: 1px solid var(--border);
+			padding: 6px 8px;
+			text-align: left;
+			vertical-align: top;
+		}
+		.comment-body img {
+			max-width: 100%;
+			height: auto;
+			border-radius: 8px;
+		}
+		.comment-reply {
+			border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+			margin-top: 12px;
+			padding-top: 12px;
+		}
+		.comment-error { color: var(--vscode-errorForeground); padding: 8px 0; }
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
 		}
@@ -236,6 +484,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string): strin
 				<h2>Description</h2>
 				<div class="description">${descriptionHtml}</div>
 			</section>
+			${conversationSection}
 		</main>
 		<aside>
 			<div class="card">
@@ -287,6 +536,18 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string): strin
 	</script>
 </body>
 </html>`;
+}
+
+export function getOverviewWithCommentsHtml(detail: PullRequestDetail, snapshot: PullRequestCommentsSnapshot, nonce: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot));
+}
+
+export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationLoading());
+}
+
+export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage));
 }
 
 export function getOverviewErrorHtml(title: string, description: string, nonce: string): string {

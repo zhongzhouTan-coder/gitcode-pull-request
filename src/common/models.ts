@@ -129,3 +129,72 @@ export interface PullRequestFileJsonDto {
 }
 
 export type DiffSide = 'base' | 'head' | 'empty';
+
+// ---- Comment Types ----
+
+export interface PullRequestCommentAuthor {
+	id: string;
+	login: string;
+	name?: string;
+	avatarUrl?: string;
+	htmlUrl?: string;
+}
+
+export interface PullRequestCommentReply {
+	id: string;
+	body: string;
+	author: PullRequestCommentAuthor;
+	createdAt: string;
+	updatedAt: string;
+}
+
+interface PullRequestCommentBase {
+	id: string;
+	discussionId: string;
+	body: string;
+	author: PullRequestCommentAuthor;
+	createdAt: string;
+	updatedAt: string;
+	replies: PullRequestCommentReply[];
+}
+
+export interface PullRequestGeneralComment extends PullRequestCommentBase {
+	kind: 'pullRequest';
+}
+
+export interface PullRequestDiffComment extends PullRequestCommentBase {
+	kind: 'diff';
+	resolved: boolean;
+	isOutdated: boolean;
+	location: PullRequestDiffCommentLocation;
+}
+
+export interface PullRequestDiffCommentLocation {
+	path?: string;
+	previousPath?: string;
+	side: 'base' | 'head';
+	startLine: number;
+	endLine: number;
+	baseSha?: string;
+	startSha?: string;
+	headSha?: string;
+	positionType: string;
+}
+
+export interface PullRequestDiffCommentDetail {
+	id: string;
+	discussionId: string;
+	isOutdated: boolean;
+	location: PullRequestDiffCommentLocation;
+}
+
+export type PullRequestComment =
+	| PullRequestGeneralComment
+	| PullRequestDiffComment;
+
+export interface PullRequestCommentsSnapshot {
+	repositoryKey: string;
+	pullRequestNumber: number;
+	comments: readonly PullRequestComment[];
+	loadedAt: number;
+}

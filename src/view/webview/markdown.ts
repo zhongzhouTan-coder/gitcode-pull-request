@@ -1,4 +1,6 @@
+import { URL } from 'url';
 import MarkdownIt = require('markdown-it');
+import { sanitizeHtml, containsHtmlTags } from './htmlSanitizer';
 
 function sanitizeUrl(url: string): string | undefined {
 	try {
@@ -21,7 +23,7 @@ function removeAttribute(token: MarkdownIt.Token, name: string): void {
 }
 
 const markdownIt = new MarkdownIt({
-	html: false,
+	html: true,
 	linkify: true,
 	breaks: false,
 	typographer: false,
@@ -91,5 +93,14 @@ export function renderMarkdown(markdown: string): string {
 		return '<p>No description provided.</p>';
 	}
 
-	return markdownIt.render(markdown);
+	const rendered = markdownIt.render(markdown);
+
+	// When the markdown source contains raw HTML, sanitize the rendered output.
+	// This allows safe HTML (tables, divs, links) from API comments while
+	// stripping dangerous tags (script, style) and event handlers (onclick).
+	if (containsHtmlTags(markdown)) {
+		return sanitizeHtml(rendered);
+	}
+
+	return rendered;
 }

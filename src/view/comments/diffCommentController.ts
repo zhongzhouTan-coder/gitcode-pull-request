@@ -1,0 +1,210 @@
+import * as vscode from 'vscode';
+import { Logger } from '../../common/logger';
+import { PullRequestCommentsSnapshot } from '../../common/models';
+import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
+import { createCommentThread, selectCommentsForDocument } from './commentThreadFactory';
+import { parsePrUri } from '../diff/prUriHelpers';
+
+interface CommentThreadKey {
+	repositoryKey: string;
+	pullRequestNumber: number;
+	path: string;
+	side: 'base' | 'head';
+	discussionId: string;
+}
+
+function threadKeyToString(key: CommentThreadKey): string {
+	return `${key.repositoryKey}#${key.pullRequestNumber}:${key.path}:${key.side}:${key.discussionId}`;
+}
+
+/**
+ * Owns one vscode.CommentController and manages the lifecycle of inline
+ * comment threads for open `gitcode-pr` diff documents.
+ *
+ * Follows the pattern:
+ * 1. Watch opened/closed PR diff documents.
+ * 2. For each open document, compute desired threads from the shared store.
+ * 3. Reuse existing threads with the same key; create new ones; dispose stale ones.
+ */
+export class DiffCommentController implements vscode.Disposable {
+	private readonly controller: vscode.CommentController;
+	private readonly disposables: vscode.Disposable[] = [];
+	private readonly activeThreads = new Map<string, vscode.CommentThread>();
+	private readonly trackedDocs = new Set<string>();
+
+	constructor(
+		private readonly commentsStore: PullRequestCommentsStore,
+		private readonly logger: Logger,
+	) {
+		this.controller = vscode.comments.createCommentController(
+			'gitcode-pull-request-comments',
+			'GitCode Pull Request Comments',
+		);
+		this.controller.commentingRangeProvider = undefined;
+
+		this.disposables.push(
+			this.controller,
+			vscode.window.onDidChangeVisibleTextEditors(() => {
+				void this.updateThreads();
+			}),
+			vscode.workspace.onDidCloseTextDocument((doc) => {
+				this.handleDocumentClosed(doc);
+			}),
+			this.commentsStore.onDidChange(() => {
+				void this.updateThreads();
+			}),
+		);
+	}
+
+	dispose(): void {
+		this.disposeAllThreads();
+		for (const d of this.disposables) {
+			d.dispose();
+		}
+	}
+
+	private disposeAllThreads(): void {
+		for (const thread of this.activeThreads.values()) {
+			thread.dispose();
+		}
+		this.activeThreads.clear();
+		this.trackedDocs.clear();
+	}
+
+	private handleDocumentClosed(doc: vscode.TextDocument): void {
+		// Remove threads for this document URI
+		const uriStr = doc.uri.toString();
+		for (const [key, thread] of this.activeThreads.entries()) {
+			if (thread.uri.toString() === uriStr) {
+				thread.dispose();
+				this.activeThreads.delete(key);
+			}
+		}
+		this.trackedDocs.delete(uriStr);
+	}
+
+	private async updateThreads(): Promise<void> {
+		const parsedEditors: Array<{
+			uri: vscode.Uri;
+			owner: string;
+			repo: string;
+			pr: number;
+			path: string;
+			side: 'base' | 'head';
+			sha?: string;
+		}> = [];
+
+		// Collect all visible PR diff editors
+		for (const editor of vscode.window.visibleTextEditors) {
+			const uri = editor.document.uri;
+			const uriStr = uri.toString();
+			if (uri.scheme !== 'gitcode-pr') {
+				continue;
+			}
+
+			this.trackedDocs.add(uriStr);
+
+			const parsed = parsePrUri(uri);
+			if (parsed && (parsed.side === 'base' || parsed.side === 'head')) {
+				parsedEditors.push({
+					uri,
+					owner: parsed.owner,
+					repo: parsed.repo,
+					pr: parsed.pullRequestNumber,
+					path: parsed.path,
+					side: parsed.side,
+					sha: parsed.sha,
+				});
+			}
+		}
+
+		// Compute desired threads
+		const desiredKeys = new Map<string, { key: CommentThreadKey; uri: vscode.Uri }>();
+
+		for (const editor of parsedEditors) {
+			const repoKey = `${editor.owner}/${editor.repo}`;
+
+			let snapshot: PullRequestCommentsSnapshot | undefined;
+			try {
+				snapshot = await this.commentsStore.getOrFetch(
+					{ remoteName: '', owner: editor.owner, name: editor.repo, fullName: repoKey, webUrl: '' },
+					editor.pr,
+				);
+			} catch (error) {
+				this.logger.debug(
+					`Failed to fetch comments for PR #${editor.pr} (${repoKey}): ${error instanceof Error ? error.message : String(error)}`,
+				);
+				continue;
+			}
+
+			const matching = selectCommentsForDocument(snapshot, editor.path, editor.side, editor.sha);
+			for (const comment of matching) {
+				const key: CommentThreadKey = {
+					repositoryKey: repoKey,
+					pullRequestNumber: editor.pr,
+					path: editor.path,
+					side: editor.side,
+					discussionId: comment.discussionId,
+				};
+				desiredKeys.set(threadKeyToString(key), { key, uri: editor.uri });
+			}
+		}
+
+		// Build the new set of threads
+		const newActive = new Map<string, vscode.CommentThread>();
+
+		for (const [strKey, { key, uri }] of desiredKeys.entries()) {
+			const existing = this.activeThreads.get(strKey);
+			if (existing) {
+				newActive.set(strKey, existing);
+			} else {
+				// Create a new thread for this comment discussion
+				const repoKey = key.repositoryKey;
+				const [owner, repo] = repoKey.split('/');
+				if (!owner || !repo) {
+					continue;
+				}
+
+				try {
+					const snapshot = await this.commentsStore.getOrFetch(
+						{ remoteName: '', owner, name: repo, fullName: repoKey, webUrl: '' },
+						key.pullRequestNumber,
+					);
+
+					const comment = snapshot.comments.find(
+						(c) => c.kind === 'diff' && c.discussionId === key.discussionId,
+					);
+
+					if (comment && comment.kind === 'diff') {
+						const thread = createCommentThread(this.controller, comment, uri, comment.body);
+						if (thread) {
+							newActive.set(strKey, thread);
+						}
+					}
+				} catch {
+					// Comment not bound inline — skip
+				}
+			}
+		}
+
+		// Dispose stale threads
+		for (const [strKey, thread] of this.activeThreads.entries()) {
+			if (!newActive.has(strKey)) {
+				thread.dispose();
+			}
+		}
+
+		this.activeThreads.clear();
+		for (const [key, thread] of newActive.entries()) {
+			this.activeThreads.set(key, thread);
+		}
+
+		// Clean up tracked docs that are no longer open
+		for (const uriStr of this.trackedDocs) {
+			const found = vscode.window.visibleTextEditors.some((e) => e.document.uri.toString() === uriStr);
+			if (!found) {
+				this.trackedDocs.delete(uriStr);
+			}
+		}
+	}
+}

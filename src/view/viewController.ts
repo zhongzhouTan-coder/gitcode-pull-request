@@ -6,18 +6,22 @@ import { COMMAND_ID, CONTEXT_KEY_FILE_LIST_LAYOUT, GITCODE_PR_SCHEME } from '../
 import { Logger } from '../common/logger';
 import { RepositoryContextService } from '../common/git/repositoryContext';
 import { GitCodeRepositoryResolver } from '../gitcode/resolver/gitcodeRepositoryResolver';
+import { CommentService } from '../gitcode/services/commentService';
 import { PullRequestService } from '../gitcode/services/pullRequestService';
 import { RawContentService } from '../gitcode/services/rawContentService';
 import { registerOverviewCommands } from './commands/registerOverviewCommands';
 import { registerTreeCommands } from './commands/registerTreeCommands';
+import { DiffCommentController } from './comments/diffCommentController';
 import { GitCodePullRequestFileSystemProvider } from './diff/gitcodePullRequestFileSystemProvider';
 import { PullRequestDiffController } from './diff/pullRequestDiffController';
 import { PullRequestDiffStore } from './diff/pullRequestDiffStore';
 import { PullRequestPatchContentProvider } from './diff/pullRequestPatchContentProvider';
 import { PullRequestOverviewStore } from './overview/pullRequestOverviewStore';
+import { PullRequestCommentsStore } from './state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from './state/pullRequestTreeStore';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
+import { GitCodeClientImpl } from '../gitcode/client/gitcodeClient';
 
 interface ViewControllerOptions {
 	context: vscode.ExtensionContext;
@@ -34,11 +38,13 @@ interface ViewControllerOptions {
 export class ViewController implements vscode.Disposable {
 	private readonly store: PullRequestTreeStore;
 	private readonly overviewStore: PullRequestOverviewStore;
+	private readonly commentsStore: PullRequestCommentsStore;
 	private readonly treeDataProvider: PullRequestTreeDataProvider;
 	private readonly treeView: vscode.TreeView<import('./tree/nodes/baseNode').BaseNode>;
 	private readonly patchContentProvider: PullRequestPatchContentProvider;
 	private readonly diffStore: PullRequestDiffStore;
 	private readonly diffController: PullRequestDiffController;
+	private readonly diffCommentController: DiffCommentController;
 	private readonly fileSystemProvider: GitCodePullRequestFileSystemProvider;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly layoutSupplier: () => 'tree' | 'flat';
@@ -54,6 +60,23 @@ export class ViewController implements vscode.Disposable {
 			options.authService,
 			options.pullRequestService,
 		);
+
+		// Comment components
+		const gitCodeClient = new GitCodeClientImpl(
+			options.configuration,
+			options.sessionStore,
+			options.logger,
+		);
+		const commentService = new CommentService(gitCodeClient, options.logger);
+		this.commentsStore = new PullRequestCommentsStore(
+			options.authService,
+			commentService,
+		);
+		this.diffCommentController = new DiffCommentController(
+			this.commentsStore,
+			options.logger,
+		);
+
 		this.patchContentProvider = new PullRequestPatchContentProvider();
 		this.layoutSupplier = () => options.configuration.getPullRequestFileListLayout();
 
@@ -88,6 +111,7 @@ export class ViewController implements vscode.Disposable {
 			this.treeView,
 			this.patchContentProvider,
 			this.fileSystemProvider,
+			this.diffCommentController,
 			vscode.workspace.registerTextDocumentContentProvider('gitcode-pr-diff', this.patchContentProvider),
 			vscode.workspace.registerFileSystemProvider(GITCODE_PR_SCHEME, this.fileSystemProvider, {
 				isReadonly: true,
@@ -97,6 +121,7 @@ export class ViewController implements vscode.Disposable {
 				authService: options.authService,
 				logger: options.logger,
 				overviewStore: this.overviewStore,
+				commentsStore: this.commentsStore,
 				store: this.store,
 				diffController: this.diffController,
 				diffStore: this.diffStore,
@@ -105,6 +130,7 @@ export class ViewController implements vscode.Disposable {
 				logger: options.logger,
 			}),
 			options.authService.onDidChangeSession(() => {
+				this.commentsStore.clear();
 				void this.store.refreshAll();
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {

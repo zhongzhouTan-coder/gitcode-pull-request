@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
+import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
@@ -15,6 +16,7 @@ interface RegisterTreeCommandsOptions {
 	authService: AuthService;
 	logger: Logger;
 	overviewStore: PullRequestOverviewStore;
+	commentsStore: PullRequestCommentsStore;
 	store: PullRequestTreeStore;
 	diffController: PullRequestDiffController;
 	diffStore: PullRequestDiffStore;
@@ -56,7 +58,7 @@ function resolvePullRequestFileContext(
 }
 
 export function registerTreeCommands(options: RegisterTreeCommandsOptions): vscode.Disposable {
-	const { authService, logger, overviewStore, store, diffController, diffStore } = options;
+	const { authService, logger, overviewStore, commentsStore, store, diffController, diffStore } = options;
 
 	return vscode.Disposable.from(
 		vscode.commands.registerCommand(COMMAND_ID.signIn, async () => {
@@ -78,6 +80,7 @@ export function registerTreeCommands(options: RegisterTreeCommandsOptions): vsco
 					url: getPullRequestUrl(context),
 				},
 				overviewStore,
+				commentsStore,
 				logger,
 			);
 		}),

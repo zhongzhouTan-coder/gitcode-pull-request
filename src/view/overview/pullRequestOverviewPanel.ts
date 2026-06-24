@@ -2,8 +2,9 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository, PullRequestDetail } from '../../common/models';
-import { getOverviewErrorHtml, getOverviewHtml } from './overviewHtml';
+import { GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail } from '../../common/models';
+import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
+import { getOverviewErrorHtml, getOverviewHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 
 interface PullRequestOverviewContext {
@@ -27,6 +28,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	static async createOrShow(
 		context: PullRequestOverviewContext,
 		store: PullRequestOverviewStore,
+		commentsStore: PullRequestCommentsStore,
 		logger: Logger,
 	): Promise<void> {
 		const key = keyFor(context.repository, context.pullRequestNumber);
@@ -47,7 +49,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			},
 		);
 
-		panel = new PullRequestOverviewPanel(webviewPanel, store, logger, context);
+		panel = new PullRequestOverviewPanel(webviewPanel, store, commentsStore, logger, context);
 		this.panels.set(key, panel);
 		await panel.show(context);
 	}
@@ -71,10 +73,12 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	}
 
 	private detail?: PullRequestDetail;
+	private commentsSnapshot?: PullRequestCommentsSnapshot;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
 		private readonly store: PullRequestOverviewStore,
+		private readonly commentsStore: PullRequestCommentsStore,
 		private readonly logger: Logger,
 		private context: PullRequestOverviewContext,
 	) {
@@ -116,22 +120,46 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 	private async refresh(): Promise<void> {
 		await this.store.refresh(this.context.repository, this.context.pullRequestNumber);
+		// Also invalidate comments and notify inline diff consumers before reloading.
+		await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+		this.commentsSnapshot = undefined;
 		await this.load(true);
 	}
 
 	private async load(forceRefresh: boolean): Promise<void> {
 		if (forceRefresh) {
 			this.detail = undefined;
+			this.commentsSnapshot = undefined;
 		}
 
+		// Phase 1: Render detail immediately with comments loading indicator
 		this.panel.webview.html = getOverviewErrorHtml('Loading pull request', 'Fetching pull request details from GitCode.', createNonce());
 
 		try {
 			this.detail = await this.store.getDetail(this.context.repository, this.context.pullRequestNumber);
-			this.panel.webview.html = getOverviewHtml(this.detail, createNonce());
 		} catch (error) {
 			this.logger.error(`Failed to load pull request #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`);
 			this.panel.webview.html = this.renderError(error);
+			return;
+		}
+
+		// Render detail with loading comments
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce());
+
+		// Phase 2: Load comments independently
+		try {
+			this.commentsSnapshot = await this.commentsStore.getOrFetch(
+				this.context.repository,
+				this.context.pullRequestNumber,
+			);
+			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, this.commentsSnapshot, createNonce());
+		} catch (error) {
+			this.logger.error(
+				`Failed to load comments for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			// Render detail with comment error — detail is still visible
+			const errorMessage = error instanceof Error ? error.message : 'Unable to load comments.';
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce());
 		}
 	}
 
