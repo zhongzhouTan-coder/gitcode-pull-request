@@ -148,7 +148,10 @@
         },
         "gitcode.pullRequests.fileListLayout": {
           "type": "string",
-          "enum": ["tree", "flat"],
+          "enum": [
+            "tree",
+            "flat"
+          ],
           "default": "tree",
           "description": "Controls whether pull request files are shown as directories or a flat list."
         },
@@ -181,9 +184,9 @@
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
+    "@types/node": "^22.20.0",
     "@types/vscode": "^1.120.0",
-    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.3",
     "ts-loader": "^9.5.4",
@@ -194,5 +197,9 @@
   },
   "dependencies": {
     "markdown-it": "^14.2.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.5"
   }
 }
