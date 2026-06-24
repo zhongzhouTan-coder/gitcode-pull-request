@@ -174,6 +174,12 @@ export class ViewController implements vscode.Disposable {
 			);
 		}
 
+		// An override can be resolved without a local Git repository. Otherwise,
+		// wait for the active repository's remotes to finish loading before the
+		// initial refresh.
+		if (!this.options.configuration.getRepositoryOverride()) {
+			await this.options.repositoryContext.waitForRepository();
+		}
 		await this.store.refreshAll();
 	}
 

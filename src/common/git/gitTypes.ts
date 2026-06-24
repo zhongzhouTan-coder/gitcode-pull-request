@@ -13,6 +13,7 @@ export interface GitRepository {
 			name?: string;
 		};
 		remotes: GitRemote[];
+		onDidChange: vscode.Event<void>;
 	};
 }
 
