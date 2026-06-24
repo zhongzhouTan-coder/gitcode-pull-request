@@ -6,7 +6,7 @@ import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
-import { PullRequestNodeContext } from '../tree/nodes/pullRequestNode';
+import { PullRequestNode, PullRequestNodeContext } from '../tree/nodes/pullRequestNode';
 import { PullRequestFileNode, PullRequestFileNodeContext } from '../tree/nodes/pullRequestFileNode';
 import { PullRequestDiffController } from '../diff/pullRequestDiffController';
 import { PullRequestDiffStore } from '../diff/pullRequestDiffStore';
@@ -24,6 +24,36 @@ interface RegisterTreeCommandsOptions {
 
 function getPullRequestUrl(context: PullRequestNodeContext): string {
 	return context.pullRequest.url ?? `${context.repository.webUrl}/merge_requests/${context.pullRequest.number}`;
+}
+
+function resolvePullRequestContext(value: unknown): PullRequestNodeContext | undefined {
+	if (!value) {
+		return undefined;
+	}
+
+	// When the command is triggered from item.command (clicking the tree item label),
+	// the argument is PullRequestNodeContext directly.
+	if (isPullRequestNodeContext(value)) {
+		return value;
+	}
+
+	// When the command is triggered from the view/item/context inline button,
+	// the argument is the PullRequestNode tree node.
+	if (value instanceof PullRequestNode) {
+		return value.context;
+	}
+
+	return undefined;
+}
+
+function isPullRequestNodeContext(value: unknown): value is PullRequestNodeContext {
+	if (!value || typeof value !== 'object') {
+		return false;
+	}
+
+	const candidate = value as Record<string, unknown>;
+	return typeof candidate.repository === 'object'
+		&& typeof candidate.pullRequest === 'object';
 }
 
 function isSafeUrl(url: string | undefined): url is string {
@@ -69,15 +99,16 @@ export function registerTreeCommands(options: RegisterTreeCommandsOptions): vsco
 			await store.refreshAll();
 		}),
 		vscode.commands.registerCommand(COMMAND_ID.openPullRequest, async (context?: PullRequestNodeContext) => {
-			if (!context) {
+			const resolved = resolvePullRequestContext(context);
+			if (!resolved) {
 				return;
 			}
 
 			await PullRequestOverviewPanel.createOrShow(
 				{
-					repository: context.repository,
-					pullRequestNumber: context.pullRequest.number,
-					url: getPullRequestUrl(context),
+					repository: resolved.repository,
+					pullRequestNumber: resolved.pullRequest.number,
+					url: getPullRequestUrl(resolved),
 				},
 				overviewStore,
 				commentsStore,
@@ -85,8 +116,9 @@ export function registerTreeCommands(options: RegisterTreeCommandsOptions): vsco
 			);
 		}),
 		vscode.commands.registerCommand(COMMAND_ID.openPullRequestOnWeb, async (context?: PullRequestNodeContext) => {
-			if (context) {
-				await vscode.env.openExternal(vscode.Uri.parse(getPullRequestUrl(context)));
+			const resolved = resolvePullRequestContext(context);
+			if (resolved) {
+				await vscode.env.openExternal(vscode.Uri.parse(getPullRequestUrl(resolved)));
 				return;
 			}
 

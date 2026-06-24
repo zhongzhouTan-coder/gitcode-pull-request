@@ -4,7 +4,7 @@ import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
 import { GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
-import { getOverviewErrorHtml, getOverviewHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml } from './overviewHtml';
+import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 
 interface PullRequestOverviewContext {
@@ -132,8 +132,8 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.commentsSnapshot = undefined;
 		}
 
-		// Phase 1: Render detail immediately with comments loading indicator
-		this.panel.webview.html = getOverviewErrorHtml('Loading pull request', 'Fetching pull request details from GitCode.', createNonce());
+		// Phase 1: Render a loading indicator — no scripts, so acquireVsCodeApi is not called yet
+		this.panel.webview.html = getOverviewLoadingHtml('Loading pull request', 'Fetching pull request details from GitCode.', createNonce());
 
 		try {
 			this.detail = await this.store.getDetail(this.context.repository, this.context.pullRequestNumber);

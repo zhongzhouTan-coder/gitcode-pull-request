@@ -235,7 +235,7 @@ function renderConversationError(message: string): string {
 	return `<section><h2>Conversation</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
 }
 
-export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string): string {
+export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, includeScripts: boolean = true): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
 	const openOnWebDisabled = detail.htmlUrl ? '' : 'disabled';
@@ -525,7 +525,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			</div>
 		</aside>
 	</div>
-	<script nonce="${nonce}">
+	${includeScripts ? `<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
 		document.getElementById('refresh-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'refresh' });
@@ -533,7 +533,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		document.getElementById('open-web-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'openOnWeb' });
 		});
-	</script>
+	</script>` : ''}
 </body>
 </html>`;
 }
@@ -543,11 +543,57 @@ export function getOverviewWithCommentsHtml(detail: PullRequestDetail, snapshot:
 }
 
 export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationLoading());
+	return getOverviewHtml(detail, nonce, renderConversationLoading(), false);
 }
 
 export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string): string {
 	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage));
+}
+
+export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>${escapeHtml(title)}</title>
+	<style>
+		body {
+			font-family: var(--vscode-font-family);
+			color: var(--vscode-foreground);
+			background: var(--vscode-editor-background);
+			margin: 0;
+			padding: 32px;
+		}
+		.card {
+			max-width: 720px;
+			border: 1px solid var(--vscode-panel-border);
+			border-radius: 10px;
+			padding: 20px;
+			background: var(--vscode-sideBar-background, rgba(127,127,127,0.08));
+		}
+		.spinner {
+			width: 20px;
+			height: 20px;
+			border: 2px solid var(--vscode-panel-border);
+			border-top-color: var(--vscode-button-background);
+			border-radius: 50%;
+			animation: spin 0.8s linear infinite;
+			margin-bottom: 16px;
+		}
+		@keyframes spin { to { transform: rotate(360deg); } }
+		p { color: var(--vscode-descriptionForeground); }
+	</style>
+</head>
+<body>
+	<div class="card">
+		<div class="spinner"></div>
+		<h1>${escapeHtml(title)}</h1>
+		<p>${escapeHtml(description)}</p>
+	</div>
+</body>
+</html>`;
 }
 
 export function getOverviewErrorHtml(title: string, description: string, nonce: string): string {
