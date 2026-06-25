@@ -44,9 +44,15 @@ export class PullRequestPatchContentProvider implements vscode.TextDocumentConte
 	}
 
 	private buildUri(repository: string, pullRequestNumber: number, filePath: string, sha: string): vscode.Uri {
+		// Encode each path segment individually to preserve '/' separators.
+		const encodedPath = filePath
+			.split('/')
+			.map(segment => encodeURIComponent(segment))
+			.join('/');
+
 		return vscode.Uri.from({
 			scheme: PR_DIFF_SCHEME,
-			path: `/${encodeURIComponent(repository)}/${pullRequestNumber}/${encodeURIComponent(filePath)}`,
+			path: `/${encodeURIComponent(repository)}/${pullRequestNumber}/${encodedPath}`,
 			query: `sha=${encodeURIComponent(sha)}`,
 		});
 	}

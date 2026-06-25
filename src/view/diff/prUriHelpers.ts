@@ -25,10 +25,18 @@ export function buildPrUri(params: PrUriParams): vscode.Uri {
 		path,
 	});
 
+	// Encode each path segment individually to preserve '/' separators.
+	// Using encodeURIComponent on the whole path would turn '/' into '%2F',
+	// causing the diff editor tab to display a garbled file path.
+	const encodedPath = path
+		.split('/')
+		.map(segment => encodeURIComponent(segment))
+		.join('/');
+
 	return vscode.Uri.from({
 		scheme: GITCODE_PR_SCHEME,
 		authority: `${owner}/${repo}`,
-		path: `/${encodeURIComponent(path)}`,
+		path: `/${encodedPath}`,
 		query,
 	});
 }
