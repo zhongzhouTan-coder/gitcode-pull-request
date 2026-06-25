@@ -293,3 +293,29 @@ export interface IssueDetail {
 	milestone?: IssueMilestone;
 	visibilityReason?: string;
 }
+
+// ---- Issue Comment Types ----
+
+export interface IssueCommentAuthor {
+	id?: string;
+	login: string;
+	name?: string;
+	htmlUrl?: string;
+	avatarUrl?: string;
+}
+
+export interface IssueComment {
+	id: string;
+	body: string;
+	author: IssueCommentAuthor;
+	createdAt: string;
+	updatedAt: string;
+	issueNumber?: number;
+}
+
+export interface IssueCommentsSnapshot {
+	repositoryKey: string;
+	issueNumber: number;
+	comments: readonly IssueComment[];
+	loadedAt: number;
+}

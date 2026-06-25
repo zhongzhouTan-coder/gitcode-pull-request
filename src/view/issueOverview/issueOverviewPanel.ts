@@ -2,9 +2,10 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository, IssueDetail } from '../../common/models';
+import { GitCodeRepository, IssueCommentsSnapshot, IssueDetail } from '../../common/models';
 import { getIssueErrorHtml, getIssueLoadingHtml, getIssueOverviewHtml } from './issueOverviewHtml';
 import { IssueOverviewStore } from './issueOverviewStore';
+import { IssueCommentsStore } from './issueCommentsStore';
 
 interface IssueOverviewContext {
 	repository: GitCodeRepository;
@@ -38,6 +39,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	static async createOrShow(
 		context: IssueOverviewContext,
 		store: IssueOverviewStore,
+		commentsStore: IssueCommentsStore,
 		logger: Logger,
 	): Promise<void> {
 		const key = keyFor(context.repository, context.issueNumber);
@@ -58,7 +60,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			},
 		);
 
-		panel = new IssueOverviewPanel(webviewPanel, store, logger, context);
+		panel = new IssueOverviewPanel(webviewPanel, store, commentsStore, logger, context);
 		this.panels.set(key, panel);
 		await panel.show(context);
 	}
@@ -82,10 +84,13 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	}
 
 	private detail?: IssueDetail;
+	private commentsSnapshot?: IssueCommentsSnapshot;
+	private commentsError?: Error;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
 		private readonly store: IssueOverviewStore,
+		private readonly commentsStore: IssueCommentsStore,
 		private readonly logger: Logger,
 		private context: IssueOverviewContext,
 	) {
@@ -132,12 +137,15 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 	private async refresh(): Promise<void> {
 		await this.store.refresh(this.context.repository, this.context.issueNumber);
+		await this.commentsStore.refresh(this.context.repository, this.context.issueNumber);
 		await this.load(true);
 	}
 
 	private async load(forceRefresh: boolean): Promise<void> {
 		if (forceRefresh) {
 			this.detail = undefined;
+			this.commentsSnapshot = undefined;
+			this.commentsError = undefined;
 		}
 
 		this.panel.webview.html = getIssueLoadingHtml(
@@ -163,7 +171,34 @@ export class IssueOverviewPanel implements vscode.Disposable {
 				: this.detail.title;
 		this.panel.title = `#${this.detail.number} ${truncatedTitle}`;
 
-		this.panel.webview.html = getIssueOverviewHtml(this.detail, createNonce());
+		this.panel.webview.html = getIssueOverviewHtml({
+			detail: this.detail,
+			comments: this.commentsSnapshot,
+			commentsError: this.commentsError,
+			nonce: createNonce(),
+		});
+
+		// Load comments independently so issue details remain visible if this request is slow.
+		try {
+			this.commentsSnapshot = await this.commentsStore.getComments(
+				this.context.repository,
+				this.context.issueNumber,
+			);
+			this.commentsError = undefined;
+		} catch (error) {
+			this.logger.error(
+				`Failed to load comments for issue #${this.context.issueNumber}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			this.commentsError = error instanceof Error ? error : new Error(String(error));
+			this.commentsSnapshot = undefined;
+		}
+
+		this.panel.webview.html = getIssueOverviewHtml({
+			detail: this.detail,
+			comments: this.commentsSnapshot,
+			commentsError: this.commentsError,
+			nonce: createNonce(),
+		});
 	}
 
 	private async openOnWeb(): Promise<void> {

@@ -4,6 +4,7 @@ import { Logger } from '../../common/logger';
 import { AuthService } from '../../authentication/authService';
 import { IssueTreeStore } from '../state/issueTreeStore';
 import { IssueOverviewStore } from '../issueOverview/issueOverviewStore';
+import { IssueCommentsStore } from '../issueOverview/issueCommentsStore';
 import { IssueOverviewPanel } from '../issueOverview/issueOverviewPanel';
 import { IssueNode, IssueNodeContext, getIssueUrl } from '../tree/nodes/issueNode';
 
@@ -11,6 +12,7 @@ interface RegisterIssueCommandsOptions {
 	authService: AuthService;
 	store: IssueTreeStore;
 	issueOverviewStore: IssueOverviewStore;
+	issueCommentsStore: IssueCommentsStore;
 	logger: Logger;
 }
 
@@ -43,7 +45,7 @@ function isIssueNodeContext(value: unknown): value is IssueNodeContext {
 }
 
 export function registerIssueCommands(options: RegisterIssueCommandsOptions): vscode.Disposable {
-	const { authService, store, issueOverviewStore, logger } = options;
+	const { authService, store, issueOverviewStore, issueCommentsStore, logger } = options;
 
 	return vscode.Disposable.from(
 		vscode.commands.registerCommand(COMMAND_ID.refreshIssues, async () => {
@@ -63,6 +65,7 @@ export function registerIssueCommands(options: RegisterIssueCommandsOptions): vs
 					url: resolved.issue.url,
 				},
 				issueOverviewStore,
+				issueCommentsStore,
 				logger,
 			);
 		}),

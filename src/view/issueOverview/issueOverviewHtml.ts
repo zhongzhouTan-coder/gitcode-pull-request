@@ -1,4 +1,6 @@
 import {
+	IssueComment,
+	IssueCommentsSnapshot,
 	IssueDetail,
 	IssueLabel,
 	IssueUser,
@@ -138,7 +140,81 @@ function renderSidebar(detail: IssueDetail): string {
 	</div>`;
 }
 
-export function getIssueOverviewHtml(detail: IssueDetail, nonce: string, includeScripts: boolean = true): string {
+export interface IssueOverviewHtmlOptions {
+	detail: IssueDetail;
+	comments?: IssueCommentsSnapshot;
+	commentsError?: Error;
+	nonce: string;
+	includeScripts?: boolean;
+}
+
+function renderCommentAuthor(author: IssueComment['author']): string {
+	const display = author.name && author.name !== author.login
+		? `${escapeHtml(author.name)} (@${escapeHtml(author.login)})`
+		: `@${escapeHtml(author.login)}`;
+	if (author.htmlUrl) {
+		return `<button class="participant-btn" data-action="openUrl" data-url="${escapeHtml(author.htmlUrl)}" title="${escapeHtml(author.login)}">${display}</button>`;
+	}
+	return `<span>${display}</span>`;
+}
+
+function renderIssueComment(comment: IssueComment): string {
+	const bodyHtml = comment.body
+		? renderMarkdown(comment.body)
+		: '<div class="empty">No comment body provided.</div>';
+
+	const updated = comment.updatedAt && comment.updatedAt !== comment.createdAt
+		? `<span class="comment-edited" title="Edited ${escapeHtml(formatDate(comment.updatedAt))}">· Edited</span>`
+		: '';
+
+	return `<div class="comment">
+	<div class="comment-header">
+		${renderCommentAuthor(comment.author)}
+		<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
+		${updated}
+	</div>
+	<div class="comment-body description">${bodyHtml}</div>
+</div>`;
+}
+
+function renderConversation(
+	comments: readonly IssueComment[] | undefined,
+	commentsError: Error | undefined,
+): string {
+	if (commentsError) {
+		return `<section>
+	<h2>Conversation</h2>
+	<div class="error">Unable to load comments</div>
+</section>`;
+	}
+
+	if (!comments) {
+		return '';
+	}
+
+	if (comments.length === 0) {
+		return `<section>
+	<h2>Conversation</h2>
+	<div class="empty">No comments yet</div>
+</section>`;
+	}
+
+	// Sort by createdAt ascending, oldest first
+	const sorted = [...comments].sort((a, b) => {
+		if (a.createdAt < b.createdAt) { return -1; }
+		if (a.createdAt > b.createdAt) { return 1; }
+		return 0;
+	});
+
+	return `<section>
+	<h2>Conversation (${sorted.length})</h2>
+	${sorted.map(renderIssueComment).join('')}
+</section>`;
+}
+
+export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string {
+	const { detail, comments, commentsError, nonce, includeScripts = true } = options;
+
 	const descriptionHtml = detail.body
 		? renderMarkdown(detail.body)
 		: '<div class="empty">No description provided.</div>';
@@ -153,6 +229,11 @@ export function getIssueOverviewHtml(detail: IssueDetail, nonce: string, include
 	if (detail.issueType) {
 		extraBadges.push(`<span class="badge badge-type">${escapeHtml(detail.issueType)}</span>`);
 	}
+
+	const conversationHtml = renderConversation(
+		comments?.comments,
+		commentsError,
+	);
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -279,6 +360,33 @@ export function getIssueOverviewHtml(detail: IssueDetail, nonce: string, include
 			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 12%, transparent);
 		}
 		.muted, .empty { color: var(--muted); }
+		.error { color: var(--vscode-errorForeground, #f85149); padding: 8px 0; }
+		.comment {
+			border-top: 1px solid var(--border);
+			padding: 12px 0;
+		}
+		.comment:first-of-type {
+			border-top: none;
+		}
+		.comment-header {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 6px;
+			margin-bottom: 8px;
+			color: var(--muted);
+			font-size: 13px;
+		}
+		.comment-time {
+			color: var(--muted);
+		}
+		.comment-edited {
+			color: var(--muted);
+			font-style: italic;
+		}
+		.comment-body {
+			padding: 0;
+		}
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
 		}
@@ -307,6 +415,7 @@ export function getIssueOverviewHtml(detail: IssueDetail, nonce: string, include
 				<h2>Description</h2>
 				<div class="description">${descriptionHtml}</div>
 			</section>
+			${conversationHtml}
 		</main>
 		<aside>
 			<div class="card">
