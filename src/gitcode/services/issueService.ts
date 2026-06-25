@@ -1,6 +1,7 @@
-import { GitCodeRepository, IssueSummary } from '../../common/models';
+import { GitCodeRepository, IssueDetail, IssueSummary } from '../../common/models';
 import { GitCodeClient } from '../client/gitcodeClient';
 import { mapIssue } from '../mappers/issueMapper';
+import { mapIssueDetail } from '../mappers/issueDetailMapper';
 
 export interface IssueFilters {
 	state?: 'open' | 'closed' | 'all';
@@ -26,5 +27,13 @@ export class IssueService {
 		);
 
 		return response.map((issue) => mapIssue(issue));
+	}
+
+	async getIssue(repository: GitCodeRepository, issueNumber: number): Promise<IssueDetail> {
+		const response = await this.client.get<any>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/${issueNumber}`,
+		);
+
+		return mapIssueDetail(response);
 	}
 }

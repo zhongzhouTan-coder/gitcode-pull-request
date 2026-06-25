@@ -22,6 +22,7 @@ import { PullRequestTreeStore } from './state/pullRequestTreeStore';
 import { IssueTreeStore } from './state/issueTreeStore';
 import { IssueTreeDataProvider } from './tree/issueTreeDataProvider';
 import { IssueService } from '../gitcode/services/issueService';
+import { IssueOverviewStore } from './issueOverview/issueOverviewStore';
 import { registerIssueCommands } from './commands/registerIssueCommands';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
@@ -43,6 +44,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly store: PullRequestTreeStore;
 	private readonly issueStore: IssueTreeStore;
 	private readonly overviewStore: PullRequestOverviewStore;
+	private readonly issueOverviewStore: IssueOverviewStore;
 	private readonly commentsStore: PullRequestCommentsStore;
 	private readonly treeDataProvider: PullRequestTreeDataProvider;
 	private readonly issueTreeDataProvider: IssueTreeDataProvider;
@@ -86,6 +88,10 @@ export class ViewController implements vscode.Disposable {
 
 		// Issue components
 		const issueService = new IssueService(gitCodeClient);
+		this.issueOverviewStore = new IssueOverviewStore(
+			options.authService,
+			issueService,
+		);
 		this.issueStore = new IssueTreeStore(
 			options.authService,
 			options.repositoryResolver,
@@ -155,6 +161,8 @@ export class ViewController implements vscode.Disposable {
 			registerIssueCommands({
 				authService: options.authService,
 				store: this.issueStore,
+				issueOverviewStore: this.issueOverviewStore,
+				logger: options.logger,
 			}),
 			registerOverviewCommands({
 				logger: options.logger,

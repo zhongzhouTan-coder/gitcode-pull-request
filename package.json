@@ -101,6 +101,10 @@
         "command": "gitcode.copyIssueUrl",
         "title": "GitCode: Copy Issue URL",
         "icon": "$(copy)"
+      },
+      {
+        "command": "gitcode.refreshIssue",
+        "title": "GitCode: Refresh Issue"
       }
     ],
     "menus": {

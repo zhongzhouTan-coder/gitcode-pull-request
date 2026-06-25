@@ -240,3 +240,56 @@ export interface IssueSummary {
 	priority?: number;
 	milestone?: IssueMilestone;
 }
+
+// ---- Issue Detail Types ----
+
+export interface IssueWorkflowState {
+	id?: number;
+	title: string;
+	serial?: number;
+}
+
+export interface IssueTypeDetail {
+	id?: number;
+	title: string;
+	isSystem?: boolean;
+}
+
+export interface IssuePriorityDetail {
+	id?: number;
+	title: string;
+}
+
+export interface IssueRepositoryRef {
+	id?: number;
+	fullName: string;
+	name?: string;
+	path?: string;
+	description?: string;
+	url?: string;
+}
+
+export interface IssueDetail {
+	id: number;
+	number: number;
+	title: string;
+	state: 'open' | 'closed';
+	body: string;
+	author: IssueUser;
+	assignees: IssueUser[];
+	labels: IssueLabel[];
+	comments: number;
+	createdAt: string;
+	updatedAt: string;
+	finishedAt?: string;
+	url?: string;
+	repository: IssueRepositoryRef;
+	issueState?: string;
+	issueStateDetail?: IssueWorkflowState;
+	issueType?: string;
+	issueTypeDetail?: IssueTypeDetail;
+	priority?: number;
+	priorityDetail?: IssuePriorityDetail;
+	milestone?: IssueMilestone;
+	visibilityReason?: string;
+}

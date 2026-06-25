@@ -1,12 +1,17 @@
 import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../common/constants';
+import { Logger } from '../../common/logger';
 import { AuthService } from '../../authentication/authService';
 import { IssueTreeStore } from '../state/issueTreeStore';
+import { IssueOverviewStore } from '../issueOverview/issueOverviewStore';
+import { IssueOverviewPanel } from '../issueOverview/issueOverviewPanel';
 import { IssueNode, IssueNodeContext, getIssueUrl } from '../tree/nodes/issueNode';
 
 interface RegisterIssueCommandsOptions {
 	authService: AuthService;
 	store: IssueTreeStore;
+	issueOverviewStore: IssueOverviewStore;
+	logger: Logger;
 }
 
 function resolveIssueContext(value: unknown): IssueNodeContext | undefined {
@@ -38,7 +43,7 @@ function isIssueNodeContext(value: unknown): value is IssueNodeContext {
 }
 
 export function registerIssueCommands(options: RegisterIssueCommandsOptions): vscode.Disposable {
-	const { authService, store } = options;
+	const { authService, store, issueOverviewStore, logger } = options;
 
 	return vscode.Disposable.from(
 		vscode.commands.registerCommand(COMMAND_ID.refreshIssues, async () => {
@@ -50,17 +55,29 @@ export function registerIssueCommands(options: RegisterIssueCommandsOptions): vs
 				return;
 			}
 
-			const url = getIssueUrl(resolved);
-			await vscode.env.openExternal(vscode.Uri.parse(url));
+			// Open the issue overview panel instead of browser
+			await IssueOverviewPanel.createOrShow(
+				{
+					repository: resolved.repository,
+					issueNumber: resolved.issue.number,
+					url: resolved.issue.url,
+				},
+				issueOverviewStore,
+				logger,
+			);
 		}),
 		vscode.commands.registerCommand(COMMAND_ID.openIssueOnWeb, async (context?: IssueNodeContext) => {
 			const resolved = resolveIssueContext(context);
-			if (!resolved) {
+			if (resolved) {
+				const url = getIssueUrl(resolved);
+				await vscode.env.openExternal(vscode.Uri.parse(url));
 				return;
 			}
 
-			const url = getIssueUrl(resolved);
-			await vscode.env.openExternal(vscode.Uri.parse(url));
+			await IssueOverviewPanel.openCurrentOnWeb();
+		}),
+		vscode.commands.registerCommand(COMMAND_ID.refreshIssue, async () => {
+			await IssueOverviewPanel.refreshCurrent();
 		}),
 		vscode.commands.registerCommand(COMMAND_ID.copyIssueUrl, async (context?: IssueNodeContext) => {
 			const resolved = resolveIssueContext(context);
