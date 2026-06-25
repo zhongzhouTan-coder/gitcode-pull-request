@@ -198,3 +198,45 @@ export interface PullRequestCommentsSnapshot {
 	comments: readonly PullRequestComment[];
 	loadedAt: number;
 }
+
+// ---- Issue Types ----
+
+export interface IssueUser {
+	login: string;
+	name?: string;
+	avatarUrl?: string;
+	htmlUrl?: string;
+}
+
+export interface IssueLabel {
+	id: number;
+	name: string;
+	color?: string;
+}
+
+export interface IssueMilestone {
+	number: number;
+	title: string;
+	state?: string;
+	dueOn?: string;
+	url?: string;
+}
+
+export interface IssueSummary {
+	id: number;
+	number: number;
+	title: string;
+	state: 'open' | 'closed';
+	author: IssueUser;
+	assignees: IssueUser[];
+	labels: IssueLabel[];
+	comments: number;
+	createdAt: string;
+	updatedAt: string;
+	finishedAt?: string;
+	url?: string;
+	issueState?: string;
+	issueType?: string;
+	priority?: number;
+	milestone?: IssueMilestone;
+}

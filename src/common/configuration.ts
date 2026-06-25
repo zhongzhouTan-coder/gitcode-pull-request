@@ -10,6 +10,7 @@ export interface ExtensionConfiguration {
 	getRepositoryOverride(): string | undefined;
 	getPullRequestPageSize(): number;
 	getPullRequestFileListLayout(): FileListLayout;
+	getIssuesPageSize(): number;
 	getTraceServerEnabled(): boolean;
 }
 
@@ -41,6 +42,10 @@ class VsCodeExtensionConfiguration implements ExtensionConfiguration {
 
 	getPullRequestFileListLayout(): FileListLayout {
 		return this.configuration.get<FileListLayout>('pullRequests.fileListLayout', 'tree');
+	}
+
+	getIssuesPageSize(): number {
+		return this.configuration.get<number>('issues.pageSize', DEFAULT_PAGE_SIZE);
 	}
 
 	getTraceServerEnabled(): boolean {

@@ -14,10 +14,15 @@ export const COMMAND_ID = {
 	refreshPullRequestFiles: 'gitcode.refreshPullRequestFiles',
 	setPullRequestFilesLayoutTree: 'gitcode.setPullRequestFilesLayoutTree',
 	setPullRequestFilesLayoutFlat: 'gitcode.setPullRequestFilesLayoutFlat',
+	refreshIssues: 'gitcode.refreshIssues',
+	openIssue: 'gitcode.openIssue',
+	openIssueOnWeb: 'gitcode.openIssueOnWeb',
+	copyIssueUrl: 'gitcode.copyIssueUrl',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';
 export const VIEW_ID_PULL_REQUESTS = 'pr:gitcode';
+export const VIEW_ID_ISSUES = 'issues:gitcode';
 
 export const SECRET_STORAGE_KEY = 'gitcode.auth.session';
 

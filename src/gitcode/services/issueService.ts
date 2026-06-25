@@ -1,0 +1,30 @@
+import { GitCodeRepository, IssueSummary } from '../../common/models';
+import { GitCodeClient } from '../client/gitcodeClient';
+import { mapIssue } from '../mappers/issueMapper';
+
+export interface IssueFilters {
+	state?: 'open' | 'closed' | 'all';
+	sort?: 'created' | 'updated' | 'comments';
+	direction?: 'asc' | 'desc';
+	perPage?: number;
+	page?: number;
+}
+
+export class IssueService {
+	constructor(private readonly client: GitCodeClient) {}
+
+	async listIssues(repository: GitCodeRepository, filters: IssueFilters = {}): Promise<IssueSummary[]> {
+		const response = await this.client.get<any[]>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues`,
+			{
+				state: filters.state ?? 'open',
+				sort: filters.sort ?? 'updated',
+				direction: filters.direction ?? 'desc',
+				per_page: filters.perPage,
+				page: filters.page,
+			},
+		);
+
+		return response.map((issue) => mapIssue(issue));
+	}
+}

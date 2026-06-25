@@ -19,6 +19,10 @@ import { PullRequestPatchContentProvider } from './diff/pullRequestPatchContentP
 import { PullRequestOverviewStore } from './overview/pullRequestOverviewStore';
 import { PullRequestCommentsStore } from './state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from './state/pullRequestTreeStore';
+import { IssueTreeStore } from './state/issueTreeStore';
+import { IssueTreeDataProvider } from './tree/issueTreeDataProvider';
+import { IssueService } from '../gitcode/services/issueService';
+import { registerIssueCommands } from './commands/registerIssueCommands';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
 import { GitCodeClientImpl } from '../gitcode/client/gitcodeClient';
@@ -37,10 +41,13 @@ interface ViewControllerOptions {
 
 export class ViewController implements vscode.Disposable {
 	private readonly store: PullRequestTreeStore;
+	private readonly issueStore: IssueTreeStore;
 	private readonly overviewStore: PullRequestOverviewStore;
 	private readonly commentsStore: PullRequestCommentsStore;
 	private readonly treeDataProvider: PullRequestTreeDataProvider;
+	private readonly issueTreeDataProvider: IssueTreeDataProvider;
 	private readonly treeView: vscode.TreeView<import('./tree/nodes/baseNode').BaseNode>;
+	private readonly issueTreeView: vscode.TreeView<import('./tree/nodes/baseNode').BaseNode>;
 	private readonly patchContentProvider: PullRequestPatchContentProvider;
 	private readonly diffStore: PullRequestDiffStore;
 	private readonly diffController: PullRequestDiffController;
@@ -77,6 +84,19 @@ export class ViewController implements vscode.Disposable {
 			options.logger,
 		);
 
+		// Issue components
+		const issueService = new IssueService(gitCodeClient);
+		this.issueStore = new IssueTreeStore(
+			options.authService,
+			options.repositoryResolver,
+			issueService,
+			options.configuration,
+		);
+		this.issueTreeDataProvider = new IssueTreeDataProvider(
+			this.issueStore,
+			options.logger,
+		);
+
 		this.patchContentProvider = new PullRequestPatchContentProvider();
 		this.layoutSupplier = () => options.configuration.getPullRequestFileListLayout();
 
@@ -107,8 +127,14 @@ export class ViewController implements vscode.Disposable {
 			showCollapseAll: true,
 		});
 
+		this.issueTreeView = vscode.window.createTreeView('issues:gitcode', {
+			treeDataProvider: this.issueTreeDataProvider,
+			showCollapseAll: true,
+		});
+
 		this.disposables.push(
 			this.treeView,
+			this.issueTreeView,
 			this.patchContentProvider,
 			this.fileSystemProvider,
 			this.diffCommentController,
@@ -126,15 +152,21 @@ export class ViewController implements vscode.Disposable {
 				diffController: this.diffController,
 				diffStore: this.diffStore,
 			}),
+			registerIssueCommands({
+				authService: options.authService,
+				store: this.issueStore,
+			}),
 			registerOverviewCommands({
 				logger: options.logger,
 			}),
 			options.authService.onDidChangeSession(() => {
 				this.commentsStore.clear();
 				void this.store.refreshAll();
+				void this.issueStore.refreshAll();
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {
 				void this.store.refreshAll();
+				void this.issueStore.refreshAll();
 			}),
 			vscode.workspace.onDidChangeConfiguration((event) => {
 				if (event.affectsConfiguration('gitcode.pullRequests.fileListLayout')) {
@@ -167,9 +199,11 @@ export class ViewController implements vscode.Disposable {
 			this.disposables.push(
 				gitApi.onDidOpenRepository(() => {
 					void this.store.refreshAll();
+					void this.issueStore.refreshAll();
 				}),
 				gitApi.onDidCloseRepository(() => {
 					void this.store.refreshAll();
+					void this.issueStore.refreshAll();
 				}),
 			);
 		}
@@ -181,6 +215,7 @@ export class ViewController implements vscode.Disposable {
 			await this.options.repositoryContext.waitForRepository();
 		}
 		await this.store.refreshAll();
+		await this.issueStore.refreshAll();
 	}
 
 	private updateFileListLayoutContext(): void {

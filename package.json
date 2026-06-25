@@ -25,6 +25,10 @@
         {
           "id": "pr:gitcode",
           "name": "Pull Requests"
+        },
+        {
+          "id": "issues:gitcode",
+          "name": "Issues"
         }
       ]
     },
@@ -77,6 +81,26 @@
         "command": "gitcode.setPullRequestFilesLayoutFlat",
         "title": "GitCode: Show Files as Flat List",
         "icon": "$(list-flat)"
+      },
+      {
+        "command": "gitcode.refreshIssues",
+        "title": "GitCode: Refresh Issues",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitcode.openIssue",
+        "title": "GitCode: Open Issue",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "gitcode.openIssueOnWeb",
+        "title": "GitCode: Open Issue On Web",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "gitcode.copyIssueUrl",
+        "title": "GitCode: Copy Issue URL",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -100,6 +124,11 @@
           "command": "gitcode.setPullRequestFilesLayoutFlat",
           "when": "view == pr:gitcode && gitcodePullRequestFilesLayout == tree",
           "group": "navigation@3"
+        },
+        {
+          "command": "gitcode.refreshIssues",
+          "when": "view == issues:gitcode",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -127,6 +156,21 @@
           "command": "gitcode.refreshPullRequestFiles",
           "when": "view == pr:gitcode && viewItem == pullRequestFiles",
           "group": "inline@1"
+        },
+        {
+          "command": "gitcode.openIssue",
+          "when": "view == issues:gitcode && viewItem == issue",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitcode.openIssueOnWeb",
+          "when": "view == issues:gitcode && viewItem == issue",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitcode.copyIssueUrl",
+          "when": "view == issues:gitcode && viewItem == issue",
+          "group": "inline@3"
         }
       ]
     },
@@ -163,6 +207,13 @@
           ],
           "default": "tree",
           "description": "Controls whether pull request files are shown as directories or a flat list."
+        },
+        "gitcode.issues.pageSize": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of issues loaded into the tree."
         },
         "gitcode.trace.server": {
           "type": "string",
