@@ -3,6 +3,8 @@ import {
 	IssueCommentsSnapshot,
 	IssueDetail,
 	IssueLabel,
+	IssueRelatedPullRequest,
+	IssueRelatedPullRequestsSnapshot,
 	IssueUser,
 } from '../../common/models';
 import { renderMarkdown } from '../webview/markdown';
@@ -144,6 +146,8 @@ export interface IssueOverviewHtmlOptions {
 	detail: IssueDetail;
 	comments?: IssueCommentsSnapshot;
 	commentsError?: Error;
+	relatedPullRequests?: IssueRelatedPullRequestsSnapshot;
+	relatedPullRequestsError?: Error;
 	nonce: string;
 	includeScripts?: boolean;
 }
@@ -175,6 +179,83 @@ function renderIssueComment(comment: IssueComment): string {
 	</div>
 	<div class="comment-body description">${bodyHtml}</div>
 </div>`;
+}
+
+function prStateLabel(state: 'open' | 'closed' | 'merged'): string {
+	switch (state) {
+		case 'merged': return 'Merged';
+		case 'closed': return 'Closed';
+		default: return 'Open';
+	}
+}
+
+function prStateBadgeClass(state: 'open' | 'closed' | 'merged'): string {
+	switch (state) {
+		case 'merged': return 'badge-merged';
+		case 'closed': return 'badge-closed';
+		default: return 'badge-open';
+	}
+}
+
+function renderRelatedPullRequest(pr: IssueRelatedPullRequest): string {
+	const branchInfo = `${escapeHtml(pr.source.ref)} → ${escapeHtml(pr.target.ref)}`;
+	const labelsHtml = pr.labels.length
+		? `<div class="labels">${pr.labels.map((l) => (
+			`<span class="label-chip" style="--label-color:${escapeHtml(labelColor(l.color))}">${escapeHtml(l.name)}</span>`
+		)).join('')}</div>`
+		: '';
+
+	const externalLink = pr.url
+		? `<button class="pr-external-btn" data-action="openUrl" data-url="${escapeHtml(pr.url)}" title="Open on GitCode">${EXTERNAL_LINK_ICON}</button>`
+		: '';
+
+	return `<div class="related-pr-item">
+		<div class="related-pr-main">
+			<button class="related-pr-title-btn" data-action="openRelatedPullRequest" data-pr-number="${pr.number}" data-pr-url="${escapeHtml(pr.url ?? '')}" data-pr-target-repository="${escapeHtml(pr.target.repositoryFullName ?? '')}">
+				<span class="badge ${prStateBadgeClass(pr.state)}">${prStateLabel(pr.state)}</span>
+				<span class="related-pr-title">${escapeHtml(pr.title)}</span>
+				<span class="muted">#${pr.number}</span>
+			</button>
+			${externalLink}
+		</div>
+		<div class="related-pr-meta">
+			<span>@${escapeHtml(pr.author.login)}</span>
+			<span class="muted">·</span>
+			<span>${branchInfo}</span>
+			<span class="muted">·</span>
+			<span>${escapeHtml(formatDate(pr.updatedAt))}</span>
+			${pr.canMergeCheck !== undefined ? `<span class="muted">·</span><span class="merge-hint ${pr.canMergeCheck ? 'merge-ok' : 'merge-blocked'}">${pr.canMergeCheck ? 'Can merge' : 'Merge blocked'}</span>` : ''}
+		</div>
+		${labelsHtml}
+	</div>`;
+}
+
+function renderRelatedPullRequests(
+	pullRequests: readonly IssueRelatedPullRequest[] | undefined,
+	error: Error | undefined,
+): string {
+	if (error) {
+		return `<section>
+	<h2>Related Pull Requests</h2>
+	<div class="error">Unable to load related pull requests</div>
+</section>`;
+	}
+
+	if (!pullRequests) {
+		return '';
+	}
+
+	if (pullRequests.length === 0) {
+		return `<section>
+	<h2>Related Pull Requests</h2>
+	<div class="empty">No related pull requests</div>
+</section>`;
+	}
+
+	return `<section>
+	<h2>Related Pull Requests (${pullRequests.length})</h2>
+	<div class="related-pr-list">${pullRequests.map(renderRelatedPullRequest).join('')}</div>
+</section>`;
 }
 
 function renderConversation(
@@ -213,7 +294,7 @@ function renderConversation(
 }
 
 export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string {
-	const { detail, comments, commentsError, nonce, includeScripts = true } = options;
+	const { detail, comments, commentsError, relatedPullRequests, relatedPullRequestsError, nonce, includeScripts = true } = options;
 
 	const descriptionHtml = detail.body
 		? renderMarkdown(detail.body)
@@ -233,6 +314,11 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 	const conversationHtml = renderConversation(
 		comments?.comments,
 		commentsError,
+	);
+
+	const relatedPrsHtml = renderRelatedPullRequests(
+		relatedPullRequests?.pullRequests,
+		relatedPullRequestsError,
 	);
 
 	return `<!DOCTYPE html>
@@ -361,6 +447,60 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		}
 		.muted, .empty { color: var(--muted); }
 		.error { color: var(--vscode-errorForeground, #f85149); padding: 8px 0; }
+		.related-pr-list { display: flex; flex-direction: column; gap: 12px; }
+		.related-pr-item {
+			padding: 12px;
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			background: var(--vscode-editor-background, rgba(127,127,127,0.04));
+		}
+		.related-pr-main {
+			display: flex;
+			align-items: flex-start;
+			justify-content: space-between;
+			gap: 8px;
+			margin-bottom: 6px;
+		}
+		.related-pr-title-btn {
+			border: none;
+			background: none;
+			color: var(--vscode-foreground);
+			font: inherit;
+			cursor: pointer;
+			text-align: left;
+			padding: 0;
+			display: inline-flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 6px;
+		}
+		.related-pr-title-btn:hover .related-pr-title {
+			color: var(--vscode-textLink-foreground);
+		}
+		.related-pr-title {
+			font-weight: 600;
+		}
+		.pr-external-btn {
+			border: none;
+			background: none;
+			color: var(--muted);
+			cursor: pointer;
+			padding: 2px;
+			flex-shrink: 0;
+		}
+		.pr-external-btn:hover { color: var(--vscode-textLink-foreground); }
+		.related-pr-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 6px;
+			font-size: 13px;
+			color: var(--muted);
+			margin-bottom: 6px;
+		}
+		.merge-hint { font-weight: 600; }
+		.merge-ok { color: var(--badge-open); }
+		.merge-blocked { color: var(--badge-closed); }
+		.badge-merged { background: #8250df; }
 		.comment {
 			border-top: 1px solid var(--border);
 			padding: 12px 0;
@@ -415,6 +555,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				<h2>Description</h2>
 				<div class="description">${descriptionHtml}</div>
 			</section>
+			${relatedPrsHtml}
 			${conversationHtml}
 		</main>
 		<aside>
@@ -434,6 +575,16 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		document.querySelectorAll('[data-action="openUrl"]').forEach((el) => {
 			el.addEventListener('click', () => {
 				vscode.postMessage({ command: 'openUrl', url: el.dataset.url });
+			});
+		});
+		document.querySelectorAll('[data-action="openRelatedPullRequest"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				vscode.postMessage({
+					command: 'openRelatedPullRequest',
+					prNumber: Number(el.dataset.prNumber),
+					prUrl: el.dataset.prUrl,
+					prTargetRepository: el.dataset.prTargetRepository,
+				});
 			});
 		});
 	</script>` : ''}

@@ -2,10 +2,14 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository, IssueCommentsSnapshot, IssueDetail } from '../../common/models';
+import { IssueCommentsSnapshot, IssueDetail, IssueRelatedPullRequestsSnapshot, GitCodeRepository } from '../../common/models';
 import { getIssueErrorHtml, getIssueLoadingHtml, getIssueOverviewHtml } from './issueOverviewHtml';
 import { IssueOverviewStore } from './issueOverviewStore';
 import { IssueCommentsStore } from './issueCommentsStore';
+import { IssueRelatedPullRequestsStore } from './issueRelatedPullRequestsStore';
+import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
+import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
+import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 
 interface IssueOverviewContext {
 	repository: GitCodeRepository;
@@ -32,6 +36,52 @@ export function isTrustedGitCodeUrl(candidate: string, webUrl: string): boolean 
 	}
 }
 
+function repositoryFromFullName(fullName: string, currentRepository: GitCodeRepository): GitCodeRepository | undefined {
+	const [owner, name, ...rest] = fullName.split('/');
+	if (!owner || !name || rest.length > 0) {
+		return undefined;
+	}
+
+	const webUrl = new URL(currentRepository.webUrl);
+	webUrl.pathname = `/${owner}/${name}`;
+	webUrl.search = '';
+	webUrl.hash = '';
+
+	return {
+		remoteName: currentRepository.remoteName,
+		owner,
+		name,
+		fullName: `${owner}/${name}`,
+		webUrl: webUrl.toString().replace(/\/$/, ''),
+	};
+}
+
+function repositoryFullNameFromUrl(url: string | undefined, currentRepository: GitCodeRepository): string | undefined {
+	if (!url || !isTrustedGitCodeUrl(url, currentRepository.webUrl)) {
+		return undefined;
+	}
+
+	try {
+		const parsedUrl = new URL(url);
+		const [owner, name] = parsedUrl.pathname.split('/').filter(Boolean);
+		return owner && name ? `${owner}/${name}` : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+export function resolveRelatedPullRequestRepository(
+	currentRepository: GitCodeRepository,
+	targetRepositoryFullName?: string,
+	prUrl?: string,
+): GitCodeRepository {
+	const relatedRepositoryFullName = targetRepositoryFullName?.trim()
+		|| repositoryFullNameFromUrl(prUrl, currentRepository);
+	return relatedRepositoryFullName
+		? repositoryFromFullName(relatedRepositoryFullName, currentRepository) ?? currentRepository
+		: currentRepository;
+}
+
 export class IssueOverviewPanel implements vscode.Disposable {
 	private static readonly panels = new Map<string, IssueOverviewPanel>();
 	private static activePanel: IssueOverviewPanel | undefined;
@@ -40,6 +90,9 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		context: IssueOverviewContext,
 		store: IssueOverviewStore,
 		commentsStore: IssueCommentsStore,
+		relatedPrsStore: IssueRelatedPullRequestsStore,
+		prOverviewStore: PullRequestOverviewStore,
+		prCommentsStore: PullRequestCommentsStore,
 		logger: Logger,
 	): Promise<void> {
 		const key = keyFor(context.repository, context.issueNumber);
@@ -60,7 +113,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			},
 		);
 
-		panel = new IssueOverviewPanel(webviewPanel, store, commentsStore, logger, context);
+		panel = new IssueOverviewPanel(webviewPanel, store, commentsStore, relatedPrsStore, prOverviewStore, prCommentsStore, logger, context);
 		this.panels.set(key, panel);
 		await panel.show(context);
 	}
@@ -86,11 +139,16 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private detail?: IssueDetail;
 	private commentsSnapshot?: IssueCommentsSnapshot;
 	private commentsError?: Error;
+	private relatedPullRequestsSnapshot?: IssueRelatedPullRequestsSnapshot;
+	private relatedPullRequestsError?: Error;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
 		private readonly store: IssueOverviewStore,
 		private readonly commentsStore: IssueCommentsStore,
+		private readonly relatedPrsStore: IssueRelatedPullRequestsStore,
+		private readonly prOverviewStore: PullRequestOverviewStore,
+		private readonly prCommentsStore: PullRequestCommentsStore,
 		private readonly logger: Logger,
 		private context: IssueOverviewContext,
 	) {
@@ -107,7 +165,13 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			}
 		});
 
-		this.panel.webview.onDidReceiveMessage(async (message: { command?: string; url?: string }) => {
+		this.panel.webview.onDidReceiveMessage(async (message: {
+			command?: string;
+			url?: string;
+			prNumber?: number;
+			prUrl?: string;
+			prTargetRepository?: string;
+		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
 				return;
@@ -120,6 +184,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'openUrl' && message.url) {
 				await this.openTrustedUrl(message.url);
+			}
+
+			if (message.command === 'openRelatedPullRequest' && message.prNumber !== undefined) {
+				await this.openRelatedPullRequest(message.prNumber, message.prUrl, message.prTargetRepository);
 			}
 		});
 	}
@@ -138,6 +206,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private async refresh(): Promise<void> {
 		await this.store.refresh(this.context.repository, this.context.issueNumber);
 		await this.commentsStore.refresh(this.context.repository, this.context.issueNumber);
+		await this.relatedPrsStore.refresh(this.context.repository, this.context.issueNumber);
 		await this.load(true);
 	}
 
@@ -146,6 +215,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.detail = undefined;
 			this.commentsSnapshot = undefined;
 			this.commentsError = undefined;
+			this.relatedPullRequestsSnapshot = undefined;
+			this.relatedPullRequestsError = undefined;
 		}
 
 		this.panel.webview.html = getIssueLoadingHtml(
@@ -175,10 +246,13 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			detail: this.detail,
 			comments: this.commentsSnapshot,
 			commentsError: this.commentsError,
+			relatedPullRequests: this.relatedPullRequestsSnapshot,
+			relatedPullRequestsError: this.relatedPullRequestsError,
 			nonce: createNonce(),
 		});
 
-		// Load comments independently so issue details remain visible if this request is slow.
+		// Load comments and related pull requests independently so issue details
+		// remain visible if either request is slow or fails.
 		try {
 			this.commentsSnapshot = await this.commentsStore.getComments(
 				this.context.repository,
@@ -193,12 +267,53 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.commentsSnapshot = undefined;
 		}
 
+		// Load related pull requests independently
+		try {
+			this.relatedPullRequestsSnapshot = await this.relatedPrsStore.getPullRequests(
+				this.context.repository,
+				this.context.issueNumber,
+			);
+			this.relatedPullRequestsError = undefined;
+		} catch (error) {
+			this.logger.error(
+				`Failed to load related pull requests for issue #${this.context.issueNumber}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			this.relatedPullRequestsError = error instanceof Error ? error : new Error(String(error));
+			this.relatedPullRequestsSnapshot = undefined;
+		}
+
 		this.panel.webview.html = getIssueOverviewHtml({
 			detail: this.detail,
 			comments: this.commentsSnapshot,
 			commentsError: this.commentsError,
+			relatedPullRequests: this.relatedPullRequestsSnapshot,
+			relatedPullRequestsError: this.relatedPullRequestsError,
 			nonce: createNonce(),
 		});
+	}
+
+	private async openRelatedPullRequest(prNumber: number, prUrl?: string, targetRepositoryFullName?: string): Promise<void> {
+		try {
+			const repository = resolveRelatedPullRequestRepository(
+				this.context.repository,
+				targetRepositoryFullName,
+				prUrl,
+			);
+			await PullRequestOverviewPanel.createOrShow(
+				{
+					repository,
+					pullRequestNumber: prNumber,
+					url: prUrl,
+				},
+				this.prOverviewStore,
+				this.prCommentsStore,
+				this.logger,
+			);
+		} catch (error) {
+			this.logger.error(
+				`Failed to open related PR #${prNumber}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
 
 	private async openOnWeb(): Promise<void> {

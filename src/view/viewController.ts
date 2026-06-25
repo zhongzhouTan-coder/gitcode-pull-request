@@ -25,6 +25,7 @@ import { IssueService } from '../gitcode/services/issueService';
 import { IssueCommentService } from '../gitcode/services/issueCommentService';
 import { IssueOverviewStore } from './issueOverview/issueOverviewStore';
 import { IssueCommentsStore } from './issueOverview/issueCommentsStore';
+import { IssueRelatedPullRequestsStore } from './issueOverview/issueRelatedPullRequestsStore';
 import { registerIssueCommands } from './commands/registerIssueCommands';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
@@ -48,6 +49,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly overviewStore: PullRequestOverviewStore;
 	private readonly issueOverviewStore: IssueOverviewStore;
 	private readonly issueCommentsStore: IssueCommentsStore;
+	private readonly issueRelatedPrsStore: IssueRelatedPullRequestsStore;
 	private readonly commentsStore: PullRequestCommentsStore;
 	private readonly treeDataProvider: PullRequestTreeDataProvider;
 	private readonly issueTreeDataProvider: IssueTreeDataProvider;
@@ -99,6 +101,10 @@ export class ViewController implements vscode.Disposable {
 		this.issueCommentsStore = new IssueCommentsStore(
 			options.authService,
 			issueCommentService,
+		);
+		this.issueRelatedPrsStore = new IssueRelatedPullRequestsStore(
+			options.authService,
+			issueService,
 		);
 		this.issueStore = new IssueTreeStore(
 			options.authService,
@@ -171,6 +177,9 @@ export class ViewController implements vscode.Disposable {
 				store: this.issueStore,
 				issueOverviewStore: this.issueOverviewStore,
 				issueCommentsStore: this.issueCommentsStore,
+				issueRelatedPrsStore: this.issueRelatedPrsStore,
+				prOverviewStore: this.overviewStore,
+				prCommentsStore: this.commentsStore,
 				logger: options.logger,
 			}),
 			registerOverviewCommands({
@@ -179,6 +188,7 @@ export class ViewController implements vscode.Disposable {
 			options.authService.onDidChangeSession(() => {
 				this.commentsStore.clear();
 				this.issueCommentsStore.clear();
+				this.issueRelatedPrsStore.clear();
 				void this.store.refreshAll();
 				void this.issueStore.refreshAll();
 			}),

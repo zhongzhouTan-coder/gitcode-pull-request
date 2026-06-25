@@ -319,3 +319,33 @@ export interface IssueCommentsSnapshot {
 	comments: readonly IssueComment[];
 	loadedAt: number;
 }
+
+// ---- Issue Related Pull Request Types ----
+
+export interface IssueRelatedPullRequestBranch {
+	ref: string;
+	sha?: string;
+	repositoryFullName?: string;
+}
+
+export interface IssueRelatedPullRequest {
+	id: number;
+	number: number;
+	title: string;
+	state: 'open' | 'closed' | 'merged';
+	url?: string;
+	author: PullRequestParticipant;
+	source: IssueRelatedPullRequestBranch;
+	target: IssueRelatedPullRequestBranch;
+	labels: PullRequestLabel[];
+	updatedAt: string;
+	closedAt?: string;
+	canMergeCheck?: boolean;
+}
+
+export interface IssueRelatedPullRequestsSnapshot {
+	repositoryKey: string;
+	issueNumber: number;
+	pullRequests: readonly IssueRelatedPullRequest[];
+	loadedAt: number;
+}
