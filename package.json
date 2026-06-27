@@ -105,6 +105,11 @@
       {
         "command": "gitcode.refreshIssue",
         "title": "GitCode: Refresh Issue"
+      },
+      {
+        "command": "gitcode.usePullRequestAsCopilotContext",
+        "title": "GitCode: Use Pull Request as Copilot Context",
+        "icon": "$(sparkle)"
       }
     ],
     "menus": {
@@ -175,9 +180,22 @@
           "command": "gitcode.copyIssueUrl",
           "when": "view == issues:gitcode && viewItem == issue",
           "group": "inline@3"
+        },
+        {
+          "command": "gitcode.usePullRequestAsCopilotContext",
+          "when": "view == pr:gitcode && viewItem == pullRequest",
+          "group": "inline@3"
         }
       ]
     },
+    "chatParticipants": [
+      {
+        "id": "gitcode-pull-request.context",
+        "name": "gitcodePullRequest",
+        "fullName": "GitCode Pull Request",
+        "description": "Reviews and explains the selected GitCode pull request when manually invoked."
+      }
+    ],
     "configuration": {
       "title": "GitCode",
       "properties": {
@@ -232,7 +250,8 @@
     }
   },
   "capabilities": {
-    "virtualWorkspaces": false
+    "virtualWorkspaces": false,
+    "chatParticipant": true
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

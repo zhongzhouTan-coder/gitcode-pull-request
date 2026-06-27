@@ -11,6 +11,7 @@ import { PullRequestFileNode, PullRequestFileNodeContext } from '../tree/nodes/p
 import { PullRequestDiffController } from '../diff/pullRequestDiffController';
 import { PullRequestDiffStore } from '../diff/pullRequestDiffStore';
 import { PullRequestFilesNode } from '../tree/nodes/pullRequestFilesNode';
+import { CopilotPullRequestContextStore } from '../copilot/copilotPullRequestContextStore';
 
 interface RegisterTreeCommandsOptions {
 	authService: AuthService;
@@ -20,6 +21,7 @@ interface RegisterTreeCommandsOptions {
 	store: PullRequestTreeStore;
 	diffController: PullRequestDiffController;
 	diffStore: PullRequestDiffStore;
+	copilotContextStore: CopilotPullRequestContextStore;
 }
 
 function getPullRequestUrl(context: PullRequestNodeContext): string {
@@ -88,7 +90,7 @@ function resolvePullRequestFileContext(
 }
 
 export function registerTreeCommands(options: RegisterTreeCommandsOptions): vscode.Disposable {
-	const { authService, logger, overviewStore, commentsStore, store, diffController, diffStore } = options;
+	const { authService, logger, overviewStore, commentsStore, store, diffController, diffStore, copilotContextStore } = options;
 
 	return vscode.Disposable.from(
 		vscode.commands.registerCommand(COMMAND_ID.signIn, async () => {
@@ -173,6 +175,24 @@ export function registerTreeCommands(options: RegisterTreeCommandsOptions): vsco
 		vscode.commands.registerCommand(COMMAND_ID.setPullRequestFilesLayoutFlat, async () => {
 			const config = vscode.workspace.getConfiguration('gitcode');
 			await config.update('pullRequests.fileListLayout', 'flat', vscode.ConfigurationTarget.Global);
+		}),
+		vscode.commands.registerCommand(COMMAND_ID.usePullRequestAsCopilotContext, async (context?: PullRequestNodeContext | PullRequestNode) => {
+			const resolved = resolvePullRequestContext(context);
+			if (!resolved) {
+				logger.error('Cannot select pull request for Copilot context: invalid command context.');
+				return;
+			}
+
+			copilotContextStore.select({
+				repository: resolved.repository,
+				pullRequestNumber: resolved.pullRequest.number,
+				title: resolved.pullRequest.title,
+				url: resolved.pullRequest.url,
+			});
+
+			vscode.window.showInformationMessage(
+				`GitCode PR #${resolved.pullRequest.number} selected for Copilot context.`,
+			);
 		}),
 	);
 }

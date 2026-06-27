@@ -19,6 +19,7 @@ export const COMMAND_ID = {
 	openIssueOnWeb: 'gitcode.openIssueOnWeb',
 	copyIssueUrl: 'gitcode.copyIssueUrl',
 	refreshIssue: 'gitcode.refreshIssue',
+	usePullRequestAsCopilotContext: 'gitcode.usePullRequestAsCopilotContext',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';

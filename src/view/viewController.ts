@@ -27,6 +27,9 @@ import { IssueOverviewStore } from './issueOverview/issueOverviewStore';
 import { IssueCommentsStore } from './issueOverview/issueCommentsStore';
 import { IssueRelatedPullRequestsStore } from './issueOverview/issueRelatedPullRequestsStore';
 import { registerIssueCommands } from './commands/registerIssueCommands';
+import { CopilotPullRequestContextStore } from './copilot/copilotPullRequestContextStore';
+import { CopilotPullRequestContextBuilder } from './copilot/copilotPullRequestContextBuilder';
+import { registerCopilotPullRequestParticipant } from './copilot/registerCopilotPullRequestParticipant';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
 import { GitCodeClientImpl } from '../gitcode/client/gitcodeClient';
@@ -60,6 +63,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly diffController: PullRequestDiffController;
 	private readonly diffCommentController: DiffCommentController;
 	private readonly fileSystemProvider: GitCodePullRequestFileSystemProvider;
+	private readonly copilotContextStore: CopilotPullRequestContextStore;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly layoutSupplier: () => 'tree' | 'flat';
 
@@ -90,6 +94,9 @@ export class ViewController implements vscode.Disposable {
 			this.commentsStore,
 			options.logger,
 		);
+
+		// Copilot context components
+		this.copilotContextStore = new CopilotPullRequestContextStore();
 
 		// Issue components
 		const issueService = new IssueService(gitCodeClient);
@@ -171,6 +178,7 @@ export class ViewController implements vscode.Disposable {
 				store: this.store,
 				diffController: this.diffController,
 				diffStore: this.diffStore,
+				copilotContextStore: this.copilotContextStore,
 			}),
 			registerIssueCommands({
 				authService: options.authService,
@@ -185,14 +193,20 @@ export class ViewController implements vscode.Disposable {
 			registerOverviewCommands({
 				logger: options.logger,
 			}),
+			registerCopilotPullRequestParticipant(
+				this.copilotContextStore,
+				new CopilotPullRequestContextBuilder(options.pullRequestService, commentService),
+			),
 			options.authService.onDidChangeSession(() => {
 				this.commentsStore.clear();
 				this.issueCommentsStore.clear();
 				this.issueRelatedPrsStore.clear();
+				this.copilotContextStore.clear();
 				void this.store.refreshAll();
 				void this.issueStore.refreshAll();
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {
+				this.copilotContextStore.clear();
 				void this.store.refreshAll();
 				void this.issueStore.refreshAll();
 			}),

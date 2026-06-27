@@ -3,6 +3,11 @@ import { GitCodeClient } from '../client/gitcodeClient';
 import { mapListComment, mapCommentDetail, mergeCommentDetail } from '../mappers/commentMapper';
 import { Logger } from '../../common/logger';
 
+export interface ListPullRequestCommentsOptions {
+	limit?: number;
+	newestFirst?: boolean;
+}
+
 /**
  * Fetches and enriches pull request comments from the GitCode API.
  *
@@ -24,6 +29,7 @@ export class CommentService {
 	async listPullRequestComments(
 		repository: GitCodeRepository,
 		pullRequestNumber: number,
+		options: ListPullRequestCommentsOptions = {},
 	): Promise<PullRequestComment[]> {
 		const response = await this.client.get<unknown[]>(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/comments`,
@@ -50,10 +56,28 @@ export class CommentService {
 			}
 		}
 
-		// Phase 2: Enrich diff comments (limited concurrency)
-		const enrichedDiffs = await this.enrichDiffComments(repository, diffComments);
+		let comments: PullRequestComment[] = [...generalComments, ...diffComments];
+		if (options.newestFirst) {
+			comments = comments.sort((a, b) =>
+				new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+			);
+		}
 
-		return [...generalComments, ...enrichedDiffs];
+		if (options.limit !== undefined) {
+			comments = comments.slice(0, options.limit);
+		}
+
+		// Phase 2: Enrich diff comments (limited concurrency)
+		const selectedDiffIds = new Map<string, PullRequestDiffComment>();
+		for (const comment of comments) {
+			if (comment.kind === 'diff') {
+				selectedDiffIds.set(comment.id, comment);
+			}
+		}
+		const enrichedDiffs = await this.enrichDiffComments(repository, [...selectedDiffIds.values()]);
+		const enrichedById = new Map(enrichedDiffs.map((comment) => [comment.id, comment]));
+
+		return comments.map((comment) => enrichedById.get(comment.id) ?? comment);
 	}
 
 	/**
