@@ -152,6 +152,21 @@ export interface IssueOverviewHtmlOptions {
 	includeScripts?: boolean;
 }
 
+function renderCommentAvatar(author: IssueComment['author']): string {
+	if (author.avatarUrl) {
+		try {
+			const url = new URL(author.avatarUrl);
+			if (url.protocol === 'https:') {
+				return `<img class="comment-avatar" src="${escapeHtml(author.avatarUrl)}" alt="${escapeHtml(author.login)}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=\\'avatar-initials\\'>${escapeHtml((author.name || author.login)[0]?.toUpperCase() || '?')}</span>'">`;
+			}
+		} catch {
+			// Fall through to initials for malformed API data.
+		}
+	}
+	const initial = (author.name || author.login)[0]?.toUpperCase() || '?';
+	return `<span class="avatar-initials">${escapeHtml(initial)}</span>`;
+}
+
 function renderCommentAuthor(author: IssueComment['author']): string {
 	const display = author.name && author.name !== author.login
 		? `${escapeHtml(author.name)} (@${escapeHtml(author.login)})`
@@ -173,6 +188,7 @@ function renderIssueComment(comment: IssueComment): string {
 
 	return `<div class="comment">
 	<div class="comment-header">
+		${renderCommentAvatar(comment.author)}
 		${renderCommentAuthor(comment.author)}
 		<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
 		${updated}
@@ -507,6 +523,23 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		}
 		.comment:first-of-type {
 			border-top: none;
+		}
+		.comment-avatar {
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			object-fit: cover;
+		}
+		.avatar-initials {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 30%, transparent);
+			font-size: 13px;
+			font-weight: 600;
 		}
 		.comment-header {
 			display: flex;
