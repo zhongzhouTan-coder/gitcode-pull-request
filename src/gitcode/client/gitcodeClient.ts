@@ -10,7 +10,11 @@ export interface GitCodeClient {
 	get<T>(path: string, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
 }
 
-export class GitCodeClientImpl implements GitCodeClient {
+export interface GitCodeWriteClient extends GitCodeClient {
+	post<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
+}
+
+export class GitCodeClientImpl implements GitCodeWriteClient {
 	constructor(
 		private readonly configuration: ExtensionConfiguration,
 		private readonly sessionStore: SessionStore,
@@ -21,10 +25,15 @@ export class GitCodeClientImpl implements GitCodeClient {
 		return this.request<T>(path, query, tokenOverride);
 	}
 
+	async post<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T> {
+		return this.request<T>(path, query, tokenOverride, body);
+	}
+
 	private async request<T>(
 		path: string,
 		query?: Record<string, QueryValue>,
 		tokenOverride?: string,
+		body?: unknown,
 	): Promise<T> {
 		const token = tokenOverride ?? (await this.sessionStore.read())?.accessToken;
 		if (!token) {
@@ -41,13 +50,14 @@ export class GitCodeClientImpl implements GitCodeClient {
 		}
 
 		if (this.configuration.getTraceServerEnabled()) {
-			this.logger.debug(`GET ${requestUrl.toString()}`);
+			this.logger.debug(`${body ? 'POST' : 'GET'} ${requestUrl.toString()}`);
 		}
 
 		return requestJson<T>({
-			method: 'GET',
+			method: body ? 'POST' : 'GET',
 			url: requestUrl.toString(),
 			token,
+			body,
 		});
 	}
 }

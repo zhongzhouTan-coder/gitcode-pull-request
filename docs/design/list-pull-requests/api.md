@@ -16,6 +16,8 @@ GET https://api.gitcode.com/api/v5/repos/:owner/:repo/pulls
 
 ## Query Parameters
 - `access_token`: (Required) The access token for authentication.
+- `state`: (Optional) Pull Request status: all, open, closed, locked, merged. Default: all.
+- `base`: (Optional) The name of the target branch for the Pull Request submission.
 - `page`: (Optional) Current Page Number，default:1, default:1.
 - `per_page`: (Optional) Items Per Page, Maximum 100,default:20,default:20.
 

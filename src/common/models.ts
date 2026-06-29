@@ -349,3 +349,84 @@ export interface IssueRelatedPullRequestsSnapshot {
 	pullRequests: readonly IssueRelatedPullRequest[];
 	loadedAt: number;
 }
+
+// ---- Create Pull Request Types ----
+
+export interface CreatePullRequestInput {
+	title: string;
+	head: string;
+	base: string;
+	body?: string;
+	milestoneNumber?: number;
+	labels?: string;
+	issue?: string;
+	assignees?: string;
+	testers?: string;
+	pruneSourceBranch?: boolean;
+	draft?: boolean;
+	squash?: boolean;
+	squashCommitMessage?: string;
+	forkPath?: string;
+	closeRelatedIssue?: boolean;
+}
+
+export interface CreatedPullRequestSummary {
+	id: number;
+	number: number;
+	title: string;
+	state: 'open' | 'closed' | 'merged';
+	author: PullRequestParticipant;
+	sourceBranch: string;
+	targetBranch: string;
+	body: string;
+	url?: string;
+	isDraft: boolean;
+}
+
+export interface GitCodeRepositoryDetail {
+	id: number;
+	fullName: string;
+	name: string;
+	path: string;
+	defaultBranch: string;
+	webUrl: string;
+	fork: boolean;
+}
+
+export interface GitCodeBranch {
+	name: string;
+	sha?: string;
+	isDefault: boolean;
+	isProtected: boolean;
+	lastCommitMessage?: string;
+}
+
+export interface GitCodeCompareResult {
+	baseSha?: string;
+	mergeBaseSha?: string;
+	commits: GitCodeCompareCommit[];
+	files: GitCodeCompareFile[];
+	truncated: boolean;
+}
+
+export interface GitCodeCompareCommit {
+	sha: string;
+	message: string;
+	authorName?: string;
+}
+
+export interface GitCodeCompareFile {
+	path: string;
+	status: string;
+	additions: number;
+	deletions: number;
+}
+
+// Reuse PullRequestParticipant for GitCodeUser
+export type GitCodeUser = PullRequestParticipant;
+
+// Reuse PullRequestLabel for GitCodeLabel
+export type GitCodeLabel = PullRequestLabel;
+
+// Reuse IssueMilestone for GitCodeMilestone
+export type GitCodeMilestone = IssueMilestone;

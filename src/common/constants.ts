@@ -20,11 +20,13 @@ export const COMMAND_ID = {
 	copyIssueUrl: 'gitcode.copyIssueUrl',
 	refreshIssue: 'gitcode.refreshIssue',
 	usePullRequestAsCopilotContext: 'gitcode.usePullRequestAsCopilotContext',
+	createPullRequest: 'gitcode.createPullRequest',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';
 export const VIEW_ID_PULL_REQUESTS = 'pr:gitcode';
 export const VIEW_ID_ISSUES = 'issues:gitcode';
+export const VIEW_ID_CREATE_PULL_REQUEST = 'gitcode:createPullRequestWebview';
 
 export const SECRET_STORAGE_KEY = 'gitcode.auth.session';
 

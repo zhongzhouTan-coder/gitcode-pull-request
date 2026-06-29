@@ -1,17 +1,18 @@
-import { GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestSummary } from '../../common/models';
-import { GitCodeClient } from '../client/gitcodeClient';
+import { CreatePullRequestInput, CreatedPullRequestSummary, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestSummary } from '../../common/models';
+import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
 import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
-import { mapPullRequest } from '../mappers/pullRequestMapper';
+import { mapCreatePullRequestInput, mapCreatedPullRequest, mapPullRequest } from '../mappers/pullRequestMapper';
 
 export interface PullRequestFilters {
 	state?: 'open' | 'closed';
 	perPage?: number;
+	base?: string;
 }
 
 export class PullRequestService {
-	constructor(private readonly client: GitCodeClient) {}
+	constructor(private readonly client: GitCodeWriteClient) {}
 
 	async listPullRequests(repository: GitCodeRepository, filters: PullRequestFilters = {}): Promise<PullRequestSummary[]> {
 		const response = await this.client.get<any[]>(
@@ -19,6 +20,7 @@ export class PullRequestService {
 			{
 				state: filters.state ?? 'open',
 				per_page: filters.perPage,
+				base: filters.base,
 			},
 		);
 
@@ -31,6 +33,18 @@ export class PullRequestService {
 		);
 
 		return mapPullRequestDetail(response);
+	}
+
+	async createPullRequest(
+		repository: GitCodeRepository,
+		input: CreatePullRequestInput,
+	): Promise<CreatedPullRequestSummary> {
+		const requestBody = mapCreatePullRequestInput(input);
+		const response = await this.client.post<any>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls`,
+			requestBody,
+		);
+		return mapCreatedPullRequest(response);
 	}
 
 	async listPullRequestFiles(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestFileChange[]> {

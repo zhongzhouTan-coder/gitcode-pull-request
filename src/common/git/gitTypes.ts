@@ -15,6 +15,7 @@ export interface GitRepository {
 		remotes: GitRemote[];
 		onDidChange: vscode.Event<void>;
 	};
+	push?(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
 }
 
 export interface GitApi {

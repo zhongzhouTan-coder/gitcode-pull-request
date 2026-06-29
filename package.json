@@ -27,6 +27,11 @@
           "name": "Pull Requests"
         },
         {
+          "id": "gitcode:createPullRequestWebview",
+          "name": "Create Pull Request",
+          "type": "webview"
+        },
+        {
           "id": "issues:gitcode",
           "name": "Issues"
         }
@@ -110,29 +115,39 @@
         "command": "gitcode.usePullRequestAsCopilotContext",
         "title": "GitCode: Use Pull Request as Copilot Context",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "gitcode.createPullRequest",
+        "title": "GitCode: Create Pull Request",
+        "icon": "$(add)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "gitcode.signIn",
+          "command": "gitcode.createPullRequest",
           "when": "view == pr:gitcode",
           "group": "navigation@1"
         },
         {
-          "command": "gitcode.refreshPullRequests",
+          "command": "gitcode.signIn",
           "when": "view == pr:gitcode",
           "group": "navigation@2"
         },
         {
+          "command": "gitcode.refreshPullRequests",
+          "when": "view == pr:gitcode",
+          "group": "navigation@3"
+        },
+        {
           "command": "gitcode.setPullRequestFilesLayoutTree",
           "when": "view == pr:gitcode && gitcodePullRequestFilesLayout == flat",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "gitcode.setPullRequestFilesLayoutFlat",
           "when": "view == pr:gitcode && gitcodePullRequestFilesLayout == tree",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "gitcode.refreshIssues",

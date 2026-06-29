@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { AuthService } from '../authentication/authService';
 import { SessionStore } from '../authentication/sessionStore';
 import { ExtensionConfiguration } from '../common/configuration';
-import { COMMAND_ID, CONTEXT_KEY_FILE_LIST_LAYOUT, GITCODE_PR_SCHEME } from '../common/constants';
+import { COMMAND_ID, CONTEXT_KEY_FILE_LIST_LAYOUT, GITCODE_PR_SCHEME, VIEW_ID_CREATE_PULL_REQUEST } from '../common/constants';
 import { Logger } from '../common/logger';
 import { RepositoryContextService } from '../common/git/repositoryContext';
 import { GitCodeRepositoryResolver } from '../gitcode/resolver/gitcodeRepositoryResolver';
@@ -29,10 +29,14 @@ import { IssueRelatedPullRequestsStore } from './issueOverview/issueRelatedPullR
 import { registerIssueCommands } from './commands/registerIssueCommands';
 import { CopilotPullRequestContextStore } from './copilot/copilotPullRequestContextStore';
 import { CopilotPullRequestContextBuilder } from './copilot/copilotPullRequestContextBuilder';
+import { registerCreatePullRequestCommands } from './commands/registerCreatePullRequestCommands';
 import { registerCopilotPullRequestParticipant } from './copilot/registerCopilotPullRequestParticipant';
+import { CreatePullRequestHelper } from './createPullRequest/createPullRequestHelper';
+import { CreatePullRequestViewProvider } from './createPullRequest/createPullRequestViewProvider';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
 import { GitCodeClientImpl } from '../gitcode/client/gitcodeClient';
+import { RepositoryService } from '../gitcode/services/repositoryService';
 
 interface ViewControllerOptions {
 	context: vscode.ExtensionContext;
@@ -64,6 +68,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly diffCommentController: DiffCommentController;
 	private readonly fileSystemProvider: GitCodePullRequestFileSystemProvider;
 	private readonly copilotContextStore: CopilotPullRequestContextStore;
+	private readonly createPullRequestHelper: CreatePullRequestHelper;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly layoutSupplier: () => 'tree' | 'flat';
 
@@ -97,6 +102,28 @@ export class ViewController implements vscode.Disposable {
 
 		// Copilot context components
 		this.copilotContextStore = new CopilotPullRequestContextStore();
+
+		// Create Pull Request components
+		const repositoryService = new RepositoryService(gitCodeClient);
+		const createPullRequestProvider = new CreatePullRequestViewProvider(
+			options.context.extensionUri,
+			repositoryService,
+			options.pullRequestService,
+			{
+				onCreateSuccess: (repo, prNumber) => this.createPullRequestHelper.handleCreateSuccess(repo, prNumber),
+			},
+			options.logger,
+		);
+		this.createPullRequestHelper = new CreatePullRequestHelper(
+			options.repositoryContext,
+			options.repositoryResolver,
+			options.pullRequestService,
+			createPullRequestProvider,
+			this.store,
+			this.overviewStore,
+			this.commentsStore,
+			options.logger,
+		);
 
 		// Issue components
 		const issueService = new IssueService(gitCodeClient);
@@ -165,6 +192,7 @@ export class ViewController implements vscode.Disposable {
 			this.patchContentProvider,
 			this.fileSystemProvider,
 			this.diffCommentController,
+			vscode.window.registerWebviewViewProvider(VIEW_ID_CREATE_PULL_REQUEST, createPullRequestProvider),
 			vscode.workspace.registerTextDocumentContentProvider('gitcode-pr-diff', this.patchContentProvider),
 			vscode.workspace.registerFileSystemProvider(GITCODE_PR_SCHEME, this.fileSystemProvider, {
 				isReadonly: true,
@@ -193,6 +221,7 @@ export class ViewController implements vscode.Disposable {
 			registerOverviewCommands({
 				logger: options.logger,
 			}),
+			registerCreatePullRequestCommands(this.createPullRequestHelper),
 			registerCopilotPullRequestParticipant(
 				this.copilotContextStore,
 				new CopilotPullRequestContextBuilder(options.pullRequestService, commentService),
