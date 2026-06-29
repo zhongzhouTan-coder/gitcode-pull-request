@@ -11,11 +11,13 @@ GET https://api.gitcode.com/api/v5/repos/:owner/:repo/issues/:number
 ```
 
 ## Path Variables
+
 - `owner`: Repository Owner Path (Organization or User Path).
 - `repo`: 	Repository Path(path).
 - `number`: Issue Number.
 
 ## Query Parameters
+
 - `access_token`: (Required) The access token for authentication.
 
 ## Example Request

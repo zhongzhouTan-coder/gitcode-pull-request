@@ -350,6 +350,34 @@ export interface IssueRelatedPullRequestsSnapshot {
 	loadedAt: number;
 }
 
+// ---- Pull Request Related Issue Types ----
+
+export interface PullRequestRelatedIssue {
+	id: number;
+	number: number;
+	title: string;
+	state: 'open' | 'closed';
+	url?: string;
+	author: IssueUser;
+	labels: IssueLabel[];
+	repository?: IssueRepositoryRef;
+	createdAt: string;
+	updatedAt: string;
+	issueState?: string;
+	issueStateDetail?: IssueWorkflowState;
+	issueType?: string;
+	issueTypeDetail?: IssueTypeDetail;
+	priority?: number;
+	priorityDetail?: IssuePriorityDetail;
+}
+
+export interface PullRequestRelatedIssuesSnapshot {
+	repositoryKey: string;
+	pullRequestNumber: number;
+	issues: readonly PullRequestRelatedIssue[];
+	loadedAt: number;
+}
+
 // ---- Create Pull Request Types ----
 
 export interface CreatePullRequestInput {

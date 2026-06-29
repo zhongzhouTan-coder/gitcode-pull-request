@@ -1,4 +1,7 @@
 import {
+	IssueLabel,
+	IssueRepositoryRef,
+	IssueUser,
 	PullRequestComment,
 	PullRequestCommentReply,
 	PullRequestCommentsSnapshot,
@@ -7,6 +10,8 @@ import {
 	PullRequestGeneralComment,
 	PullRequestLabel,
 	PullRequestParticipant,
+	PullRequestRelatedIssue,
+	PullRequestRelatedIssuesSnapshot,
 } from '../../common/models';
 import { renderMarkdown } from '../webview/markdown';
 
@@ -279,11 +284,93 @@ function renderConversationError(message: string): string {
 	return `<section><h2>Conversation</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
 }
 
-export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, includeScripts: boolean = true): string {
+// ---- Related Issues Rendering ----
+
+function renderIssueLabels(labels: IssueLabel[]): string {
+	if (!labels.length) {
+		return '';
+	}
+
+	return `<div class="labels">${labels.map((label) => (
+		`<span class="label-chip" style="--label-color:${escapeHtml(labelColor(label.color))}">${escapeHtml(label.name)}</span>`
+	)).join('')}</div>`;
+}
+
+function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
+	const stateClass = issue.state === 'closed' ? 'badge-closed' : 'badge-open';
+	const repositoryName = issue.repository?.fullName ?? '';
+	const repositoryDisplay = repositoryName ? `<span class="muted"> · ${escapeHtml(repositoryName)}</span>` : '';
+
+	const metaParts: string[] = [];
+	metaParts.push(`<span class="badge ${stateClass}">${issue.state === 'closed' ? 'Closed' : 'Open'}</span>`);
+	if (issue.author.login) {
+		metaParts.push(`<span>@${escapeHtml(issue.author.login)}</span>`);
+	}
+	if (issue.issueType) {
+		metaParts.push(`<span>${escapeHtml(issue.issueType)}</span>`);
+	}
+	if (issue.issueState) {
+		metaParts.push(`<span>${escapeHtml(issue.issueState)}</span>`);
+	}
+	metaParts.push(`<span class="muted">Updated ${escapeHtml(formatDate(issue.updatedAt))}</span>`);
+
+	const titleHtml = issue.url
+		? `<button class="issue-title-btn" data-action="openIssue" data-repository="${escapeHtml(repositoryName)}" data-issue="${issue.number}" data-url="${escapeHtml(issue.url ?? '')}">#${issue.number} ${escapeHtml(issue.title)}</button>`
+		: `<span class="issue-title">#${issue.number} ${escapeHtml(issue.title)}</span>`;
+
+	const externalLink = issue.url
+		? `<button class="external-link-btn" data-action="openUrl" data-url="${escapeHtml(issue.url)}" title="Open on GitCode">${EXTERNAL_LINK_ICON}</button>`
+		: '';
+
+	return `
+		<div class="related-issue-row">
+			<div class="related-issue-main">
+				<div class="related-issue-title-row">
+					${titleHtml}
+					${externalLink}
+				</div>
+				<div class="related-issue-meta">
+					${metaParts.join(' · ')}
+					${repositoryDisplay}
+				</div>
+				${renderIssueLabels(issue.labels)}
+			</div>
+		</div>
+	`;
+}
+
+export function renderRelatedIssuesSection(snapshot: PullRequestRelatedIssuesSnapshot): string {
+	const issues = snapshot.issues;
+
+	if (!issues.length) {
+		return '<section><h2>Related Issues</h2><div class="empty">No related issues.</div></section>';
+	}
+
+	const countText = `${issues.length}`;
+	return `
+		<section>
+			<h2>Related Issues (${countText})</h2>
+			<div class="related-issues-list">
+				${issues.map((issue) => renderRelatedIssueRow(issue)).join('')}
+			</div>
+		</section>
+	`;
+}
+
+export function renderRelatedIssuesLoading(): string {
+	return '<section><h2>Related Issues</h2><div class="empty">Loading related issues...</div></section>';
+}
+
+export function renderRelatedIssuesError(message: string): string {
+	return `<section><h2>Related Issues</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
+}
+
+export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, relatedIssuesHtml?: string, includeScripts: boolean = true): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
 	const openOnWebDisabled = detail.htmlUrl ? '' : 'disabled';
 	const conversationSection = conversationHtml ?? '';
+	const relatedIssuesSection = relatedIssuesHtml ?? '';
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -540,6 +627,75 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			padding-top: 12px;
 		}
 		.comment-error { color: var(--vscode-errorForeground); padding: 8px 0; }
+		/* ---- Related Issues ---- */
+		.related-issues-list {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+		.related-issue-row {
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			padding: 14px 16px;
+			background: var(--card);
+		}
+		.related-issue-main {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+		.related-issue-title-row {
+			display: flex;
+			align-items: flex-start;
+			gap: 8px;
+		}
+		.issue-title-btn {
+			border: none;
+			background: none;
+			color: var(--vscode-textLink-foreground);
+			font: inherit;
+			font-size: 15px;
+			font-weight: 600;
+			cursor: pointer;
+			text-align: left;
+			padding: 0;
+			line-height: 1.4;
+			flex: 1;
+		}
+		.issue-title-btn:hover {
+			text-decoration: underline;
+		}
+		.issue-title {
+			font-size: 15px;
+			font-weight: 600;
+			color: var(--vscode-foreground);
+			flex: 1;
+		}
+		.external-link-btn {
+			border: none;
+			background: none;
+			color: var(--muted);
+			cursor: pointer;
+			padding: 2px;
+			flex-shrink: 0;
+			opacity: 0.6;
+		}
+		.external-link-btn:hover {
+			opacity: 1;
+			color: var(--vscode-foreground);
+		}
+		.related-issue-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 4px;
+			align-items: center;
+			font-size: 13px;
+			color: var(--muted);
+		}
+		.related-issue-meta .badge {
+			font-size: 11px;
+			padding: 2px 8px;
+		}
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
 		}
@@ -572,6 +728,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				<h2>Description</h2>
 				<div class="description">${descriptionHtml}</div>
 			</section>
+			${relatedIssuesSection}
 			${conversationSection}
 		</main>
 		<aside>
@@ -626,21 +783,31 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				vscode.postMessage({ command: 'openUrl', url: el.dataset.url });
 			});
 		});
+		document.querySelectorAll('[data-action="openIssue"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				vscode.postMessage({
+					command: 'openIssue',
+					issue: Number(el.dataset.issue),
+					repository: el.dataset.repository,
+					url: el.dataset.url,
+				});
+			});
+		});
 	</script>` : ''}
 </body>
 </html>`;
 }
 
-export function getOverviewWithCommentsHtml(detail: PullRequestDetail, snapshot: PullRequestCommentsSnapshot, nonce: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot));
+export function getOverviewWithCommentsHtml(detail: PullRequestDetail, snapshot: PullRequestCommentsSnapshot, nonce: string, relatedIssuesHtml?: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot), relatedIssuesHtml);
 }
 
-export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationLoading(), false);
+export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationLoading(), relatedIssuesHtml, false);
 }
 
-export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage));
+export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage), relatedIssuesHtml);
 }
 
 export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {

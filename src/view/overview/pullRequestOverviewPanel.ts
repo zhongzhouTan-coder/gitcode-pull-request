@@ -1,10 +1,11 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
+import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail } from '../../common/models';
+import { GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
-import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml } from './overviewHtml';
+import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 
 interface PullRequestOverviewContext {
@@ -19,6 +20,26 @@ function createNonce(): string {
 
 function keyFor(repository: GitCodeRepository, pullRequestNumber: number): string {
 	return `${repository.fullName}#${pullRequestNumber}`;
+}
+
+function repositoryFromFullName(fullName: string, currentRepository: GitCodeRepository): GitCodeRepository | undefined {
+	const [owner, name, ...rest] = fullName.split('/');
+	if (!owner || !name || rest.length > 0) {
+		return undefined;
+	}
+
+	const webUrl = new URL(currentRepository.webUrl);
+	webUrl.pathname = `/${owner}/${name}`;
+	webUrl.search = '';
+	webUrl.hash = '';
+
+	return {
+		remoteName: currentRepository.remoteName,
+		owner,
+		name,
+		fullName: `${owner}/${name}`,
+		webUrl: webUrl.toString().replace(/\/$/, ''),
+	};
 }
 
 export function isTrustedGitCodeUrl(candidate: string, webUrl: string): boolean {
@@ -85,6 +106,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 	private detail?: PullRequestDetail;
 	private commentsSnapshot?: PullRequestCommentsSnapshot;
+	private relatedIssuesSnapshot?: PullRequestRelatedIssuesSnapshot;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -106,7 +128,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			}
 		});
 
-		this.panel.webview.onDidReceiveMessage(async (message: { command?: string; url?: string }) => {
+		this.panel.webview.onDidReceiveMessage(async (message: { command?: string; url?: string; repository?: string; issue?: number | string }) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
 				return;
@@ -119,6 +141,27 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'openUrl' && message.url) {
 				await this.openTrustedUrl(message.url);
+				return;
+			}
+
+			if (message.command === 'openIssue' && message.issue !== undefined) {
+				const issueNumber = Number(message.issue);
+				if (!Number.isFinite(issueNumber) || issueNumber <= 0) {
+					return;
+				}
+
+				const targetRepository = message.repository
+					? repositoryFromFullName(message.repository, this.context.repository) ?? this.context.repository
+					: this.context.repository;
+
+				await vscode.commands.executeCommand(COMMAND_ID.openIssue, {
+					repository: targetRepository,
+					issue: {
+						number: issueNumber,
+						title: '',
+						url: message.url,
+					},
+				});
 			}
 		});
 	}
@@ -139,6 +182,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		// Also invalidate comments and notify inline diff consumers before reloading.
 		await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
 		this.commentsSnapshot = undefined;
+		this.relatedIssuesSnapshot = undefined;
 		await this.load(true);
 	}
 
@@ -146,6 +190,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		if (forceRefresh) {
 			this.detail = undefined;
 			this.commentsSnapshot = undefined;
+			this.relatedIssuesSnapshot = undefined;
 		}
 
 		// Phase 1: Render a loading indicator — no scripts, so acquireVsCodeApi is not called yet
@@ -159,23 +204,75 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		// Render detail with loading comments
-		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce());
+		// Render detail with loading comments and loading related issues
+		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading();
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml);
 
-		// Phase 2: Load comments independently
-		try {
-			this.commentsSnapshot = await this.commentsStore.getOrFetch(
-				this.context.repository,
-				this.context.pullRequestNumber,
-			);
-			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, this.commentsSnapshot, createNonce());
-		} catch (error) {
+		// Phase 2: Load comments and related issues independently in parallel
+		const commentsPromise = this.commentsStore.getOrFetch(
+			this.context.repository,
+			this.context.pullRequestNumber,
+		);
+
+		const relatedIssuesPromise = this.store.getRelatedIssues(
+			this.context.repository,
+			this.context.pullRequestNumber,
+		);
+
+		// Wait for both and render
+		const [commentsResult, relatedIssuesResult] = await Promise.allSettled([commentsPromise, relatedIssuesPromise]);
+
+		let commentsSnapshot: PullRequestCommentsSnapshot | undefined;
+		let relatedIssuesSnapshot: PullRequestRelatedIssuesSnapshot | undefined;
+		let commentsError: string | undefined;
+		let relatedIssuesError: string | undefined;
+
+		if (commentsResult.status === 'fulfilled') {
+			commentsSnapshot = commentsResult.value;
+		} else {
+			const error = commentsResult.reason;
 			this.logger.error(
 				`Failed to load comments for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
 			);
-			// Render detail with comment error — detail is still visible
-			const errorMessage = error instanceof Error ? error.message : 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce());
+			commentsError = error instanceof Error ? error.message : 'Unable to load comments.';
+		}
+
+		if (relatedIssuesResult.status === 'fulfilled') {
+			this.relatedIssuesSnapshot = {
+				repositoryKey: this.context.repository.fullName,
+				pullRequestNumber: this.context.pullRequestNumber,
+				issues: relatedIssuesResult.value,
+				loadedAt: Date.now(),
+			};
+			relatedIssuesSnapshot = this.relatedIssuesSnapshot;
+		} else {
+			const error = relatedIssuesResult.reason;
+			this.logger.error(
+				`Failed to load related issues for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			relatedIssuesError = error instanceof Error ? error.message : 'Unable to load related issues.';
+		}
+
+		if (commentsSnapshot) {
+			this.commentsSnapshot = commentsSnapshot;
+		}
+
+		// Build related issues HTML
+		let relatedIssuesHtml: string;
+		if (relatedIssuesSnapshot) {
+			relatedIssuesHtml = renderRelatedIssuesSection(relatedIssuesSnapshot);
+		} else if (relatedIssuesError) {
+			relatedIssuesHtml = renderRelatedIssuesError(relatedIssuesError);
+		} else {
+			relatedIssuesHtml = '';
+		}
+
+		// Build comments HTML
+		if (commentsSnapshot) {
+			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml);
+		} else {
+			const errorMessage = commentsError ?? 'Unable to load comments.';
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml);
 		}
 	}
 

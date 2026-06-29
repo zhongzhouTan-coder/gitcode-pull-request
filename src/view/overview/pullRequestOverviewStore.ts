@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { GitCodeRepository, PullRequestDetail } from '../../common/models';
+import { GitCodeRepository, PullRequestDetail, PullRequestRelatedIssue } from '../../common/models';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 
 export class PullRequestOverviewStore {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
 	private readonly detailPromises = new Map<string, Promise<PullRequestDetail>>();
+	private readonly relatedIssuesPromises = new Map<string, Promise<PullRequestRelatedIssue[]>>();
 
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -38,8 +39,33 @@ export class PullRequestOverviewStore {
 		return requestPromise;
 	}
 
+	async getRelatedIssues(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestRelatedIssue[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const key = this.getKey(repository, pullRequestNumber);
+		const existingPromise = this.relatedIssuesPromises.get(key);
+		if (existingPromise) {
+			return existingPromise;
+		}
+
+		const requestPromise = this.pullRequestService
+			.listPullRequestRelatedIssues(repository, pullRequestNumber)
+			.catch((error) => {
+				this.relatedIssuesPromises.delete(key);
+				throw error;
+			});
+
+		this.relatedIssuesPromises.set(key, requestPromise);
+		return requestPromise;
+	}
+
 	async refresh(repository: GitCodeRepository, pullRequestNumber: number): Promise<void> {
-		this.detailPromises.delete(this.getKey(repository, pullRequestNumber));
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.relatedIssuesPromises.delete(key);
 		this.onDidChangeEmitter.fire();
 	}
 

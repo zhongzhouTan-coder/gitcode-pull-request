@@ -1,9 +1,10 @@
-import { CreatePullRequestInput, CreatedPullRequestSummary, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestSummary } from '../../common/models';
+import { CreatePullRequestInput, CreatedPullRequestSummary, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
 import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
 import { mapCreatePullRequestInput, mapCreatedPullRequest, mapPullRequest } from '../mappers/pullRequestMapper';
+import { mapPullRequestRelatedIssues } from '../mappers/pullRequestRelatedIssueMapper';
 
 export interface PullRequestFilters {
 	state?: 'open' | 'closed';
@@ -61,5 +62,13 @@ export class PullRequestService {
 		);
 
 		return mapDiffSnapshot(response);
+	}
+
+	async listPullRequestRelatedIssues(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestRelatedIssue[]> {
+		const response = await this.client.get<any[]>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/issues`,
+		);
+
+		return mapPullRequestRelatedIssues(response);
 	}
 }
