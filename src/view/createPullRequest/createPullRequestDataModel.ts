@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import {
+	CreatePullRequestInitialIssueContext,
 	CreatePullRequestInput,
 	GitCodeBranch,
 	GitCodeLabel,
@@ -127,16 +128,19 @@ export class CreatePullRequestDataModel {
 	async initialize(
 		repository: GitCodeRepository,
 		sourceBranch: string,
+		issueContext?: CreatePullRequestInitialIssueContext,
 	): Promise<CreatePullRequestDefaults>;
 	async initialize(
 		repositories: GitCodeRepository[],
 		targetRepository: GitCodeRepository,
 		sourceBranch: string,
+		issueContext?: CreatePullRequestInitialIssueContext,
 	): Promise<CreatePullRequestDefaults>;
 	async initialize(
 		repositoriesOrRepository: GitCodeRepository[] | GitCodeRepository,
 		targetRepositoryOrSourceBranch: GitCodeRepository | string,
-		sourceBranchArg?: string,
+		sourceBranchOrIssueContext?: string | CreatePullRequestInitialIssueContext,
+		issueContextArg?: CreatePullRequestInitialIssueContext,
 	): Promise<CreatePullRequestDefaults> {
 		const repositories = Array.isArray(repositoriesOrRepository)
 			? repositoriesOrRepository
@@ -145,8 +149,11 @@ export class CreatePullRequestDataModel {
 			? targetRepositoryOrSourceBranch as GitCodeRepository
 			: repositoriesOrRepository;
 		const sourceBranch = Array.isArray(repositoriesOrRepository)
-			? sourceBranchArg ?? ''
+			? (typeof sourceBranchOrIssueContext === 'string' ? sourceBranchOrIssueContext : '')
 			: targetRepositoryOrSourceBranch as string;
+		const issueContext = Array.isArray(repositoriesOrRepository)
+			? issueContextArg
+			: (typeof sourceBranchOrIssueContext === 'object' ? sourceBranchOrIssueContext : undefined);
 		const sourceRepository = this.defaultSourceRepository(repositories, targetRepository);
 
 		this._repositories = repositories.length ? repositories : [targetRepository];
@@ -174,8 +181,8 @@ export class CreatePullRequestDataModel {
 		const defaultTargetBranch = targetRepositoryDetail?.defaultBranch || 'main';
 		this._targetBranch = defaultTargetBranch;
 
-		this._title = this.branchTitle(sourceBranch);
-		this._body = '';
+		this._title = this.buildTitle(sourceBranch, issueContext);
+		this._body = this.buildBody(issueContext);
 
 		// Check for duplicate PRs
 		try {
@@ -430,6 +437,38 @@ export class CreatePullRequestDataModel {
 			.replace(/([a-z])([A-Z])/g, '$1 $2')
 			.replace(/\b\w/g, (c) => c.toUpperCase())
 			.trim();
+	}
+
+	private buildTitle(
+		sourceBranch: string,
+		issueContext?: CreatePullRequestInitialIssueContext,
+	): string {
+		if (issueContext) {
+			return `Fix #${issueContext.issueNumber}: ${issueContext.issueTitle}`;
+		}
+		return this.branchTitle(sourceBranch);
+	}
+
+	private buildBody(issueContext?: CreatePullRequestInitialIssueContext): string {
+		if (!issueContext) {
+			return '';
+		}
+
+		const lines = [
+			'## Summary',
+			'',
+			`Fixes #${issueContext.issueNumber}`,
+			'',
+			'## Changes',
+			'',
+			'-',
+			'',
+			'## Test Plan',
+			'',
+			'-',
+		];
+
+		return lines.join('\n');
 	}
 
 	private defaultSourceRepository(

@@ -383,6 +383,12 @@ export interface CreatedPullRequestSummary {
 	isDraft: boolean;
 }
 
+export interface CreatePullRequestInitialIssueContext {
+	issueNumber: number;
+	issueTitle: string;
+	issueUrl?: string;
+}
+
 export interface GitCodeRepositoryDetail {
 	id: number;
 	fullName: string;

@@ -20,6 +20,8 @@ export const COMMAND_ID = {
 	copyIssueUrl: 'gitcode.copyIssueUrl',
 	refreshIssue: 'gitcode.refreshIssue',
 	usePullRequestAsCopilotContext: 'gitcode.usePullRequestAsCopilotContext',
+	useIssueAsCopilotContext: 'gitcode.useIssueAsCopilotContext',
+	createBranchForIssue: 'gitcode.createBranchForIssue',
 	createPullRequest: 'gitcode.createPullRequest',
 };
 

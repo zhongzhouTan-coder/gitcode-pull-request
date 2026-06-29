@@ -29,8 +29,11 @@ import { IssueRelatedPullRequestsStore } from './issueOverview/issueRelatedPullR
 import { registerIssueCommands } from './commands/registerIssueCommands';
 import { CopilotPullRequestContextStore } from './copilot/copilotPullRequestContextStore';
 import { CopilotPullRequestContextBuilder } from './copilot/copilotPullRequestContextBuilder';
+import { CopilotIssueContextStore } from './copilot/copilotIssueContextStore';
+import { CopilotIssueContextBuilder } from './copilot/copilotIssueContextBuilder';
 import { registerCreatePullRequestCommands } from './commands/registerCreatePullRequestCommands';
 import { registerCopilotPullRequestParticipant } from './copilot/registerCopilotPullRequestParticipant';
+import { registerCopilotIssueParticipant } from './copilot/registerCopilotIssueParticipant';
 import { CreatePullRequestHelper } from './createPullRequest/createPullRequestHelper';
 import { CreatePullRequestViewProvider } from './createPullRequest/createPullRequestViewProvider';
 import { NodeFactory } from './tree/nodeFactory';
@@ -68,6 +71,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly diffCommentController: DiffCommentController;
 	private readonly fileSystemProvider: GitCodePullRequestFileSystemProvider;
 	private readonly copilotContextStore: CopilotPullRequestContextStore;
+	private readonly copilotIssueContextStore: CopilotIssueContextStore;
 	private readonly createPullRequestHelper: CreatePullRequestHelper;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly layoutSupplier: () => 'tree' | 'flat';
@@ -102,6 +106,7 @@ export class ViewController implements vscode.Disposable {
 
 		// Copilot context components
 		this.copilotContextStore = new CopilotPullRequestContextStore();
+		this.copilotIssueContextStore = new CopilotIssueContextStore();
 
 		// Create Pull Request components
 		const repositoryService = new RepositoryService(gitCodeClient);
@@ -122,6 +127,7 @@ export class ViewController implements vscode.Disposable {
 			this.store,
 			this.overviewStore,
 			this.commentsStore,
+			this.copilotIssueContextStore,
 			options.logger,
 		);
 
@@ -216,6 +222,8 @@ export class ViewController implements vscode.Disposable {
 				issueRelatedPrsStore: this.issueRelatedPrsStore,
 				prOverviewStore: this.overviewStore,
 				prCommentsStore: this.commentsStore,
+				copilotIssueContextStore: this.copilotIssueContextStore,
+				repositoryContext: options.repositoryContext,
 				logger: options.logger,
 			}),
 			registerOverviewCommands({
@@ -226,16 +234,22 @@ export class ViewController implements vscode.Disposable {
 				this.copilotContextStore,
 				new CopilotPullRequestContextBuilder(options.pullRequestService, commentService),
 			),
+			registerCopilotIssueParticipant(
+				this.copilotIssueContextStore,
+				new CopilotIssueContextBuilder(issueService, issueCommentService, options.repositoryContext),
+			),
 			options.authService.onDidChangeSession(() => {
 				this.commentsStore.clear();
 				this.issueCommentsStore.clear();
 				this.issueRelatedPrsStore.clear();
 				this.copilotContextStore.clear();
+				this.copilotIssueContextStore.clear();
 				void this.store.refreshAll();
 				void this.issueStore.refreshAll();
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {
 				this.copilotContextStore.clear();
+				this.copilotIssueContextStore.clear();
 				void this.store.refreshAll();
 				void this.issueStore.refreshAll();
 			}),

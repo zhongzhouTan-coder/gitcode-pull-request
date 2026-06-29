@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository } from '../../common/models';
+import { GitCodeRepository, CreatePullRequestInitialIssueContext } from '../../common/models';
 import { RepositoryContextService } from '../../common/git/repositoryContext';
 import { GitCodeRepositoryResolver } from '../../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
@@ -8,6 +8,7 @@ import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
+import { CopilotIssueContextStore } from '../copilot/copilotIssueContextStore';
 import { CreatePullRequestViewProvider } from './createPullRequestViewProvider';
 
 export class CreatePullRequestHelper implements vscode.Disposable {
@@ -19,6 +20,7 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 		private readonly treeStore: PullRequestTreeStore,
 		private readonly overviewStore: PullRequestOverviewStore,
 		private readonly commentsStore: PullRequestCommentsStore,
+		private readonly copilotIssueContextStore: CopilotIssueContextStore,
 		private readonly logger: Logger,
 	) {}
 
@@ -81,8 +83,24 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 			return;
 		}
 
+		// Build issue context if a matching issue is selected
+		const issueContext = this.buildIssueContext(repository);
+
 		// Initialize the sidebar provider with the resolved data
-		await this.provider.initialize(repositories, repository, sourceBranch, gitRepo);
+		await this.provider.initialize(repositories, repository, sourceBranch, gitRepo, issueContext);
+	}
+
+	private buildIssueContext(repository: GitCodeRepository): CreatePullRequestInitialIssueContext | undefined {
+		const selected = this.copilotIssueContextStore.getSelected();
+		if (!selected || selected.repository.fullName !== repository.fullName) {
+			return undefined;
+		}
+
+		return {
+			issueNumber: selected.issueNumber,
+			issueTitle: selected.title,
+			issueUrl: selected.url,
+		};
 	}
 
 	handleCreateSuccess(repository: GitCodeRepository, prNumber: number): void {

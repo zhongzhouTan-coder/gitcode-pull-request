@@ -117,6 +117,16 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "gitcode.useIssueAsCopilotContext",
+        "title": "GitCode: Use Issue as Copilot Context",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "gitcode.createBranchForIssue",
+        "title": "GitCode: Create Branch for Issue",
+        "icon": "$(git-branch)"
+      },
+      {
         "command": "gitcode.createPullRequest",
         "title": "GitCode: Create Pull Request",
         "icon": "$(add)"
@@ -197,6 +207,16 @@
           "group": "inline@3"
         },
         {
+          "command": "gitcode.useIssueAsCopilotContext",
+          "when": "view == issues:gitcode && viewItem == issue",
+          "group": "inline@4"
+        },
+        {
+          "command": "gitcode.createBranchForIssue",
+          "when": "view == issues:gitcode && viewItem == issue",
+          "group": "inline@5"
+        },
+        {
           "command": "gitcode.usePullRequestAsCopilotContext",
           "when": "view == pr:gitcode && viewItem == pullRequest",
           "group": "inline@3"
@@ -209,6 +229,12 @@
         "name": "gitcodePullRequest",
         "fullName": "GitCode Pull Request",
         "description": "Reviews and explains the selected GitCode pull request when manually invoked."
+      },
+      {
+        "id": "gitcode-issue.context",
+        "name": "gitcodeIssue",
+        "fullName": "GitCode Issue",
+        "description": "Analyzes and plans work for the selected GitCode issue when manually invoked."
       }
     ],
     "configuration": {

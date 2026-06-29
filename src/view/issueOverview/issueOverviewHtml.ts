@@ -45,6 +45,11 @@ const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox
 	<path d="M3 2v11h11V8.5h1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5v1H3Zm5.5 0V1H15v6.5h-1V2.7L7.9 8.9l-.8-.8L13.3 2H8.5Z" fill="currentColor"/>
 </svg>`;
 
+/** Git branch icon (16×16). */
+const BRANCH_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+	<path d="M4 1.5a2 2 0 0 1 1 3.73v5.54A3.5 3.5 0 0 0 8 7.31l.01-.4A2 2 0 1 1 9.5 6.95v.36A5 5 0 0 1 5 12.25v.52a2 2 0 1 1-1.5 0V5.23A2 2 0 0 1 4 1.5Zm0 1.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Zm6 1.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Zm-6 9a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Z" fill="currentColor"/>
+</svg>`;
+
 function stateBadgeClass(state: 'open' | 'closed'): string {
 	return state === 'closed' ? 'badge-closed' : 'badge-open';
 }
@@ -579,6 +584,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		</div>
 		<div class="actions">
 			<button id="refresh-button" class="secondary">${REFRESH_ICON} Refresh</button>
+			<button id="create-branch-button" class="secondary">${BRANCH_ICON} Create Branch</button>
 			<button id="open-web-button" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
 		</div>
 	</div>
@@ -601,6 +607,9 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		const vscode = acquireVsCodeApi();
 		document.getElementById('refresh-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'refresh' });
+		});
+		document.getElementById('create-branch-button')?.addEventListener('click', () => {
+			vscode.postMessage({ command: 'createBranch' });
 		});
 		document.getElementById('open-web-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'openOnWeb' });

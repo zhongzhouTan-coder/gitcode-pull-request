@@ -134,4 +134,34 @@ suite('CreatePullRequestDataModel', () => {
 		assert.deepStrictEqual(model.listMembers('ali').map((member) => member.login), ['alice']);
 		assert.deepStrictEqual(model.listMembers('bo').map((member) => member.login), ['bob']);
 	});
+
+	test('prefills title and body when issue context is provided', async () => {
+		const model = createModel();
+		const defaults = await model.initialize(repository, 'feature', {
+			issueNumber: 309,
+			issueTitle: 'Quantization warning for Qwen3.6',
+		});
+
+		assert.strictEqual(defaults.title, 'Fix #309: Quantization warning for Qwen3.6');
+		assert.ok(defaults.body.includes('Fixes #309'));
+		assert.ok(defaults.body.includes('## Summary'));
+		assert.ok(defaults.body.includes('## Changes'));
+		assert.ok(defaults.body.includes('## Test Plan'));
+	});
+
+	test('does not apply issue defaults when issue context is omitted', async () => {
+		const model = createModel();
+		const defaults = await model.initialize(repository, 'feature');
+
+		assert.strictEqual(defaults.title, 'Feature');
+		assert.strictEqual(defaults.body, '');
+	});
+
+	test('preserves branch title when issue context is not provided', async () => {
+		const model = createModel();
+		const defaults = await model.initialize(repository, 'fix-login-issue');
+
+		assert.strictEqual(defaults.title, 'Fix Login Issue');
+		assert.strictEqual(defaults.body, '');
+	});
 });

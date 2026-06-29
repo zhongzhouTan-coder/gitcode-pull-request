@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
+import { COMMAND_ID } from '../../common/constants';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
 import { IssueCommentsSnapshot, IssueDetail, IssueRelatedPullRequestsSnapshot, GitCodeRepository } from '../../common/models';
@@ -179,6 +180,16 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'openOnWeb') {
 				await this.openOnWeb();
+				return;
+			}
+
+			if (message.command === 'createBranch') {
+				await vscode.commands.executeCommand(COMMAND_ID.createBranchForIssue, {
+					repository: this.context.repository,
+					issueNumber: this.detail?.number ?? this.context.issueNumber,
+					title: this.detail?.title ?? `Issue ${this.context.issueNumber}`,
+					url: this.detail?.url ?? this.context.url,
+				});
 				return;
 			}
 

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CreatePullRequestInput, GitCodeRepository } from '../../common/models';
+import { CreatePullRequestInput, CreatePullRequestInitialIssueContext, GitCodeRepository } from '../../common/models';
 import { Logger } from '../../common/logger';
 import { GitRepository } from '../../common/git/gitTypes';
 import { VIEW_ID_CREATE_PULL_REQUEST } from '../../common/constants';
@@ -33,6 +33,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		repository: GitCodeRepository;
 		sourceBranch: string;
 		localGitRepository?: GitRepository;
+		issueContext?: CreatePullRequestInitialIssueContext;
 	};
 
 	constructor(
@@ -72,10 +73,11 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		repository: GitCodeRepository,
 		sourceBranch: string,
 		localGitRepository?: GitRepository,
+		issueContext?: CreatePullRequestInitialIssueContext,
 	): Promise<void> {
 		// If the view isn't ready yet, store the request
 		if (!this.view) {
-			this.pendingInitialize = { repositories, repository, sourceBranch, localGitRepository };
+			this.pendingInitialize = { repositories, repository, sourceBranch, localGitRepository, issueContext };
 			await this.revealView();
 			return;
 		}
@@ -95,7 +97,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			this.pullRequestService,
 		);
 
-		const defaults = await this.dataModel.initialize(repositories, repository, sourceBranch);
+		const defaults = await this.dataModel.initialize(repositories, repository, sourceBranch, issueContext);
 		this.postMessage({ command: 'initialize', defaults });
 	}
 
@@ -107,7 +109,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 				if (this.pendingInitialize) {
 					const pending = this.pendingInitialize;
 					this.pendingInitialize = undefined;
-					this.initialize(pending.repositories, pending.repository, pending.sourceBranch, pending.localGitRepository);
+					this.initialize(pending.repositories, pending.repository, pending.sourceBranch, pending.localGitRepository, pending.issueContext);
 				} else {
 					const defaults = this.getCurrentDefaults();
 					if (defaults) {
