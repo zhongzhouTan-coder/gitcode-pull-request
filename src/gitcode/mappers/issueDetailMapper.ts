@@ -77,7 +77,7 @@ function mapIssuePriorityDetail(dto: any): IssuePriorityDetail | undefined {
 
 function mapRepositoryRef(dto: any): IssueRepositoryRef {
 	return {
-		id: dto.id !== undefined ? Number(dto.id) : undefined,
+		id: dto?.id !== undefined ? Number(dto.id) : undefined,
 		fullName: dto?.full_name ?? '',
 		name: dto?.name,
 		path: dto?.path,
@@ -154,6 +154,11 @@ export function mapIssueDetail(dto: any): IssueDetail {
 		priority: dto.priority !== undefined ? Number(dto.priority) : undefined,
 		priorityDetail: mapIssuePriorityDetail(dto.issue_priority_detail ?? dto.issuePriorityDetail),
 		milestone: mapIssueMilestone(dto.milestone),
+		securityHole: dto.security_hole !== undefined
+			? Boolean(dto.security_hole)
+			: dto.securityHole !== undefined
+				? Boolean(dto.securityHole)
+				: undefined,
 		visibilityReason: normalizeEmptyString(dto.visibility_reason ?? dto.visibilityReason),
 	};
 }

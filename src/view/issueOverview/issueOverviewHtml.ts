@@ -1,4 +1,5 @@
 import {
+	EditIssueOptions,
 	IssueComment,
 	IssueCommentsSnapshot,
 	IssueDetail,
@@ -16,6 +17,19 @@ function escapeHtml(value: string): string {
 		.replaceAll('>', '&gt;')
 		.replaceAll('"', '&quot;')
 		.replaceAll('\'', '&#39;');
+}
+
+function escapeAttr(value: string): string {
+	return escapeHtml(value);
+}
+
+function serializeForInlineScript(value: unknown): string {
+	return JSON.stringify(value)
+		.replaceAll('<', '\\u003C')
+		.replaceAll('>', '\\u003E')
+		.replaceAll('&', '\\u0026')
+		.replaceAll('\u2028', '\\u2028')
+		.replaceAll('\u2029', '\\u2029');
 }
 
 function formatDate(value: string | undefined): string {
@@ -48,6 +62,11 @@ const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox
 /** Git branch icon (16×16). */
 const BRANCH_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
 	<path d="M4 1.5a2 2 0 0 1 1 3.73v5.54A3.5 3.5 0 0 0 8 7.31l.01-.4A2 2 0 1 1 9.5 6.95v.36A5 5 0 0 1 5 12.25v.52a2 2 0 1 1-1.5 0V5.23A2 2 0 0 1 4 1.5Zm0 1.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Zm6 1.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Zm-6 9a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Z" fill="currentColor"/>
+</svg>`;
+
+/** Compact pencil/edit icon for section editing. */
+const PENCIL_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+	<path d="M11.01 1.427a1.75 1.75 0 0 1 2.475 0l1.088 1.088a1.75 1.75 0 0 1 0 2.475l-8.5 8.5a1.75 1.75 0 0 1-.78.448l-3.08.88a.75.75 0 0 1-.927-.927l.88-3.08a1.75 1.75 0 0 1 .448-.78l8.5-8.5Zm1.414 1.06a.25.25 0 0 0-.353 0l-1.057 1.056 1.44 1.44 1.056-1.057a.25.25 0 0 0 0-.353l-1.086-1.086Zm-2.47 2.117L3.675 10.88a.25.25 0 0 0-.064.112l-.533 1.866 1.866-.533a.25.25 0 0 0 .112-.064l6.278-6.278-1.44-1.44Z"/>
 </svg>`;
 
 function stateBadgeClass(state: 'open' | 'closed'): string {
@@ -148,21 +167,103 @@ function renderRepository(detail: IssueDetail): string {
 	</div>`;
 }
 
-function renderSidebar(detail: IssueDetail): string {
+function renderEditButton(section: string, label: string, disabled: boolean = false): string {
+	return `<div class="edit-icon-slot"><button class="edit-icon-btn" data-section="${escapeAttr(section)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}" ${disabled ? 'disabled' : ''}>${PENCIL_ICON}</button></div>`;
+}
+
+function renderSidebarSection(
+	title: string,
+	section: string,
+	readHtml: string,
+	editHtml: string,
+	options: { editLabel: string; editable: boolean },
+): string {
+	return `<div class="meta-group editable-section" data-section-container="${escapeAttr(section)}">
+		<div class="section-header-row">
+			<h3>${escapeHtml(title)}</h3>
+			${renderEditButton(section, options.editLabel, !options.editable)}
+		</div>
+		<div class="section-read-area" data-section-read="${escapeAttr(section)}">${readHtml}</div>
+		<div class="section-edit-area" data-section-edit="${escapeAttr(section)}" style="display:none">${editHtml}</div>
+		<div class="section-error" data-section-error="${escapeAttr(section)}"></div>
+	</div>`;
+}
+
+function renderAssigneeOptions(detail: IssueDetail, editOptions?: EditIssueOptions): string {
+	if (!editOptions) {
+		return '<div class="section-unavailable">Repository member options are unavailable.</div>';
+	}
+
+	if (editOptions.assignees.length === 0) {
+		return '<div class="empty">No repository members available.</div>';
+	}
+
+	const selected = new Set(detail.assignees.map((user) => user.login));
+	return `<div class="option-list">${editOptions.assignees.map((user) => `<label class="option-row">
+		<input type="checkbox" data-assignee-option="${escapeAttr(user.login)}" ${selected.has(user.login) ? 'checked' : ''}>
+		<span>${user.name && user.name !== user.login ? `${escapeHtml(user.name)} <span class="muted">@${escapeHtml(user.login)}</span>` : `@${escapeHtml(user.login)}`}</span>
+	</label>`).join('')}</div>`;
+}
+
+function renderLabelOptions(detail: IssueDetail, editOptions?: EditIssueOptions): string {
+	if (!editOptions) {
+		return '<div class="section-unavailable">Repository label options are unavailable.</div>';
+	}
+
+	if (editOptions.labels.length === 0) {
+		return '<div class="empty">No repository labels available.</div>';
+	}
+
+	const selected = new Set(detail.labels.map((label) => label.name));
+	return `<div class="option-list">${editOptions.labels.map((label) => `<label class="option-row option-row-label">
+		<input type="checkbox" data-label-option="${escapeAttr(label.name)}" ${selected.has(label.name) ? 'checked' : ''}>
+		<span class="label-chip" style="--label-color:${escapeHtml(labelColor(label.color))}">${escapeHtml(label.name)}</span>
+	</label>`).join('')}</div><div class="edit-help">Select labels from the repository label list.</div>`;
+}
+
+function renderMilestoneOptions(detail: IssueDetail, editOptions?: EditIssueOptions): string {
+	if (!editOptions) {
+		return '<div class="section-unavailable">Repository milestone options are unavailable.</div>';
+	}
+
+	const currentMilestone = detail.milestone?.number;
+	return `<div class="option-list">${[
+		`<label class="option-row"><input type="radio" name="issue-milestone" data-section-input="milestone" value="" ${currentMilestone === undefined ? 'checked' : ''}><span>No milestone</span></label>`,
+		...editOptions.milestones.map((milestone) => `<label class="option-row"><input type="radio" name="issue-milestone" data-section-input="milestone" value="${milestone.number}" ${milestone.number === currentMilestone ? 'checked' : ''}><span>${escapeHtml(milestone.title)}</span></label>`),
+	].join('')}</div>`;
+}
+
+function renderSidebar(detail: IssueDetail, editOptions?: EditIssueOptions): string {
 	return `
 		<div class="card sidebar-card">
-			<div class="meta-group">
-				<h3>Assignees</h3>
-				${renderUsers(detail.assignees)}
-			</div>
-			<div class="meta-group">
-				<h3>Labels</h3>
-				${renderLabels(detail.labels)}
-			</div>
-			<div class="meta-group">
-				<h3>Milestone</h3>
-				${renderMilestone(detail)}
-			</div>
+			${renderSidebarSection(
+				'Assignees',
+				'assignees',
+				renderUsers(detail.assignees),
+				`${renderAssigneeOptions(detail, editOptions)}<div class="section-actions-inline"><button class="btn-primary btn-save-section" data-section="assignees">Save</button><button class="btn-secondary btn-cancel-section" data-section="assignees">Cancel</button></div>`,
+				{ editLabel: 'Edit assignees', editable: Boolean(editOptions) },
+			)}
+			${renderSidebarSection(
+				'Labels',
+				'labels',
+				renderLabels(detail.labels),
+				`${renderLabelOptions(detail, editOptions)}<div class="section-actions-inline"><button class="btn-primary btn-save-section" data-section="labels">Save</button><button class="btn-secondary btn-cancel-section" data-section="labels">Cancel</button></div>`,
+				{ editLabel: 'Edit labels', editable: Boolean(editOptions) },
+			)}
+			${renderSidebarSection(
+				'Milestone',
+				'milestone',
+				renderMilestone(detail),
+				`${renderMilestoneOptions(detail, editOptions)}<div class="section-actions-inline"><button class="btn-primary btn-save-section" data-section="milestone">Save</button><button class="btn-secondary btn-cancel-section" data-section="milestone">Cancel</button></div>`,
+				{ editLabel: 'Edit milestone', editable: Boolean(editOptions) },
+			)}
+			${detail.securityHole === undefined ? '' : renderSidebarSection(
+				'Security issue',
+				'securityHole',
+				`<div class="sidebar-value">${detail.securityHole ? 'Yes' : 'No'}</div>`,
+				`<label class="checkbox-row"><input type="checkbox" data-section-input="securityHole" ${detail.securityHole ? 'checked' : ''}><span>Private/security issue</span></label><div class="section-actions-inline"><button class="btn-primary btn-save-section" data-section="securityHole">Save</button><button class="btn-secondary btn-cancel-section" data-section="securityHole">Cancel</button></div>`,
+				{ editLabel: 'Edit security issue', editable: true },
+			)}
 		</div>
 		<div class="card sidebar-card">
 			<div class="sidebar-field-grid">
@@ -202,6 +303,7 @@ export interface IssueOverviewHtmlOptions {
 	commentsError?: Error;
 	relatedPullRequests?: IssueRelatedPullRequestsSnapshot;
 	relatedPullRequestsError?: Error;
+	editOptions?: EditIssueOptions;
 	nonce: string;
 	includeScripts?: boolean;
 }
@@ -364,13 +466,31 @@ function renderConversation(
 }
 
 export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string {
-	const { detail, comments, commentsError, relatedPullRequests, relatedPullRequestsError, nonce, includeScripts = true } = options;
+	const { detail, comments, commentsError, relatedPullRequests, relatedPullRequestsError, editOptions, nonce, includeScripts = true } = options;
 
 	const descriptionHtml = detail.body
 		? renderMarkdown(detail.body)
 		: '<div class="empty">No description provided.</div>';
 
 	const openOnWebDisabled = detail.url ? '' : 'disabled';
+	const stateAction = detail.state === 'open' ? 'close' : 'reopen';
+	const stateActionLabel = detail.state === 'open' ? 'Close issue' : 'Reopen issue';
+	const editOptionsJson = editOptions
+		? serializeForInlineScript({
+			assignees: editOptions.assignees.map((user) => ({ login: user.login, name: user.name })),
+			labels: editOptions.labels.map((label) => ({ id: label.id, name: label.name, color: label.color })),
+			milestones: editOptions.milestones.map((milestone) => ({ number: milestone.number, title: milestone.title, state: milestone.state })),
+		})
+		: 'null';
+	const detailSnapshotJson = serializeForInlineScript({
+		title: detail.title,
+		body: detail.body,
+		state: detail.state,
+		assigneeLogins: detail.assignees.map((user) => user.login),
+		labelNames: detail.labels.map((label) => label.name),
+		milestoneNumber: detail.milestone?.number ?? null,
+		securityHole: detail.securityHole ?? null,
+	});
 
 	// Extra badges
 	const extraBadges: string[] = [];
@@ -408,6 +528,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			--badge-state: #8250df;
 			--badge-type: #0969da;
 			--card: var(--vscode-sideBar-background, rgba(127,127,127,0.08));
+			--danger: var(--vscode-errorForeground, #f85149);
 		}
 		body {
 			font-family: var(--vscode-font-family);
@@ -421,6 +542,19 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.header { margin-bottom: 24px; }
 		.title-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
 		.title-row h1 { font-size: 24px; margin: 0; }
+		.title-edit-section {
+			flex: 1 1 320px;
+			min-width: 0;
+		}
+		.title-heading-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			min-width: 0;
+		}
+		.title-heading-row [data-section-read="title"] {
+			min-width: 0;
+		}
 		.meta-row { color: var(--muted); display: flex; flex-wrap: wrap; gap: 12px; }
 		.badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; color: white; }
 		.badge-open { background: var(--badge-open); }
@@ -491,6 +625,105 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		}
 		.meta-group + .meta-group { margin-top: 16px; }
 		.meta-group h3 { margin: 0 0 8px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+		.section-header-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+			margin-bottom: 8px;
+		}
+		.section-header-row h2,
+		.section-header-row h3 {
+			margin-bottom: 0;
+		}
+		.edit-icon-slot {
+			width: 32px;
+			display: flex;
+			justify-content: flex-end;
+			flex-shrink: 0;
+		}
+		.edit-icon-btn {
+			width: 28px;
+			height: 28px;
+			justify-content: center;
+			padding: 0;
+			background: transparent;
+			color: var(--muted);
+			opacity: 0.75;
+		}
+		.editable-section:hover .edit-icon-btn:not(:disabled),
+		.edit-icon-btn:focus-visible {
+			opacity: 1;
+			color: var(--vscode-foreground);
+		}
+		.section-read-area,
+		.section-edit-area {
+			min-width: 0;
+		}
+		.section-edit-area input[type="text"],
+		.section-edit-area textarea {
+			width: 100%;
+			box-sizing: border-box;
+			padding: 8px 10px;
+			border-radius: 6px;
+			border: 1px solid var(--border);
+			background: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+			font: inherit;
+		}
+		.section-edit-area textarea {
+			resize: vertical;
+			min-height: 140px;
+		}
+		.section-actions-inline {
+			display: flex;
+			gap: 8px;
+			margin-top: 10px;
+			flex-wrap: wrap;
+		}
+		.btn-primary {
+			background: var(--vscode-button-background);
+			color: var(--vscode-button-foreground);
+		}
+		.btn-secondary {
+			background: transparent;
+			color: var(--vscode-foreground);
+		}
+		.section-error,
+		.action-error {
+			color: var(--danger);
+			font-size: 12px;
+			min-height: 18px;
+			margin-top: 8px;
+		}
+		.section-unavailable,
+		.edit-help {
+			color: var(--muted);
+			font-size: 12px;
+		}
+		.option-list {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+		.option-row,
+		.checkbox-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+		.option-row-label {
+			align-items: center;
+		}
+		.checkbox-row input,
+		.option-row input {
+			margin: 0;
+		}
+		.title-value {
+			font-size: 18px;
+			font-weight: 700;
+			line-height: 1.4;
+		}
 		.meta-list { margin: 0; padding-left: 18px; }
 		.meta-list li { margin: 4px 0; }
 		.sidebar-card {
@@ -577,7 +810,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			color: var(--vscode-textLink-foreground);
 			font: inherit;
 			cursor: pointer;
-			text-align: left;
 			padding: 2px 4px;
 			border-radius: 4px;
 		}
@@ -600,7 +832,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			align-items: baseline;
 		}
 		.date-label {
-			color: var(--muted);
 			font-size: 11px;
 			font-weight: 700;
 			letter-spacing: 0.04em;
@@ -752,46 +983,280 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 	</style>
 </head>
 <body>
-	<div class="header">
-		<div class="title-row">
-			<span class="badge ${stateBadgeClass(detail.state)}">${stateLabel(detail.state)}</span>
-			${extraBadges.join('')}
-			<h1>${escapeHtml(detail.title)} <span class="muted">#${detail.number}</span></h1>
-		</div>
+		<div class="header">
+			<div class="title-row">
+				<span class="badge ${stateBadgeClass(detail.state)}">${stateLabel(detail.state)}</span>
+				${extraBadges.join('')}
+				<div class="editable-section title-edit-section" data-section-container="title">
+					<div class="title-heading-row">
+						<div class="section-read-area" data-section-read="title">
+							<h1>${escapeHtml(detail.title)} <span class="muted">#${detail.number}</span></h1>
+						</div>
+						${renderEditButton('title', 'Edit title')}
+					</div>
+					<div class="section-edit-area" data-section-edit="title" style="display:none">
+						<input type="text" data-section-input="title" value="${escapeAttr(detail.title)}" maxlength="255">
+						<div class="section-actions-inline"><button class="btn-primary btn-save-section" data-section="title">Save</button><button class="btn-secondary btn-cancel-section" data-section="title">Cancel</button></div>
+					</div>
+					<div class="section-error" data-section-error="title"></div>
+				</div>
+			</div>
 		<div class="meta-row">
 			<span>@${escapeHtml(detail.author.login)} opened this issue</span>
 			<span>· ${escapeHtml(formatDate(detail.createdAt))}</span>
 			${detail.updatedAt && detail.updatedAt !== detail.createdAt ? `<span>· Updated ${escapeHtml(formatDate(detail.updatedAt))}</span>` : ''}
 		</div>
-		<div class="actions">
-			<button id="refresh-button" class="secondary">${REFRESH_ICON} Refresh</button>
-			<button id="create-branch-button" class="secondary">${BRANCH_ICON} Create Branch</button>
-			<button id="open-web-button" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
+			<div class="actions">
+				<button id="refresh-button" class="secondary">${REFRESH_ICON} Refresh</button>
+				<button id="create-branch-button" class="secondary">${BRANCH_ICON} Create Branch</button>
+				<button id="open-web-button" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
+				<button id="state-action-button" data-state-action="${stateAction}">${stateActionLabel}</button>
+			</div>
+			<div class="action-error" id="state-action-error"></div>
 		</div>
-	</div>
-	<div class="layout">
-		<main>
-			<section>
-				<h2>Description</h2>
-				<div class="description">${descriptionHtml}</div>
-			</section>
-			${relatedPrsHtml}
-			${conversationHtml}
-		</main>
-		<aside>
-			${renderSidebar(detail)}
-		</aside>
-	</div>
-	${includeScripts ? `<script nonce="${nonce}">
-		const vscode = acquireVsCodeApi();
-		document.getElementById('refresh-button')?.addEventListener('click', () => {
-			vscode.postMessage({ command: 'refresh' });
-		});
+		<div class="layout">
+			<main>
+				<section class="editable-section" data-section-container="body">
+					<div class="section-header-row">
+						<h2>Description</h2>
+						${renderEditButton('body', 'Edit description')}
+					</div>
+					<div class="section-read-area description" data-section-read="body">${descriptionHtml}</div>
+					<div class="section-edit-area" data-section-edit="body" style="display:none">
+						<textarea data-section-input="body" rows="10">${escapeHtml(detail.body)}</textarea>
+						<div class="section-actions-inline"><button class="btn-primary btn-save-section" data-section="body">Save</button><button class="btn-secondary btn-cancel-section" data-section="body">Cancel</button></div>
+					</div>
+					<div class="section-error" data-section-error="body"></div>
+				</section>
+				${relatedPrsHtml}
+				${conversationHtml}
+			</main>
+			<aside>
+				${renderSidebar(detail, editOptions)}
+			</aside>
+		</div>
+		${includeScripts ? `<script nonce="${nonce}">
+			const vscode = acquireVsCodeApi();
+			const editOptions = ${editOptionsJson};
+			const detailSnapshot = ${detailSnapshotJson};
+			let activeSection = null;
+			let pendingStateAction = null;
+
+			function getSectionEdit(section) {
+				return document.querySelector('[data-section-edit="' + section + '"]');
+			}
+
+			function getSectionRead(section) {
+				return document.querySelector('[data-section-read="' + section + '"]');
+			}
+
+			function getSectionError(section) {
+				return document.querySelector('[data-section-error="' + section + '"]');
+			}
+
+			function setActionError(message) {
+				var errorEl = document.getElementById('state-action-error');
+				if (errorEl) {
+					errorEl.textContent = message || '';
+				}
+			}
+
+			function clearSectionError(section) {
+				var errorEl = getSectionError(section);
+				if (errorEl) {
+					errorEl.textContent = '';
+				}
+			}
+
+			function setSectionSaving(section, saving) {
+				var editEl = getSectionEdit(section);
+				if (!editEl) {
+					return;
+				}
+
+				editEl.querySelectorAll('input, textarea, button').forEach(function(el) {
+					el.disabled = saving;
+				});
+			}
+
+			function resetSectionState(section) {
+				if (section === 'title') {
+					var titleInput = document.querySelector('[data-section-input="title"]');
+					if (titleInput) {
+						titleInput.value = detailSnapshot.title || '';
+					}
+				}
+				if (section === 'body') {
+					var bodyInput = document.querySelector('[data-section-input="body"]');
+					if (bodyInput) {
+						bodyInput.value = detailSnapshot.body || '';
+					}
+				}
+				if (section === 'assignees') {
+					document.querySelectorAll('[data-assignee-option]').forEach(function(el) {
+						el.checked = detailSnapshot.assigneeLogins.indexOf(el.getAttribute('data-assignee-option')) >= 0;
+					});
+				}
+				if (section === 'labels') {
+					document.querySelectorAll('[data-label-option]').forEach(function(el) {
+						el.checked = detailSnapshot.labelNames.indexOf(el.getAttribute('data-label-option')) >= 0;
+					});
+				}
+				if (section === 'milestone') {
+					document.querySelectorAll('[data-section-input="milestone"]').forEach(function(el) {
+						var value = el.value === '' ? null : Number(el.value);
+						el.checked = value === detailSnapshot.milestoneNumber;
+					});
+				}
+				if (section === 'securityHole') {
+					var securityInput = document.querySelector('[data-section-input="securityHole"]');
+					if (securityInput) {
+						securityInput.checked = Boolean(detailSnapshot.securityHole);
+					}
+				}
+			}
+
+			function showSection(section) {
+				if (activeSection && activeSection !== section) {
+					hideSection(activeSection, true);
+				}
+
+				clearSectionError(section);
+				var readEl = getSectionRead(section);
+				var editEl = getSectionEdit(section);
+				if (!readEl || !editEl) {
+					return;
+				}
+
+				readEl.style.display = 'none';
+				editEl.style.display = 'block';
+				activeSection = section;
+				var focusEl = editEl.querySelector('input, textarea');
+				if (focusEl) {
+					focusEl.focus();
+				}
+			}
+
+			function hideSection(section, reset) {
+				var readEl = getSectionRead(section);
+				var editEl = getSectionEdit(section);
+				if (!readEl || !editEl) {
+					return;
+				}
+
+				if (reset) {
+					resetSectionState(section);
+				}
+				clearSectionError(section);
+				readEl.style.display = '';
+				editEl.style.display = 'none';
+				if (activeSection === section) {
+					activeSection = null;
+				}
+			}
+
+			function collectCheckedValues(selector, attributeName) {
+				var values = [];
+				document.querySelectorAll(selector).forEach(function(el) {
+					if (el.checked) {
+						values.push(el.getAttribute(attributeName) || '');
+					}
+				});
+				return values;
+			}
+
+			function buildSectionInput(section) {
+				if (section === 'title') {
+					var titleInput = document.querySelector('[data-section-input="title"]');
+					return { title: (titleInput ? titleInput.value : '').trim() };
+				}
+
+				if (section === 'body') {
+					var bodyInput = document.querySelector('[data-section-input="body"]');
+					return { title: detailSnapshot.title || '', body: bodyInput ? bodyInput.value : '' };
+				}
+
+				if (section === 'assignees') {
+					return { title: detailSnapshot.title || '', assignees: collectCheckedValues('[data-assignee-option]', 'data-assignee-option').join(',') };
+				}
+
+				if (section === 'labels') {
+					return { title: detailSnapshot.title || '', labels: collectCheckedValues('[data-label-option]', 'data-label-option').join(',') };
+				}
+
+				if (section === 'milestone') {
+					var selectedMilestone = document.querySelector('[data-section-input="milestone"]:checked');
+					var input = { title: detailSnapshot.title || '', milestoneNumber: null };
+					if (selectedMilestone && selectedMilestone.value !== '') {
+						input.milestoneNumber = Number(selectedMilestone.value);
+					}
+					return input;
+				}
+
+				if (section === 'securityHole') {
+					var securityInput = document.querySelector('[data-section-input="securityHole"]');
+					return { title: detailSnapshot.title || '', securityHole: Boolean(securityInput && securityInput.checked) };
+				}
+
+				return { title: detailSnapshot.title || '' };
+			}
+
+			document.getElementById('refresh-button')?.addEventListener('click', () => {
+				vscode.postMessage({ command: 'refresh' });
+			});
 		document.getElementById('create-branch-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'createBranch' });
 		});
 		document.getElementById('open-web-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'openOnWeb' });
+		});
+		document.getElementById('state-action-button')?.addEventListener('click', () => {
+			var button = document.getElementById('state-action-button');
+			if (!button) {
+				return;
+			}
+			setActionError('');
+			pendingStateAction = button.getAttribute('data-state-action');
+			button.disabled = true;
+			button.textContent = pendingStateAction === 'close' ? 'Closing issue...' : 'Reopening issue...';
+			vscode.postMessage({
+				command: 'changeIssueState',
+				state: pendingStateAction,
+			});
+		});
+		document.querySelectorAll('.edit-icon-btn[data-section]').forEach((el) => {
+			el.addEventListener('click', () => {
+				if (el.disabled) {
+					return;
+				}
+				showSection(el.getAttribute('data-section'));
+			});
+		});
+		document.querySelectorAll('.btn-cancel-section').forEach((el) => {
+			el.addEventListener('click', () => {
+				hideSection(el.getAttribute('data-section'), true);
+			});
+		});
+		document.querySelectorAll('.btn-save-section').forEach((el) => {
+			el.addEventListener('click', () => {
+				var section = el.getAttribute('data-section');
+				clearSectionError(section);
+				setSectionSaving(section, true);
+				var input = buildSectionInput(section);
+				if (section === 'title' && !input.title) {
+					setSectionSaving(section, false);
+					var errorEl = getSectionError(section);
+					if (errorEl) {
+						errorEl.textContent = 'Title is required.';
+					}
+					return;
+				}
+				vscode.postMessage({
+					command: 'saveIssueSection',
+					section: section,
+					input: input,
+				});
+			});
 		});
 		document.querySelectorAll('[data-action="openUrl"]').forEach((el) => {
 			el.addEventListener('click', () => {
@@ -807,6 +1272,26 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 					prTargetRepository: el.dataset.prTargetRepository,
 				});
 			});
+		});
+		window.addEventListener('message', (event) => {
+			var msg = event.data || {};
+			if (msg.command === 'sectionSaveError') {
+				setSectionSaving(msg.section, false);
+				var errorEl = getSectionError(msg.section);
+				if (errorEl) {
+					errorEl.textContent = msg.message || 'Unable to update issue section.';
+				}
+				showSection(msg.section);
+			}
+			if (msg.command === 'issueStateChangeError') {
+				var button = document.getElementById('state-action-button');
+				if (button) {
+					button.disabled = false;
+					button.textContent = pendingStateAction === 'close' ? 'Close issue' : 'Reopen issue';
+				}
+				setActionError(msg.message || 'Unable to update issue state.');
+				pendingStateAction = null;
+			}
 		});
 	</script>` : ''}
 </body>

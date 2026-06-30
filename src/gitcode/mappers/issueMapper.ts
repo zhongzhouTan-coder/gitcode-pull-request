@@ -1,4 +1,4 @@
-import { IssueUser, IssueLabel, IssueMilestone, IssueSummary } from '../../common/models';
+import { EditIssueInput, GitCodeRepository, IssueUser, IssueLabel, IssueMilestone, IssueSummary } from '../../common/models';
 
 function mapIssueUser(dto: any): IssueUser {
 	return {
@@ -75,4 +75,32 @@ export function mapIssue(dto: any): IssueSummary {
 		priority: dto.priority !== undefined ? Number(dto.priority) : undefined,
 		milestone: mapIssueMilestone(dto.milestone),
 	};
+}
+
+export function mapEditIssueInput(repository: GitCodeRepository, input: EditIssueInput): Record<string, unknown> {
+	const body: Record<string, unknown> = {
+		repo: repository.name,
+		title: input.title,
+	};
+
+	if (input.body !== undefined) {
+		body.body = input.body;
+	}
+	if (input.state !== undefined) {
+		body.state = input.state;
+	}
+	if (input.assignees !== undefined) {
+		body.assignee = input.assignees;
+	}
+	if (input.milestoneNumber !== undefined) {
+		body.milestone = input.milestoneNumber;
+	}
+	if (input.labels !== undefined) {
+		body.labels = input.labels;
+	}
+	if (input.securityHole !== undefined) {
+		body.security_hole = input.securityHole;
+	}
+
+	return body;
 }

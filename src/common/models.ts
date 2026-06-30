@@ -296,6 +296,7 @@ export interface IssueDetail {
 	priority?: number;
 	priorityDetail?: IssuePriorityDetail;
 	milestone?: IssueMilestone;
+	securityHole?: boolean;
 	visibilityReason?: string;
 }
 
@@ -464,6 +465,35 @@ export interface CreateIssueInput {
 	securityHole: boolean;
 	templatePath?: string;
 }
+
+export interface EditIssueInput {
+	title: string;
+	body?: string;
+	state?: 'reopen' | 'close';
+	assignees?: string;
+	milestoneNumber?: number | null;
+	labels?: string;
+	securityHole?: boolean;
+}
+
+export interface EditIssueOptions {
+	assignees: GitCodeUser[];
+	labels: GitCodeLabel[];
+	milestones: GitCodeMilestone[];
+}
+
+export interface EditIssueSnapshot {
+	detail: IssueDetail;
+	options: EditIssueOptions;
+}
+
+export type EditIssueSection =
+	| 'title'
+	| 'body'
+	| 'assignees'
+	| 'labels'
+	| 'milestone'
+	| 'securityHole';
 
 export interface IssueTemplateOption {
 	label: string;

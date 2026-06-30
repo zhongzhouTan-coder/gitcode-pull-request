@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { CreateIssueInput, GitCodeRepository } from '../common/models';
+import { CreateIssueInput, EditIssueInput, GitCodeRepository } from '../common/models';
 import { IssueService } from '../gitcode/services/issueService';
 
 suite('IssueService', () => {
@@ -61,5 +61,58 @@ suite('IssueService', () => {
 		});
 		assert.strictEqual(result.number, 1);
 		assert.strictEqual(result.htmlUrl, 'https://gitcode.com/org/repo/issues/1');
+	});
+
+	test('editIssue sends the documented endpoint and request body', async () => {
+		let requestPath = '';
+		let requestBody: unknown;
+		const service = new IssueService({
+			get: async () => undefined as never,
+			post: async () => undefined as never,
+			patch: async (path: string, body?: unknown) => {
+				requestPath = path;
+				requestBody = body;
+				return {
+					id: 4126451,
+					number: '1',
+					state: 'closed',
+					title: 'Issue Title',
+					body: 'Updated issue description',
+					security_hole: true,
+					html_url: 'https://gitcode.com/org/repo/issues/1',
+					user: { login: 'alice', name: 'Alice' },
+					assignees: [{ login: 'alice', name: 'Alice' }],
+					labels: [{ id: 1, name: 'bug' }],
+					created_at: '2026-06-30T15:56:11+08:00',
+					updated_at: '2026-06-30T16:00:00+08:00',
+				};
+			},
+		} as any);
+
+		const input: EditIssueInput = {
+			title: 'Issue Title',
+			body: 'Updated issue description',
+			state: 'close',
+			assignees: 'alice,bob',
+			milestoneNumber: 7,
+			labels: 'bug,performance',
+			securityHole: true,
+		};
+
+		const result = await service.editIssue(repository, 1, input);
+
+		assert.strictEqual(requestPath, '/api/v5/repos/org/repo/issues/1');
+		assert.deepStrictEqual(requestBody, {
+			repo: 'repo',
+			title: 'Issue Title',
+			body: 'Updated issue description',
+			state: 'close',
+			assignee: 'alice,bob',
+			milestone: 7,
+			labels: 'bug,performance',
+			security_hole: true,
+		});
+		assert.strictEqual(result.state, 'closed');
+		assert.strictEqual(result.securityHole, true);
 	});
 });

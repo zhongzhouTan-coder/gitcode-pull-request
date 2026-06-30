@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { GitCodeRepository } from '../common/models';
-import { isTrustedGitCodeUrl, resolveRelatedPullRequestRepository } from '../view/issueOverview/issueOverviewPanel';
+import { EditIssueOptions, GitCodeRepository, IssueDetail } from '../common/models';
+import { isTrustedGitCodeUrl, resolveRelatedPullRequestRepository, validateIssueSectionInput, validateIssueStateChange } from '../view/issueOverview/issueOverviewPanel';
 
 suite('IssueOverviewPanel', () => {
 	const repository: GitCodeRepository = {
@@ -9,6 +9,29 @@ suite('IssueOverviewPanel', () => {
 		name: 'issue-repo',
 		fullName: 'issue-org/issue-repo',
 		webUrl: 'https://gitcode.com/issue-org/issue-repo',
+	};
+
+	const detail: IssueDetail = {
+		id: 1,
+		number: 9,
+		title: 'Issue title',
+		state: 'open',
+		body: 'Issue body',
+		author: { login: 'alice' },
+		assignees: [{ login: 'alice' }],
+		labels: [{ id: 1, name: 'bug' }],
+		comments: 0,
+		createdAt: '2026-06-30T10:00:00+08:00',
+		updatedAt: '2026-06-30T10:00:00+08:00',
+		repository: { fullName: 'issue-org/issue-repo' },
+		milestone: { number: 2, title: 'Sprint 2' },
+		securityHole: true,
+	};
+
+	const editOptions: EditIssueOptions = {
+		assignees: [{ login: 'alice' }, { login: 'bob' }],
+		labels: [{ id: 1, name: 'bug' }, { id: 2, name: 'docs' }],
+		milestones: [{ number: 2, title: 'Sprint 2' }, { number: 3, title: 'Sprint 3' }],
 	};
 
 	test('accepts HTTP(S) URLs from the configured GitCode origin', () => {
@@ -56,5 +79,31 @@ suite('IssueOverviewPanel', () => {
 			resolveRelatedPullRequestRepository(repository, undefined, 'https://example.com/pr-org/pr-repo/merge_requests/42').fullName,
 			repository.fullName,
 		);
+	});
+
+	test('rejects empty titles and invalid loaded option selections', () => {
+		assert.deepStrictEqual(
+			validateIssueSectionInput('title', { title: '   ' }, detail, editOptions),
+			['Title is required.'],
+		);
+		assert.deepStrictEqual(
+			validateIssueSectionInput('assignees', { title: 'Issue title', assignees: 'alice,charlie' }, detail, editOptions),
+			['Selected assignees must come from the repository member list.'],
+		);
+		assert.deepStrictEqual(
+			validateIssueSectionInput('labels', { title: 'Issue title', labels: 'bug,unknown' }, detail, editOptions),
+			['Selected labels must come from the repository label list.'],
+		);
+		assert.deepStrictEqual(
+			validateIssueSectionInput('milestone', { title: 'Issue title', milestoneNumber: 99 }, detail, editOptions),
+			['Selected milestone must come from the repository milestone list.'],
+		);
+	});
+
+	test('validates close and reopen issue state actions', () => {
+		assert.deepStrictEqual(validateIssueStateChange('invalid', detail), ['Issue state action must be close or reopen.']);
+		assert.deepStrictEqual(validateIssueStateChange('close', detail), []);
+		assert.deepStrictEqual(validateIssueStateChange('reopen', detail), ['Only closed issues can be reopened.']);
+		assert.deepStrictEqual(validateIssueStateChange('reopen', { ...detail, state: 'closed' }), []);
 	});
 });

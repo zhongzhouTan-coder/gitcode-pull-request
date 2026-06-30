@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../common/constants';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
-import { IssueCommentsSnapshot, IssueDetail, IssueRelatedPullRequestsSnapshot, GitCodeRepository } from '../../common/models';
+import { EditIssueInput, EditIssueOptions, EditIssueSection, GitCodeRepository, IssueCommentsSnapshot, IssueDetail, IssueRelatedPullRequestsSnapshot } from '../../common/models';
 import { getIssueErrorHtml, getIssueLoadingHtml, getIssueOverviewHtml } from './issueOverviewHtml';
 import { IssueOverviewStore } from './issueOverviewStore';
 import { IssueCommentsStore } from './issueCommentsStore';
@@ -11,6 +11,7 @@ import { IssueRelatedPullRequestsStore } from './issueRelatedPullRequestsStore';
 import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
+import { IssueTreeStore } from '../state/issueTreeStore';
 
 interface IssueOverviewContext {
 	repository: GitCodeRepository;
@@ -20,6 +21,100 @@ interface IssueOverviewContext {
 
 function createNonce(): string {
 	return crypto.randomBytes(16).toString('base64');
+}
+
+function parseCsvValues(value: string | undefined): string[] {
+	if (value === undefined) {
+		return [];
+	}
+
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const raw of value.split(',')) {
+		const normalized = raw.trim();
+		if (!normalized || seen.has(normalized)) {
+			continue;
+		}
+
+		seen.add(normalized);
+		result.push(normalized);
+	}
+
+	return result;
+}
+
+export function validateIssueSectionInput(
+	section: EditIssueSection,
+	input: EditIssueInput,
+	detail: IssueDetail,
+	editOptions?: EditIssueOptions,
+): string[] {
+	const errors: string[] = [];
+	if (!input.title.trim()) {
+		errors.push('Title is required.');
+	}
+
+	if (section === 'assignees') {
+		if (!editOptions) {
+			errors.push('Assignee options are unavailable.');
+			return errors;
+		}
+
+		const allowed = new Set(editOptions.assignees.map((user) => user.login));
+		const invalid = parseCsvValues(input.assignees).filter((login) => !allowed.has(login));
+		if (invalid.length > 0) {
+			errors.push('Selected assignees must come from the repository member list.');
+		}
+	}
+
+	if (section === 'labels') {
+		if (!editOptions) {
+			errors.push('Label options are unavailable.');
+			return errors;
+		}
+
+		const allowed = new Set(editOptions.labels.map((label) => label.name));
+		const invalid = parseCsvValues(input.labels).filter((name) => !allowed.has(name));
+		if (invalid.length > 0) {
+			errors.push('Selected labels must come from the repository label list.');
+		}
+	}
+
+	if (section === 'milestone') {
+		if (!editOptions) {
+			errors.push('Milestone options are unavailable.');
+			return errors;
+		}
+
+		if (input.milestoneNumber !== undefined && input.milestoneNumber !== null) {
+			const allowed = new Set(editOptions.milestones.map((milestone) => milestone.number));
+			if (!allowed.has(input.milestoneNumber)) {
+				errors.push('Selected milestone must come from the repository milestone list.');
+			}
+		}
+	}
+
+	if (section === 'securityHole' && detail.securityHole === undefined) {
+		errors.push('Security issue state is unavailable for this issue.');
+	}
+
+	return errors;
+}
+
+export function validateIssueStateChange(requestedState: string, detail: IssueDetail): string[] {
+	if (requestedState !== 'close' && requestedState !== 'reopen') {
+		return ['Issue state action must be close or reopen.'];
+	}
+
+	if (requestedState === 'close' && detail.state !== 'open') {
+		return ['Only open issues can be closed.'];
+	}
+
+	if (requestedState === 'reopen' && detail.state !== 'closed') {
+		return ['Only closed issues can be reopened.'];
+	}
+
+	return [];
 }
 
 function keyFor(repository: GitCodeRepository, issueNumber: number): string {
@@ -86,6 +181,11 @@ export function resolveRelatedPullRequestRepository(
 export class IssueOverviewPanel implements vscode.Disposable {
 	private static readonly panels = new Map<string, IssueOverviewPanel>();
 	private static activePanel: IssueOverviewPanel | undefined;
+	private static treeStore: IssueTreeStore | undefined;
+
+	static setEditDependencies(treeStore: IssueTreeStore): void {
+		this.treeStore = treeStore;
+	}
 
 	static async createOrShow(
 		context: IssueOverviewContext,
@@ -142,6 +242,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private commentsError?: Error;
 	private relatedPullRequestsSnapshot?: IssueRelatedPullRequestsSnapshot;
 	private relatedPullRequestsError?: Error;
+	private editOptions?: EditIssueOptions;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -172,6 +273,9 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			prNumber?: number;
 			prUrl?: string;
 			prTargetRepository?: string;
+			section?: EditIssueSection;
+			input?: EditIssueInput;
+			state?: string;
 		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
@@ -190,6 +294,16 @@ export class IssueOverviewPanel implements vscode.Disposable {
 					title: this.detail?.title ?? `Issue ${this.context.issueNumber}`,
 					url: this.detail?.url ?? this.context.url,
 				});
+				return;
+			}
+
+			if (message.command === 'saveIssueSection' && message.section && message.input) {
+				await this.handleSaveSection(message.section, message.input);
+				return;
+			}
+
+			if (message.command === 'changeIssueState' && message.state) {
+				await this.handleChangeIssueState(message.state);
 				return;
 			}
 
@@ -228,6 +342,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.commentsError = undefined;
 			this.relatedPullRequestsSnapshot = undefined;
 			this.relatedPullRequestsError = undefined;
+			this.editOptions = undefined;
 		}
 
 		this.panel.webview.html = getIssueLoadingHtml(
@@ -259,38 +374,45 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			commentsError: this.commentsError,
 			relatedPullRequests: this.relatedPullRequestsSnapshot,
 			relatedPullRequestsError: this.relatedPullRequestsError,
+			editOptions: this.editOptions,
 			nonce: createNonce(),
 		});
 
-		// Load comments and related pull requests independently so issue details
-		// remain visible if either request is slow or fails.
-		try {
-			this.commentsSnapshot = await this.commentsStore.getComments(
-				this.context.repository,
-				this.context.issueNumber,
-			);
+		const [commentsResult, relatedPullRequestsResult, editOptionsResult] = await Promise.allSettled([
+			this.commentsStore.getComments(this.context.repository, this.context.issueNumber),
+			this.relatedPrsStore.getPullRequests(this.context.repository, this.context.issueNumber),
+			this.store.getEditOptions(this.context.repository),
+		]);
+
+		if (commentsResult.status === 'fulfilled') {
+			this.commentsSnapshot = commentsResult.value;
 			this.commentsError = undefined;
-		} catch (error) {
+		} else {
 			this.logger.error(
-				`Failed to load comments for issue #${this.context.issueNumber}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load comments for issue #${this.context.issueNumber}: ${commentsResult.reason instanceof Error ? commentsResult.reason.message : String(commentsResult.reason)}`,
 			);
-			this.commentsError = error instanceof Error ? error : new Error(String(error));
+			this.commentsError = commentsResult.reason instanceof Error ? commentsResult.reason : new Error(String(commentsResult.reason));
 			this.commentsSnapshot = undefined;
 		}
 
-		// Load related pull requests independently
-		try {
-			this.relatedPullRequestsSnapshot = await this.relatedPrsStore.getPullRequests(
-				this.context.repository,
-				this.context.issueNumber,
-			);
+		if (relatedPullRequestsResult.status === 'fulfilled') {
+			this.relatedPullRequestsSnapshot = relatedPullRequestsResult.value;
 			this.relatedPullRequestsError = undefined;
-		} catch (error) {
+		} else {
 			this.logger.error(
-				`Failed to load related pull requests for issue #${this.context.issueNumber}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load related pull requests for issue #${this.context.issueNumber}: ${relatedPullRequestsResult.reason instanceof Error ? relatedPullRequestsResult.reason.message : String(relatedPullRequestsResult.reason)}`,
 			);
-			this.relatedPullRequestsError = error instanceof Error ? error : new Error(String(error));
+			this.relatedPullRequestsError = relatedPullRequestsResult.reason instanceof Error ? relatedPullRequestsResult.reason : new Error(String(relatedPullRequestsResult.reason));
 			this.relatedPullRequestsSnapshot = undefined;
+		}
+
+		if (editOptionsResult.status === 'fulfilled') {
+			this.editOptions = editOptionsResult.value;
+		} else {
+			this.logger.debug(
+				`Failed to load edit options for issue #${this.context.issueNumber}: ${editOptionsResult.reason instanceof Error ? editOptionsResult.reason.message : String(editOptionsResult.reason)}`,
+			);
+			this.editOptions = undefined;
 		}
 
 		this.panel.webview.html = getIssueOverviewHtml({
@@ -299,8 +421,111 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			commentsError: this.commentsError,
 			relatedPullRequests: this.relatedPullRequestsSnapshot,
 			relatedPullRequestsError: this.relatedPullRequestsError,
+			editOptions: this.editOptions,
 			nonce: createNonce(),
 		});
+	}
+
+	private async handleSaveSection(section: EditIssueSection, input: EditIssueInput): Promise<void> {
+		if (!this.detail) {
+			return;
+		}
+
+		const errors = validateIssueSectionInput(section, input, this.detail, this.editOptions);
+		if (errors.length > 0) {
+			this.panel.webview.postMessage({
+				command: 'sectionSaveError',
+				section,
+				message: errors.join(' '),
+			});
+			return;
+		}
+
+		try {
+			await this.store.editIssue(this.context.repository, this.context.issueNumber, {
+				...input,
+				title: input.title.trim(),
+			});
+
+			vscode.window.showInformationMessage(`GitCode issue #${this.context.issueNumber} updated`);
+
+			await this.commentsStore.refresh(this.context.repository, this.context.issueNumber);
+			await this.relatedPrsStore.refresh(this.context.repository, this.context.issueNumber);
+			const treeStore = IssueOverviewPanel.treeStore;
+			if (treeStore) {
+				treeStore.refreshRepository(this.context.repository.fullName).catch(() => {
+					void treeStore.refreshAll();
+				});
+			}
+
+			this.commentsSnapshot = undefined;
+			this.commentsError = undefined;
+			this.relatedPullRequestsSnapshot = undefined;
+			this.relatedPullRequestsError = undefined;
+			this.editOptions = undefined;
+			await this.load(true);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to update issue.';
+			this.logger.error(`Failed to save section "${section}" for issue #${this.context.issueNumber}: ${errorMessage}`);
+			this.panel.webview.postMessage({
+				command: 'sectionSaveError',
+				section,
+				message: errorMessage,
+			});
+		}
+	}
+
+	private async handleChangeIssueState(state: string): Promise<void> {
+		if (!this.detail) {
+			return;
+		}
+
+		const errors = validateIssueStateChange(state, this.detail);
+		if (errors.length > 0) {
+			this.panel.webview.postMessage({
+				command: 'issueStateChangeError',
+				message: errors.join(' '),
+			});
+			return;
+		}
+
+		try {
+			if (state !== 'close' && state !== 'reopen') {
+				return;
+			}
+
+			await this.store.editIssue(this.context.repository, this.context.issueNumber, {
+				title: this.detail.title,
+				state,
+			});
+
+			vscode.window.showInformationMessage(
+				`GitCode issue #${this.context.issueNumber} ${state === 'close' ? 'closed' : 'reopened'}`,
+			);
+
+			await this.commentsStore.refresh(this.context.repository, this.context.issueNumber);
+			await this.relatedPrsStore.refresh(this.context.repository, this.context.issueNumber);
+			const treeStore = IssueOverviewPanel.treeStore;
+			if (treeStore) {
+				treeStore.refreshRepository(this.context.repository.fullName).catch(() => {
+					void treeStore.refreshAll();
+				});
+			}
+
+			this.commentsSnapshot = undefined;
+			this.commentsError = undefined;
+			this.relatedPullRequestsSnapshot = undefined;
+			this.relatedPullRequestsError = undefined;
+			this.editOptions = undefined;
+			await this.load(true);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to update issue state.';
+			this.logger.error(`Failed to change state for issue #${this.context.issueNumber}: ${errorMessage}`);
+			this.panel.webview.postMessage({
+				command: 'issueStateChangeError',
+				message: errorMessage,
+			});
+		}
 	}
 
 	private async openRelatedPullRequest(prNumber: number, prUrl?: string, targetRepositoryFullName?: string): Promise<void> {

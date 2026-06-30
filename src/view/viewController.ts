@@ -24,6 +24,7 @@ import { IssueTreeStore } from './state/issueTreeStore';
 import { IssueTreeDataProvider } from './tree/issueTreeDataProvider';
 import { IssueService } from '../gitcode/services/issueService';
 import { IssueCommentService } from '../gitcode/services/issueCommentService';
+import { IssueOverviewPanel } from './issueOverview/issueOverviewPanel';
 import { IssueOverviewStore } from './issueOverview/issueOverviewStore';
 import { IssueCommentsStore } from './issueOverview/issueCommentsStore';
 import { IssueRelatedPullRequestsStore } from './issueOverview/issueRelatedPullRequestsStore';
@@ -159,6 +160,7 @@ export class ViewController implements vscode.Disposable {
 		this.issueOverviewStore = new IssueOverviewStore(
 			options.authService,
 			issueService,
+			repositoryService,
 		);
 		this.issueCommentsStore = new IssueCommentsStore(
 			options.authService,
@@ -174,6 +176,7 @@ export class ViewController implements vscode.Disposable {
 			issueService,
 			options.configuration,
 		);
+		IssueOverviewPanel.setEditDependencies(this.issueStore);
 		this.createIssueHelper = new CreateIssueHelper(
 			options.repositoryResolver,
 			repositoryService,

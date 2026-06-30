@@ -1,6 +1,6 @@
-import { CreateIssueInput, CreatedIssueSummary, GitCodeRepository, IssueDetail, IssueRelatedPullRequest, IssueSummary } from '../../common/models';
+import { CreateIssueInput, CreatedIssueSummary, EditIssueInput, GitCodeRepository, IssueDetail, IssueRelatedPullRequest, IssueSummary } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
-import { mapIssue } from '../mappers/issueMapper';
+import { mapEditIssueInput, mapIssue } from '../mappers/issueMapper';
 import { mapIssueDetail } from '../mappers/issueDetailMapper';
 import { mapIssueRelatedPullRequests } from '../mappers/issueRelatedPullRequestMapper';
 
@@ -51,6 +51,19 @@ export class IssueService {
 	async getIssue(repository: GitCodeRepository, issueNumber: number): Promise<IssueDetail> {
 		const response = await this.client.get<any>(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/${issueNumber}`,
+		);
+
+		return mapIssueDetail(response);
+	}
+
+	async editIssue(
+		repository: GitCodeRepository,
+		issueNumber: number,
+		input: EditIssueInput,
+	): Promise<IssueDetail> {
+		const response = await this.client.patch<any>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/${issueNumber}`,
+			mapEditIssueInput(repository, input),
 		);
 
 		return mapIssueDetail(response);
