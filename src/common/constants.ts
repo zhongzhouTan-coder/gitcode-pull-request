@@ -23,6 +23,7 @@ export const COMMAND_ID = {
 	useIssueAsCopilotContext: 'gitcode.useIssueAsCopilotContext',
 	createBranchForIssue: 'gitcode.createBranchForIssue',
 	createPullRequest: 'gitcode.createPullRequest',
+	editPullRequest: 'gitcode.editPullRequest',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';

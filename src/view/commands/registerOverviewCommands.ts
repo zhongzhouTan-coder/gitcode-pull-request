@@ -15,5 +15,11 @@ export function registerOverviewCommands(options: RegisterOverviewCommandsOption
 				options.logger.debug('No active pull request overview panel to refresh.');
 			}
 		}),
+		vscode.commands.registerCommand(COMMAND_ID.editPullRequest, async () => {
+			const edited = await PullRequestOverviewPanel.editCurrent();
+			if (!edited) {
+				options.logger.debug('No active pull request overview panel to edit.');
+			}
+		}),
 	);
 }

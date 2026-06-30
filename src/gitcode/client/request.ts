@@ -3,7 +3,7 @@ import { URL } from 'url';
 import { ApiRequestError } from '../../common/errors';
 
 interface RequestOptions {
-	method: 'GET' | 'POST' | 'PUT';
+	method: 'GET' | 'POST' | 'PUT' | 'PATCH';
 	url: string;
 	token?: string;
 	body?: unknown;

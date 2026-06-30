@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../common/models';
-import { getOverviewWithCommentsHtml, renderRelatedIssuesSection } from '../view/overview/overviewHtml';
+import { EditPullRequestOptions, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../common/models';
+import { getOverviewHtml, getOverviewWithCommentsHtml, renderRelatedIssuesSection } from '../view/overview/overviewHtml';
 
 suite('OverviewHtml', () => {
 	const detail: PullRequestDetail = {
@@ -83,5 +83,61 @@ suite('OverviewHtml', () => {
 		assert.match(html, /data-repository=""/);
 		assert.match(html, /command: 'openIssue'/);
 		assert.match(html, /issue: Number\(el\.dataset\.issue\)/);
+	});
+
+	test('serializes repository-backed label and milestone edit options into the webview', () => {
+		const html = getOverviewHtml(
+			{
+				...detail,
+				labels: [{ id: 5, name: 'bug', color: 'ff0000' }],
+				milestone: { number: 7, title: 'Sprint 7', state: 'open' },
+			},
+			'nonce',
+			undefined,
+			undefined,
+			{
+				labels: [{ id: 5, name: 'bug', color: 'ff0000' }],
+				milestones: [{ number: 7, title: 'Sprint 7', state: 'open' }],
+			} as EditPullRequestOptions,
+		);
+
+		assert.match(html, /"labels":\[\{"id":5,"name":"bug","color":"ff0000"\}\]/);
+		assert.match(html, /"milestones":\[\{"number":7,"title":"Sprint 7","state":"open"\}\]/);
+		assert.match(html, /Select labels from the repository label list\./);
+		assert.match(html, /<option value="">No milestone<\/option>/);
+	});
+
+	test('escapes inline script JSON for repository-controlled strings', () => {
+		const html = getOverviewHtml(
+			{
+				...detail,
+				title: '</script><script>alert("x")</script>',
+				labels: [{ id: 5, name: '</script><img>', color: 'ff0000' }],
+				milestone: { number: 7, title: '</script><b>boom</b>', state: 'open' },
+			},
+			'nonce',
+			undefined,
+			undefined,
+			{
+				labels: [{ id: 5, name: '</script><img>', color: 'ff0000' }],
+				milestones: [{ number: 7, title: '</script><b>boom</b>', state: 'open' }],
+			} as EditPullRequestOptions,
+		);
+
+		assert.doesNotMatch(html, /const editOptions = .*<\/script>/);
+		assert.doesNotMatch(html, /const detailSnapshot = .*<\/script>/);
+		assert.doesNotMatch(html, /var currentTitle = .*<\/script>/);
+		assert.ok(html.includes('"title":"\\u003C/script\\u003E\\u003Cscript\\u003Ealert(\\"x\\")\\u003C/script\\u003E"'));
+	});
+
+	test('resets canceled section edits from the immutable detail snapshot', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+
+		assert.match(html, /function resetSectionState\(section\)/);
+		assert.match(html, /titleInput\.value = detailSnapshot\.title \|\| ''/);
+		assert.match(html, /bodyInput\.value = detailSnapshot\.body \|\| ''/);
+		assert.match(html, /stateInput\.value = detailSnapshot\.state \|\| 'opened'/);
+		assert.match(html, /draftInput\.checked = Boolean\(detailSnapshot\.draft\)/);
+		assert.match(html, /resetSectionState\(section\);[\s\S]*if \(section === 'labels'\)/);
 	});
 });

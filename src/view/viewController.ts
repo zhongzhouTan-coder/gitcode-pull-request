@@ -17,6 +17,7 @@ import { PullRequestDiffController } from './diff/pullRequestDiffController';
 import { PullRequestDiffStore } from './diff/pullRequestDiffStore';
 import { PullRequestPatchContentProvider } from './diff/pullRequestPatchContentProvider';
 import { PullRequestOverviewStore } from './overview/pullRequestOverviewStore';
+import { PullRequestOverviewPanel } from './overview/pullRequestOverviewPanel';
 import { PullRequestCommentsStore } from './state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from './state/pullRequestTreeStore';
 import { IssueTreeStore } from './state/issueTreeStore';
@@ -83,17 +84,24 @@ export class ViewController implements vscode.Disposable {
 			options.pullRequestService,
 			options.configuration,
 		);
-		this.overviewStore = new PullRequestOverviewStore(
-			options.authService,
-			options.pullRequestService,
-		);
 
-		// Comment components
+		// Core client used by multiple services
 		const gitCodeClient = new GitCodeClientImpl(
 			options.configuration,
 			options.sessionStore,
 			options.logger,
 		);
+
+		// Repository service needed by overview store for edit options
+		const repositoryService = new RepositoryService(gitCodeClient);
+
+		this.overviewStore = new PullRequestOverviewStore(
+			options.authService,
+			options.pullRequestService,
+			repositoryService,
+		);
+
+		// Comment components
 		const commentService = new CommentService(gitCodeClient, options.logger);
 		this.commentsStore = new PullRequestCommentsStore(
 			options.authService,
@@ -108,8 +116,14 @@ export class ViewController implements vscode.Disposable {
 		this.copilotContextStore = new CopilotPullRequestContextStore();
 		this.copilotIssueContextStore = new CopilotIssueContextStore();
 
+		// Wire up edit dependencies for the pull request overview panel
+		PullRequestOverviewPanel.setEditDependencies(
+			repositoryService,
+			options.pullRequestService,
+			this.store,
+		);
+
 		// Create Pull Request components
-		const repositoryService = new RepositoryService(gitCodeClient);
 		const createPullRequestProvider = new CreatePullRequestViewProvider(
 			options.context.extensionUri,
 			repositoryService,

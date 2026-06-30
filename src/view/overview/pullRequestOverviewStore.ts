@@ -1,19 +1,22 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { GitCodeRepository, PullRequestDetail, PullRequestRelatedIssue } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, PullRequestDetail, PullRequestRelatedIssue } from '../../common/models';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
+import { RepositoryService } from '../../gitcode/services/repositoryService';
 
 export class PullRequestOverviewStore {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
 	private readonly detailPromises = new Map<string, Promise<PullRequestDetail>>();
 	private readonly relatedIssuesPromises = new Map<string, Promise<PullRequestRelatedIssue[]>>();
+	private readonly editOptionsPromises = new Map<string, Promise<EditPullRequestOptions>>();
 
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
 	constructor(
 		private readonly authService: AuthService,
 		private readonly pullRequestService: PullRequestService,
+		private readonly repositoryService?: RepositoryService,
 	) {}
 
 	async getDetail(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestDetail> {
@@ -60,6 +63,50 @@ export class PullRequestOverviewStore {
 
 		this.relatedIssuesPromises.set(key, requestPromise);
 		return requestPromise;
+	}
+
+	async getEditOptions(repository: GitCodeRepository): Promise<EditPullRequestOptions> {
+		if (!this.repositoryService) {
+			return { labels: [], milestones: [] };
+		}
+
+		const key = repository.fullName;
+		const existingPromise = this.editOptionsPromises.get(key);
+		if (existingPromise) {
+			return existingPromise;
+		}
+
+		const requestPromise = Promise.all([
+			this.repositoryService.listLabels(repository, { perPage: 100 }),
+			this.repositoryService.listMilestones(repository, { state: 'all', perPage: 100 }),
+		]).then(([labels, milestones]) => ({ labels, milestones }))
+		.catch((error) => {
+			this.editOptionsPromises.delete(key);
+			throw error;
+		});
+
+		this.editOptionsPromises.set(key, requestPromise);
+		return requestPromise;
+	}
+
+	async editPullRequest(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: EditPullRequestInput,
+	): Promise<PullRequestDetail> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const result = await this.pullRequestService.editPullRequest(repository, pullRequestNumber, input);
+
+		// Invalidate the cached detail so the overview reloads fresh data
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+
+		return result;
 	}
 
 	async refresh(repository: GitCodeRepository, pullRequestNumber: number): Promise<void> {

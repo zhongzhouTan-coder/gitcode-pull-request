@@ -48,6 +48,13 @@ suite('PullRequestDetailMapper', () => {
 			approval_reviewers: [{ login: 'carol', name: 'Carol' }],
 			testers: [{ login: 'dave' }],
 			labels: [{ id: 1, name: 'kind/feature', color: '00ff00' }],
+			milestone: {
+				number: 9,
+				title: 'Q3 launch',
+				state: 'open',
+				due_on: '2026-07-01T00:00:00+08:00',
+				web_url: 'https://gitcode.com/org/repo/milestones/9',
+			},
 			can_merge_check: false,
 			mergeable: true,
 			mergeable_state: {
@@ -73,11 +80,35 @@ suite('PullRequestDetailMapper', () => {
 		assert.strictEqual(detail.target.ref, 'main');
 		assert.strictEqual(detail.reviewers[0].name, 'Carol');
 		assert.strictEqual(detail.labels[0].color, '00ff00');
+		assert.strictEqual(detail.milestone?.number, 9);
+		assert.strictEqual(detail.milestone?.title, 'Q3 launch');
+		assert.strictEqual(detail.milestone?.state, 'open');
+		assert.strictEqual(detail.milestone?.dueOn, '2026-07-01T00:00:00+08:00');
+		assert.strictEqual(detail.milestone?.url, 'https://gitcode.com/org/repo/milestones/9');
 		assert.strictEqual(detail.mergeability.mergeable, true);
 		assert.strictEqual(detail.mergeability.canMergeCheck, false);
 		assert.strictEqual(detail.mergeability.hasConflicts, false);
 		assert.strictEqual(detail.mergeability.ciPassed, false);
 		assert.strictEqual(detail.mergeability.reviewPassed, false);
 		assert.deepStrictEqual(detail.mergeability.reasons, ['Missing push permission.', 'conflict_passed']);
+	});
+
+	test('omits milestone when the API payload has no usable title', () => {
+		const detail = mapPullRequestDetail({
+			id: 1,
+			number: 2,
+			title: 'Title',
+			state: 'open',
+			body: '',
+			user: { login: 'alice' },
+			head: { ref: 'feature' },
+			base: { ref: 'main' },
+			milestone: {
+				number: 4,
+				title: '   ',
+			},
+		});
+
+		assert.strictEqual(detail.milestone, undefined);
 	});
 });

@@ -1,9 +1,9 @@
-import { CreatePullRequestInput, CreatedPullRequestSummary, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
+import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
 import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
-import { mapCreatePullRequestInput, mapCreatedPullRequest, mapPullRequest } from '../mappers/pullRequestMapper';
+import { mapCreatePullRequestInput, mapCreatedPullRequest, mapEditPullRequestInput, mapPullRequest } from '../mappers/pullRequestMapper';
 import { mapPullRequestRelatedIssues } from '../mappers/pullRequestRelatedIssueMapper';
 
 export interface PullRequestFilters {
@@ -46,6 +46,19 @@ export class PullRequestService {
 			requestBody,
 		);
 		return mapCreatedPullRequest(response);
+	}
+
+	async editPullRequest(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: EditPullRequestInput,
+	): Promise<PullRequestDetail> {
+		const requestBody = mapEditPullRequestInput(input);
+		const response = await this.client.patch<any>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}`,
+			requestBody,
+		);
+		return mapPullRequestDetail(response);
 	}
 
 	async listPullRequestFiles(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestFileChange[]> {

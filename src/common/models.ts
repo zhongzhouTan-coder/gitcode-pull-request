@@ -69,6 +69,7 @@ export interface PullRequestDetail {
 	reviewers: PullRequestParticipant[];
 	testers: PullRequestParticipant[];
 	labels: PullRequestLabel[];
+	milestone?: IssueMilestone;
 	mergeability: PullRequestMergeabilityState;
 }
 
@@ -397,6 +398,37 @@ export interface CreatePullRequestInput {
 	forkPath?: string;
 	closeRelatedIssue?: boolean;
 }
+
+// ---- Edit Pull Request Types ----
+
+export interface EditPullRequestInput {
+	title: string;
+	body?: string;
+	state?: 'open' | 'closed';
+	milestoneNumber?: number;
+	labels?: string;
+	draft?: boolean;
+	closeRelatedIssue?: boolean;
+}
+
+export interface EditPullRequestOptions {
+	labels: PullRequestLabel[];
+	milestones: IssueMilestone[];
+}
+
+export interface EditPullRequestSnapshot {
+	detail: PullRequestDetail;
+	options: EditPullRequestOptions;
+}
+
+export type EditPullRequestSection =
+	| 'title'
+	| 'body'
+	| 'labels'
+	| 'milestone'
+	| 'state'
+	| 'draft'
+	| 'closeRelatedIssue';
 
 export interface CreatedPullRequestSummary {
 	id: number;

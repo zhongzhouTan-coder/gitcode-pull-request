@@ -1,4 +1,5 @@
 import {
+	EditPullRequestOptions,
 	IssueLabel,
 	IssueRepositoryRef,
 	IssueUser,
@@ -22,6 +23,23 @@ function escapeHtml(value: string): string {
 		.replaceAll('>', '&gt;')
 		.replaceAll('"', '&quot;')
 		.replaceAll('\'', '&#39;');
+}
+
+function escapeAttr(value: string): string {
+	return value
+		.replaceAll('&', '&amp;')
+		.replaceAll('"', '&quot;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;');
+}
+
+function serializeForInlineScript(value: unknown): string {
+	return JSON.stringify(value)
+		.replaceAll('<', '\\u003C')
+		.replaceAll('>', '\\u003E')
+		.replaceAll('&', '\\u0026')
+		.replaceAll('\u2028', '\\u2028')
+		.replaceAll('\u2029', '\\u2029');
 }
 
 function formatDate(value: string | undefined): string {
@@ -71,6 +89,11 @@ const REFRESH_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 
 /** External-link icon (16×16). */
 const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
 	<path d="M3 2v11h11V8.5h1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5v1H3Zm5.5 0V1H15v6.5h-1V2.7L7.9 8.9l-.8-.8L13.3 2H8.5Z" fill="currentColor"/>
+</svg>`;
+
+/** Pencil/edit icon (16×16) for section editing. */
+const PENCIL_ICON = `<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+	<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10ZM11.207 2.5 13.5 4.793 12.793 5.5 10.5 3.207 11.207 2.5Zm1.586 2.793L10.5 3 4 9.5 5.5 12l.5.5 6.793-6.793ZM3 13.5l-.586 1.086 2.293-.293L3.5 13ZM7.5 9.5 9 11l.793-.793L8.5 9.207 7.5 9.5Z"/>
 </svg>`;
 
 function renderParticipants(participants: PullRequestParticipant[]): string {
@@ -365,12 +388,43 @@ export function renderRelatedIssuesError(message: string): string {
 	return `<section><h2>Related Issues</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
 }
 
-export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, relatedIssuesHtml?: string, includeScripts: boolean = true): string {
+export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, includeScripts: boolean = true): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
 	const openOnWebDisabled = detail.htmlUrl ? '' : 'disabled';
 	const conversationSection = conversationHtml ?? '';
 	const relatedIssuesSection = relatedIssuesHtml ?? '';
+
+	const editOptionsJson = editOptions
+		? serializeForInlineScript({
+			labels: editOptions.labels.map((label) => ({
+				id: label.id,
+				name: label.name,
+				color: label.color,
+			})),
+			milestones: editOptions.milestones.map((milestone) => ({
+				number: milestone.number,
+				title: milestone.title,
+				state: milestone.state,
+				dueOn: milestone.dueOn,
+				url: milestone.url,
+			})),
+		})
+		: 'null';
+	const detailSnapshotJson = serializeForInlineScript({
+		title: detail.title,
+		body: detail.body,
+		state: detail.state === 'open' ? 'opened' : 'closed',
+		draft: detail.isDraft,
+		labels: detail.labels,
+		milestone: detail.milestone ?? null,
+	});
+	const currentTitleJson = serializeForInlineScript(detail.title);
+
+	const draftText = detail.isDraft ? 'Yes' : 'No';
+	const milestoneText = detail.milestone
+		? escapeHtml(detail.milestone.title)
+		: '<span class="muted">None</span>';
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -699,14 +753,177 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
 		}
+		/* ---- Inline Section Editing ---- */
+		.edit-icon-btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 20px;
+			height: 20px;
+			border: none;
+			background: transparent;
+			color: var(--muted);
+			cursor: pointer;
+			border-radius: 4px;
+			opacity: 0;
+			transition: opacity 0.15s, background 0.15s;
+			flex-shrink: 0;
+			padding: 2px;
+		}
+		.edit-section-wrapper:hover .edit-icon-btn,
+		.edit-section-wrapper:focus-within .edit-icon-btn,
+		.edit-icon-btn:focus-visible {
+			opacity: 1;
+		}
+		.edit-icon-btn:hover,
+		.edit-icon-btn:focus-visible {
+			background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+			color: var(--vscode-foreground);
+		}
+		.edit-section-wrapper {
+			position: relative;
+		}
+		.edit-section-header {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+		.edit-section-header h2 {
+			flex: 1;
+			margin: 0;
+		}
+		.section-edit-area {
+			margin-top: 12px;
+		}
+		.section-edit-area input[type="text"],
+		.section-edit-area textarea,
+		.section-edit-area select {
+			width: 100%;
+			box-sizing: border-box;
+			padding: 6px 10px;
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			background: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+			font-family: var(--vscode-font-family);
+			font-size: 14px;
+		}
+		.section-edit-area textarea {
+			min-height: 120px;
+			resize: vertical;
+			font-family: var(--vscode-editor-font-family, monospace);
+		}
+		.section-edit-area input:focus,
+		.section-edit-area textarea:focus,
+		.section-edit-area select:focus {
+			outline: none;
+			border-color: var(--vscode-focusBorder);
+		}
+		.section-edit-actions {
+			display: flex;
+			gap: 8px;
+			margin-top: 10px;
+		}
+		.section-edit-error {
+			color: var(--vscode-errorForeground);
+			font-size: 13px;
+			margin-bottom: 8px;
+		}
+		.section-edit-saving {
+			color: var(--muted);
+			font-size: 13px;
+			font-style: italic;
+		}
+		.picker {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+		}
+		.picker-options {
+			max-height: 140px;
+			overflow: auto;
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			background: var(--card);
+		}
+		.picker-options.hidden {
+			display: none;
+		}
+		.picker-option {
+			width: 100%;
+			padding: 6px 8px;
+			text-align: left;
+			background: transparent;
+			color: var(--vscode-foreground);
+			border: none;
+			border-radius: 0;
+		}
+		.picker-option:hover,
+		.picker-option:focus-visible {
+			background: var(--vscode-list-hoverBackground, rgba(127,127,127,0.14));
+			outline: none;
+		}
+		.picker-empty {
+			padding: 8px;
+			color: var(--muted);
+			font-size: 13px;
+		}
+		.picker-selected {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 6px;
+			min-height: 32px;
+			padding: 4px;
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			background: var(--card);
+		}
+		.picker-chip {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			max-width: 100%;
+			padding: 2px 6px;
+			border: 1px solid var(--border);
+			border-radius: 999px;
+			background: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+		}
+		.picker-chip button {
+			padding: 0 2px;
+			background: transparent;
+			color: var(--muted);
+			border: none;
+			font-size: 14px;
+			line-height: 1;
+		}
+		.picker-chip button:hover,
+		.picker-chip button:focus-visible {
+			color: var(--vscode-foreground);
+			outline: none;
+		}
+		.picker-hint {
+			font-size: 12px;
+			color: var(--muted);
+		}
 	</style>
 </head>
 <body>
 	<div class="header">
-		<div class="title-row">
+		<div class="title-row edit-section-wrapper">
 			<span class="badge badge-${detail.state}">${stateLabel(detail)}</span>
 			${draftBadge}
-			<h1>${escapeHtml(detail.title)} <span class="muted">#${detail.number}</span></h1>
+			<h1 class="section-view-title">${escapeHtml(detail.title)} <span class="muted">#${detail.number}</span></h1>
+			<button class="edit-icon-btn" data-section="title" title="Edit title" aria-label="Edit title">${PENCIL_ICON}</button>
+		</div>
+		<div class="section-edit-area" data-section-edit="title" style="display:none">
+			<input type="text" data-section-input="title" value="${escapeAttr(detail.title)}" maxlength="255">
+			<div class="section-edit-actions">
+				<button class="btn-primary btn-save-section" data-section="title">Save</button>
+				<button class="btn-secondary btn-cancel-section" data-section="title">Cancel</button>
+				<span class="section-edit-saving" style="display:none">Saving...</span>
+			</div>
+			<div class="section-edit-error" style="display:none"></div>
 		</div>
 		<div class="meta-row">
 			<span>@${escapeHtml(detail.author.login)}</span>
@@ -724,9 +941,21 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				<h2>Status Summary</h2>
 				${renderStatus(detail)}
 			</section>
-			<section>
-				<h2>Description</h2>
-				<div class="description">${descriptionHtml}</div>
+			<section class="edit-section-wrapper">
+				<div class="edit-section-header">
+					<h2>Description</h2>
+					<button class="edit-icon-btn" data-section="body" title="Edit description" aria-label="Edit description">${PENCIL_ICON}</button>
+				</div>
+				<div class="description section-view-body">${descriptionHtml}</div>
+				<div class="section-edit-area" data-section-edit="body" style="display:none">
+					<textarea data-section-input="body" rows="8">${escapeHtml(detail.body)}</textarea>
+					<div class="section-edit-actions">
+						<button class="btn-primary btn-save-section" data-section="body">Save</button>
+						<button class="btn-secondary btn-cancel-section" data-section="body">Cancel</button>
+						<span class="section-edit-saving" style="display:none">Saving...</span>
+					</div>
+					<div class="section-edit-error" style="display:none"></div>
+				</div>
 			</section>
 			${relatedIssuesSection}
 			${conversationSection}
@@ -745,9 +974,101 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 					<h3>Testers</h3>
 					${renderParticipants(detail.testers)}
 				</div>
-				<div class="meta-group">
+			</div>
+			<div class="card edit-section-wrapper">
+				<div class="edit-section-header">
 					<h3>Labels</h3>
-					${renderLabels(detail.labels)}
+					<button class="edit-icon-btn" data-section="labels" title="Edit labels" aria-label="Edit labels">${PENCIL_ICON}</button>
+				</div>
+				<div class="section-view-labels">${renderLabels(detail.labels)}</div>
+				<div class="section-edit-area" data-section-edit="labels" style="display:none">
+					<div class="picker">
+						<input type="text" data-section-input="labels" placeholder="Search labels..." autocomplete="off">
+						<div class="picker-options hidden" data-picker-options="labels"></div>
+						<div class="picker-selected" data-picker-selected="labels"></div>
+						<div class="picker-hint">Select labels from the repository label list.</div>
+					</div>
+					<div class="section-edit-actions">
+						<button class="btn-primary btn-save-section" data-section="labels">Save</button>
+						<button class="btn-secondary btn-cancel-section" data-section="labels">Cancel</button>
+						<span class="section-edit-saving" style="display:none">Saving...</span>
+					</div>
+					<div class="section-edit-error" style="display:none"></div>
+				</div>
+			</div>
+			<div class="card edit-section-wrapper">
+				<div class="edit-section-header">
+					<h3>Milestone</h3>
+					<button class="edit-icon-btn" data-section="milestone" title="Edit milestone" aria-label="Edit milestone">${PENCIL_ICON}</button>
+				</div>
+				<div class="section-view-milestone">${milestoneText}</div>
+				<div class="section-edit-area" data-section-edit="milestone" style="display:none">
+					<select data-section-input="milestone">
+						<option value="">No milestone</option>
+					</select>
+					<div class="section-edit-actions">
+						<button class="btn-primary btn-save-section" data-section="milestone">Save</button>
+						<button class="btn-secondary btn-cancel-section" data-section="milestone">Cancel</button>
+						<span class="section-edit-saving" style="display:none">Saving...</span>
+					</div>
+					<div class="section-edit-error" style="display:none"></div>
+				</div>
+			</div>
+			<div class="card edit-section-wrapper">
+				<div class="edit-section-header">
+					<h3>State</h3>
+					<button class="edit-icon-btn" data-section="state" title="Edit state" aria-label="Edit state">${PENCIL_ICON}</button>
+				</div>
+				<div class="section-view-state">${stateLabel(detail)}</div>
+				<div class="section-edit-area" data-section-edit="state" style="display:none">
+					<select data-section-input="state">
+						<option value="open" ${detail.state === 'open' ? 'selected' : ''}>Open</option>
+						<option value="closed" ${detail.state === 'closed' ? 'selected' : ''}>Closed</option>
+					</select>
+					<div class="section-edit-actions">
+						<button class="btn-primary btn-save-section" data-section="state">Save</button>
+						<button class="btn-secondary btn-cancel-section" data-section="state">Cancel</button>
+						<span class="section-edit-saving" style="display:none">Saving...</span>
+					</div>
+					<div class="section-edit-error" style="display:none"></div>
+				</div>
+			</div>
+			<div class="card edit-section-wrapper">
+				<div class="edit-section-header">
+					<h3>Draft</h3>
+					<button class="edit-icon-btn" data-section="draft" title="Edit draft" aria-label="Edit draft">${PENCIL_ICON}</button>
+				</div>
+				<div class="section-view-draft">${draftText}</div>
+				<div class="section-edit-area" data-section-edit="draft" style="display:none">
+					<label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+						<input type="checkbox" data-section-input="draft" ${detail.isDraft ? 'checked' : ''}>
+						<span>Mark as draft</span>
+					</label>
+					<div class="section-edit-actions">
+						<button class="btn-primary btn-save-section" data-section="draft">Save</button>
+						<button class="btn-secondary btn-cancel-section" data-section="draft">Cancel</button>
+						<span class="section-edit-saving" style="display:none">Saving...</span>
+					</div>
+					<div class="section-edit-error" style="display:none"></div>
+				</div>
+			</div>
+			<div class="card edit-section-wrapper">
+				<div class="edit-section-header">
+					<h3>Close Related Issues</h3>
+					<button class="edit-icon-btn" data-section="closeRelatedIssue" title="Edit close related issues" aria-label="Edit close related issues">${PENCIL_ICON}</button>
+				</div>
+				<div class="section-view-closeRelatedIssue"><span class="muted">Default</span></div>
+				<div class="section-edit-area" data-section-edit="closeRelatedIssue" style="display:none">
+					<label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+						<input type="checkbox" data-section-input="closeRelatedIssue">
+						<span>Close related issues after merge</span>
+					</label>
+					<div class="section-edit-actions">
+						<button class="btn-primary btn-save-section" data-section="closeRelatedIssue">Save</button>
+						<button class="btn-secondary btn-cancel-section" data-section="closeRelatedIssue">Cancel</button>
+						<span class="section-edit-saving" style="display:none">Saving...</span>
+					</div>
+					<div class="section-edit-error" style="display:none"></div>
 				</div>
 			</div>
 			<div class="card">
@@ -772,6 +1093,536 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 	</div>
 	${includeScripts ? `<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
+		const editOptions = ${editOptionsJson};
+		const detailSnapshot = ${detailSnapshotJson};
+
+		// Current pull request title (always sent with section saves per API contract)
+		var currentTitle = ${currentTitleJson};
+		var editingSection = null;
+		var selectedLabels = [];
+		var selectedMilestone = null;
+
+		function labelKey(label) {
+			if (!label || typeof label !== 'object') {
+				return '';
+			}
+			return String(label.id ?? label.name ?? '');
+		}
+
+		function milestoneKey(milestone) {
+			if (!milestone || typeof milestone !== 'object') {
+				return '';
+			}
+			return String(milestone.number ?? '');
+		}
+
+		function availableLabels() {
+			return editOptions && Array.isArray(editOptions.labels) ? editOptions.labels : [];
+		}
+
+		function availableMilestones() {
+			return editOptions && Array.isArray(editOptions.milestones) ? editOptions.milestones : [];
+		}
+
+		function escapeHtmlText(value) {
+			return String(value ?? '')
+				.replaceAll('&', '&amp;')
+				.replaceAll('<', '&lt;')
+				.replaceAll('>', '&gt;')
+				.replaceAll('"', '&quot;')
+				.replaceAll("'", '&#39;');
+		}
+
+		function escapeAttrText(value) {
+			return String(value ?? '')
+				.replaceAll('&', '&amp;')
+				.replaceAll('"', '&quot;')
+				.replaceAll('<', '&lt;')
+				.replaceAll('>', '&gt;');
+		}
+
+		function normalizeLabelColor(color) {
+			if (!color) {
+				return '#d0d7de';
+			}
+			return String(color).startsWith('#') ? String(color) : '#' + String(color);
+		}
+
+		function initializeSelectionState() {
+			selectedLabels = detailSnapshot.labels.map(function(currentLabel) {
+				return availableLabels().find(function(option) {
+					return option.id === currentLabel.id || option.name === currentLabel.name;
+				}) || currentLabel;
+			});
+
+			selectedMilestone = detailSnapshot.milestone
+				? availableMilestones().find(function(option) {
+					return option.number === detailSnapshot.milestone.number;
+				}) || detailSnapshot.milestone
+				: null;
+		}
+
+		function resetSectionState(section) {
+			if (section === 'title') {
+				const titleInput = document.querySelector('[data-section-input="title"]');
+				if (titleInput) {
+					titleInput.value = detailSnapshot.title || '';
+				}
+				return;
+			}
+
+			if (section === 'body') {
+				const bodyInput = document.querySelector('[data-section-input="body"]');
+				if (bodyInput) {
+					bodyInput.value = detailSnapshot.body || '';
+				}
+				return;
+			}
+
+			if (section === 'state') {
+				const stateInput = document.querySelector('[data-section-input="state"]');
+				if (stateInput) {
+					stateInput.value = detailSnapshot.state || 'opened';
+				}
+				return;
+			}
+
+			if (section === 'draft') {
+				const draftInput = document.querySelector('[data-section-input="draft"]');
+				if (draftInput) {
+					draftInput.checked = Boolean(detailSnapshot.draft);
+				}
+				return;
+			}
+
+			if (section === 'labels') {
+				initializeSelectionState();
+				const input = document.querySelector('[data-section-input="labels"]');
+				if (input) {
+					input.value = '';
+				}
+				renderSelectedLabels();
+				renderLabelOptions();
+				return;
+			}
+
+			if (section === 'milestone') {
+				initializeSelectionState();
+				syncMilestoneSelect();
+				return;
+			}
+		}
+
+		function renderSelectedLabels() {
+			const selectedContainer = document.querySelector('[data-picker-selected="labels"]');
+			if (!selectedContainer) {
+				return;
+			}
+
+			if (!selectedLabels.length) {
+				selectedContainer.innerHTML = '<div class="picker-empty">No labels selected</div>';
+				return;
+			}
+
+			selectedContainer.innerHTML = selectedLabels.map(function(label) {
+				return '<span class="picker-chip" data-label-key="' + escapeAttrText(labelKey(label)) + '">' +
+					'<span class="label-chip" style="--label-color:' + escapeAttrText(normalizeLabelColor(label.color)) + '">' + escapeHtmlText(label.name) + '</span>' +
+					'<button type="button" aria-label="Remove ' + escapeAttrText(label.name) + '" title="Remove">&times;</button>' +
+				'</span>';
+			}).join('');
+		}
+
+		function renderLabelOptions() {
+			const optionsContainer = document.querySelector('[data-picker-options="labels"]');
+			const input = document.querySelector('[data-section-input="labels"]');
+			if (!optionsContainer || !input) {
+				return;
+			}
+
+			const query = String(input.value || '').trim().toLowerCase();
+			const selectedKeys = new Set(selectedLabels.map(labelKey));
+			const options = availableLabels().filter(function(option) {
+				return !selectedKeys.has(labelKey(option)) && (!query || option.name.toLowerCase().includes(query));
+			});
+
+			if (!options.length) {
+				optionsContainer.innerHTML = '<div class="picker-empty">No labels available</div>';
+				return;
+			}
+
+			optionsContainer.innerHTML = options.map(function(option) {
+				return '<button type="button" class="picker-option" data-label-key="' + escapeAttrText(labelKey(option)) + '">' + escapeHtmlText(option.name) + '</button>';
+			}).join('');
+		}
+
+		function openLabelOptions() {
+			const optionsContainer = document.querySelector('[data-picker-options="labels"]');
+			if (!optionsContainer) {
+				return;
+			}
+			renderLabelOptions();
+			optionsContainer.classList.remove('hidden');
+		}
+
+		function closeLabelOptions() {
+			const optionsContainer = document.querySelector('[data-picker-options="labels"]');
+			if (!optionsContainer) {
+				return;
+			}
+			optionsContainer.classList.add('hidden');
+		}
+
+		function syncMilestoneSelect() {
+			const select = document.querySelector('[data-section-input="milestone"]');
+			if (!select) {
+				return;
+			}
+
+			select.innerHTML = '<option value="">No milestone</option>';
+			availableMilestones().forEach(function(milestone) {
+				const option = document.createElement('option');
+				option.value = String(milestone.number);
+				option.textContent = milestone.title;
+				option.selected = Boolean(selectedMilestone && milestone.number === selectedMilestone.number);
+				select.appendChild(option);
+			});
+
+			if (!selectedMilestone) {
+				select.value = '';
+			}
+		}
+
+		function selectFirstFilteredLabel() {
+			const firstOption = document.querySelector('[data-picker-options="labels"] .picker-option');
+			if (firstOption instanceof HTMLElement) {
+				firstOption.click();
+				return true;
+			}
+			return false;
+		}
+
+		function getSectionInput(section) {
+			const el = document.querySelector('[data-section-input="' + section + '"]');
+			if (!el) return null;
+			if (el.type === 'checkbox') return el.checked;
+			return el.value;
+		}
+
+		function getSectionView(section) {
+			return document.querySelector('.section-view-' + section);
+		}
+
+		function getSectionEdit(section) {
+			return document.querySelector('[data-section-edit="' + section + '"]');
+		}
+
+		function getSectionSaving(section) {
+			const edit = getSectionEdit(section);
+			return edit ? edit.querySelector('.section-edit-saving') : null;
+		}
+
+		function getSectionError(section) {
+			const edit = getSectionEdit(section);
+			return edit ? edit.querySelector('.section-edit-error') : null;
+		}
+
+		function getSectionSaveBtn(section) {
+			const edit = getSectionEdit(section);
+			return edit ? edit.querySelector('.btn-save-section') : null;
+		}
+
+		function getSectionCancelBtn(section) {
+			const edit = getSectionEdit(section);
+			return edit ? edit.querySelector('.btn-cancel-section') : null;
+		}
+
+		function startEdit(section) {
+			// Only one section editable at a time
+			if (editingSection && editingSection !== section) {
+				cancelEdit(editingSection);
+			}
+
+			const view = getSectionView(section);
+			const edit = getSectionEdit(section);
+			const titleView = document.querySelector('.section-view-title');
+			const titleEdit = document.querySelector('[data-section-edit="title"]');
+
+			if (view) view.style.display = 'none';
+			if (edit) edit.style.display = 'block';
+
+			// For title section, also toggle the title view
+			if (section === 'title' && titleView && titleEdit) {
+				titleView.style.display = 'none';
+				titleEdit.style.display = 'block';
+			}
+
+			if (section === 'labels') {
+				renderSelectedLabels();
+				openLabelOptions();
+			}
+
+			if (section === 'milestone') {
+				syncMilestoneSelect();
+			}
+
+			// Clear previous error
+			var err = getSectionError(section);
+			if (err) { err.style.display = 'none'; err.textContent = ''; }
+
+			editingSection = section;
+		}
+
+		function cancelEdit(section) {
+			resetSectionState(section);
+
+			const view = getSectionView(section);
+			const edit = getSectionEdit(section);
+			const titleView = document.querySelector('.section-view-title');
+			const titleEdit = document.querySelector('[data-section-edit="title"]');
+
+			if (view) view.style.display = '';
+			if (edit) edit.style.display = 'none';
+
+			if (section === 'title' && titleView && titleEdit) {
+				titleView.style.display = '';
+				titleEdit.style.display = 'none';
+			}
+
+			if (editingSection === section) {
+				editingSection = null;
+			}
+
+			if (section === 'labels') {
+				closeLabelOptions();
+			}
+		}
+
+		function setSaving(section, saving) {
+			const saveBtn = getSectionSaveBtn(section);
+			const cancelBtn = getSectionCancelBtn(section);
+			const savingEl = getSectionSaving(section);
+			if (saveBtn) saveBtn.disabled = saving;
+			if (cancelBtn) cancelBtn.disabled = saving;
+			if (savingEl) savingEl.style.display = saving ? '' : 'none';
+		}
+
+		function showSectionError(section, message) {
+			const err = getSectionError(section);
+			if (err) {
+				err.textContent = message;
+				err.style.display = '';
+			}
+		}
+
+		function buildInput(section) {
+			var title = document.querySelector('[data-section-input="title"]');
+			var currentTitleValue = title ? title.value.trim() : currentTitle;
+
+			var input = { title: currentTitleValue };
+
+			switch (section) {
+				case 'title':
+					// Only title changes
+					break;
+				case 'body':
+					input.body = getSectionInput('body') || '';
+					break;
+				case 'labels':
+						input.labels = selectedLabels.map(function(label) {
+							return label.name;
+						}).join(',');
+					break;
+				case 'milestone':
+						input.milestoneNumber = selectedMilestone ? Number(selectedMilestone.number) : undefined;
+					break;
+				case 'state':
+					input.state = getSectionInput('state') || undefined;
+					break;
+				case 'draft':
+					input.draft = getSectionInput('draft');
+					break;
+				case 'closeRelatedIssue':
+					input.closeRelatedIssue = getSectionInput('closeRelatedIssue');
+					break;
+			}
+
+			return input;
+		}
+
+		function saveSection(section) {
+			var input = buildInput(section);
+			if (!input.title) {
+				showSectionError(section, 'Title is required.');
+				return;
+			}
+
+			if (section === 'labels') {
+				if (!editOptions || !Array.isArray(editOptions.labels)) {
+					showSectionError(section, 'Repository labels are not loaded.');
+					return;
+				}
+
+				var labelKeys = new Set(availableLabels().map(labelKey));
+				if (selectedLabels.some(function(label) { return !labelKeys.has(labelKey(label)); })) {
+					showSectionError(section, 'Selected labels must come from the repository label list.');
+					return;
+				}
+			}
+
+			if (section === 'milestone') {
+				if (!editOptions || !Array.isArray(editOptions.milestones)) {
+					showSectionError(section, 'Repository milestones are not loaded.');
+					return;
+				}
+
+				var milestoneKeys = new Set(availableMilestones().map(milestoneKey));
+				if (selectedMilestone && !milestoneKeys.has(milestoneKey(selectedMilestone))) {
+					showSectionError(section, 'Selected milestone must come from the repository milestone list.');
+					return;
+				}
+			}
+
+			setSaving(section, true);
+			vscode.postMessage({
+				command: 'savePullRequestSection',
+				section: section,
+				input: input,
+			});
+		}
+
+		initializeSelectionState();
+		renderSelectedLabels();
+		syncMilestoneSelect();
+
+		const labelInput = document.querySelector('[data-section-input="labels"]');
+		const labelOptions = document.querySelector('[data-picker-options="labels"]');
+		const selectedLabelContainer = document.querySelector('[data-picker-selected="labels"]');
+		const milestoneSelect = document.querySelector('[data-section-input="milestone"]');
+
+		if (labelInput) {
+			labelInput.addEventListener('focus', function() {
+				openLabelOptions();
+			});
+
+			labelInput.addEventListener('input', function() {
+				renderLabelOptions();
+				openLabelOptions();
+			});
+
+			labelInput.addEventListener('blur', function() {
+				window.setTimeout(closeLabelOptions, 0);
+			});
+		}
+
+		if (labelOptions) {
+			labelOptions.addEventListener('mousedown', function(event) {
+				event.preventDefault();
+			});
+
+			labelOptions.addEventListener('click', function(event) {
+				const target = event.target;
+				const option = target instanceof Element ? target.closest('.picker-option') : null;
+				if (!option) {
+					return;
+				}
+
+				const optionKey = option.getAttribute('data-label-key');
+				const label = availableLabels().find(function(candidate) {
+					return labelKey(candidate) === optionKey;
+				});
+				if (!label) {
+					return;
+				}
+
+				selectedLabels = selectedLabels.concat([label]);
+				if (labelInput) {
+					labelInput.value = '';
+					labelInput.focus();
+				}
+				renderSelectedLabels();
+				renderLabelOptions();
+			});
+		}
+
+		if (selectedLabelContainer) {
+			selectedLabelContainer.addEventListener('click', function(event) {
+				const target = event.target;
+				const removeBtn = target instanceof Element ? target.closest('button') : null;
+				if (!removeBtn) {
+					return;
+				}
+
+				const chip = removeBtn.closest('.picker-chip');
+				const optionKey = chip ? chip.getAttribute('data-label-key') : '';
+				selectedLabels = selectedLabels.filter(function(label) {
+					return labelKey(label) !== optionKey;
+				});
+				renderSelectedLabels();
+				renderLabelOptions();
+			});
+		}
+
+		if (milestoneSelect) {
+			milestoneSelect.addEventListener('change', function() {
+				selectedMilestone = availableMilestones().find(function(milestone) {
+					return String(milestone.number) === milestoneSelect.value;
+				}) || null;
+			});
+		}
+
+		// Edit icon click handlers
+		document.querySelectorAll('.edit-icon-btn').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				startEdit(btn.dataset.section);
+			});
+		});
+
+		// Save button handlers
+		document.querySelectorAll('.btn-save-section').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				saveSection(btn.dataset.section);
+			});
+		});
+
+		// Cancel button handlers
+		document.querySelectorAll('.btn-cancel-section').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				cancelEdit(btn.dataset.section);
+			});
+		});
+
+		// Handle Enter key in text inputs and Ctrl+Enter in textareas
+		document.querySelectorAll('[data-section-input]').forEach(function(el) {
+			el.addEventListener('keydown', function(e) {
+				if (el.getAttribute('data-section-input') === 'labels' && e.key === 'Enter') {
+					e.preventDefault();
+					if (!selectFirstFilteredLabel()) {
+						saveSection('labels');
+					}
+					return;
+				}
+
+				if (e.key === 'Enter' && (el.tagName === 'INPUT' || (el.tagName === 'TEXTAREA' && (e.ctrlKey || e.metaKey)))) {
+					e.preventDefault();
+					var section = el.getAttribute('data-section-input');
+					if (section) saveSection(section);
+				}
+				if (e.key === 'Escape') {
+					var section = el.getAttribute('data-section-input');
+					if (section) cancelEdit(section);
+				}
+			});
+		});
+
+		// Handle section save errors from the extension
+		window.addEventListener('message', function(event) {
+			var msg = event.data;
+			if (msg.command === 'sectionSaveError') {
+				setSaving(msg.section, false);
+				showSectionError(msg.section, msg.message);
+			}
+		});
+
 		document.getElementById('refresh-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'refresh' });
 		});
@@ -798,16 +1649,16 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 </html>`;
 }
 
-export function getOverviewWithCommentsHtml(detail: PullRequestDetail, snapshot: PullRequestCommentsSnapshot, nonce: string, relatedIssuesHtml?: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot), relatedIssuesHtml);
+export function getOverviewWithCommentsHtml(detail: PullRequestDetail, snapshot: PullRequestCommentsSnapshot, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions): string {
+	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot), relatedIssuesHtml, editOptions);
 }
 
-export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationLoading(), relatedIssuesHtml, false);
+export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions): string {
+	return getOverviewHtml(detail, nonce, renderConversationLoading(), relatedIssuesHtml, editOptions, false);
 }
 
-export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage), relatedIssuesHtml);
+export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions): string {
+	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage), relatedIssuesHtml, editOptions);
 }
 
 export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {

@@ -3,8 +3,11 @@ import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
+import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
+import { RepositoryService } from '../../gitcode/services/repositoryService';
+import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 
@@ -56,6 +59,19 @@ export function isTrustedGitCodeUrl(candidate: string, webUrl: string): boolean 
 export class PullRequestOverviewPanel implements vscode.Disposable {
 	private static readonly panels = new Map<string, PullRequestOverviewPanel>();
 	private static activePanel: PullRequestOverviewPanel | undefined;
+	private static repositoryService: RepositoryService | undefined;
+	private static pullRequestService: PullRequestService | undefined;
+	private static treeStore: PullRequestTreeStore | undefined;
+
+	static setEditDependencies(
+		repositoryService: RepositoryService,
+		pullRequestService: PullRequestService,
+		treeStore: PullRequestTreeStore,
+	): void {
+		this.repositoryService = repositoryService;
+		this.pullRequestService = pullRequestService;
+		this.treeStore = treeStore;
+	}
 
 	static async createOrShow(
 		context: PullRequestOverviewContext,
@@ -104,9 +120,21 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		return true;
 	}
 
+	static async editCurrent(): Promise<boolean> {
+		if (!this.activePanel) {
+			return false;
+		}
+
+		// The edit command navigates to the active panel; section editing is done
+		// via pencil icons in the overview itself per the design.
+		this.activePanel.panel.reveal(vscode.ViewColumn.Active, true);
+		return true;
+	}
+
 	private detail?: PullRequestDetail;
 	private commentsSnapshot?: PullRequestCommentsSnapshot;
 	private relatedIssuesSnapshot?: PullRequestRelatedIssuesSnapshot;
+	private editOptions?: EditPullRequestOptions;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -128,7 +156,14 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			}
 		});
 
-		this.panel.webview.onDidReceiveMessage(async (message: { command?: string; url?: string; repository?: string; issue?: number | string }) => {
+		this.panel.webview.onDidReceiveMessage(async (message: {
+			command?: string;
+			url?: string;
+			repository?: string;
+			issue?: number | string;
+			section?: EditPullRequestSection;
+			input?: EditPullRequestInput;
+		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
 				return;
@@ -136,6 +171,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'openOnWeb') {
 				await this.openOnWeb();
+				return;
+			}
+
+			if (message.command === 'savePullRequestSection' && message.section && message.input) {
+				await this.handleSaveSection(message.section, message.input);
 				return;
 			}
 
@@ -191,6 +231,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.detail = undefined;
 			this.commentsSnapshot = undefined;
 			this.relatedIssuesSnapshot = undefined;
+			this.editOptions = undefined;
 		}
 
 		// Phase 1: Render a loading indicator — no scripts, so acquireVsCodeApi is not called yet
@@ -214,13 +255,17 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.context.pullRequestNumber,
 		);
 
+		const editOptionsPromise = this.store.getEditOptions(
+			this.context.repository,
+		);
+
 		const relatedIssuesPromise = this.store.getRelatedIssues(
 			this.context.repository,
 			this.context.pullRequestNumber,
 		);
 
 		// Wait for both and render
-		const [commentsResult, relatedIssuesResult] = await Promise.allSettled([commentsPromise, relatedIssuesPromise]);
+		const [commentsResult, relatedIssuesResult, editOptionsResult] = await Promise.allSettled([commentsPromise, relatedIssuesPromise, editOptionsPromise]);
 
 		let commentsSnapshot: PullRequestCommentsSnapshot | undefined;
 		let relatedIssuesSnapshot: PullRequestRelatedIssuesSnapshot | undefined;
@@ -257,6 +302,14 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.commentsSnapshot = commentsSnapshot;
 		}
 
+		if (editOptionsResult.status === 'fulfilled') {
+			this.editOptions = editOptionsResult.value;
+		} else {
+			const error = editOptionsResult.reason;
+			this.logger.debug(`Failed to load edit options for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`);
+			this.editOptions = undefined;
+		}
+
 		// Build related issues HTML
 		let relatedIssuesHtml: string;
 		if (relatedIssuesSnapshot) {
@@ -269,10 +322,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Build comments HTML
 		if (commentsSnapshot) {
-			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml);
+			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions);
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml);
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions);
 		}
 	}
 
@@ -310,5 +363,48 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		return getOverviewErrorHtml('Unable to load pull request', 'An unknown error occurred.', createNonce());
+	}
+
+	// ---- Section-Level Editing ----
+
+	private async handleSaveSection(section: EditPullRequestSection, input: EditPullRequestInput): Promise<void> {
+		const treeStore = PullRequestOverviewPanel.treeStore;
+		if (!treeStore) {
+			return;
+		}
+
+		try {
+			await this.store.editPullRequest(
+				this.context.repository,
+				this.context.pullRequestNumber,
+				input,
+			);
+
+			vscode.window.showInformationMessage(
+				`GitCode pull request #${this.context.pullRequestNumber} updated.`,
+			);
+
+			// Invalidate comments and refresh the pull request tree
+			await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			treeStore.refreshRepository(this.context.repository.fullName).catch(() => {
+				treeStore.refreshAll();
+			});
+
+			// Reload the overview with fresh data
+			this.commentsSnapshot = undefined;
+			this.relatedIssuesSnapshot = undefined;
+			this.editOptions = undefined;
+			await this.load(true);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to update pull request.';
+			this.logger.error(`Failed to save section "${section}" for PR #${this.context.pullRequestNumber}: ${errorMessage}`);
+
+			// Send the error back to the webview so the section stays in edit mode
+			this.panel.webview.postMessage({
+				command: 'sectionSaveError',
+				section,
+				message: errorMessage,
+			});
+		}
 	}
 }

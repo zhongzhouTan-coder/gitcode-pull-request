@@ -12,6 +12,7 @@ export interface GitCodeClient {
 
 export interface GitCodeWriteClient extends GitCodeClient {
 	post<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
+	patch<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
 }
 
 export class GitCodeClientImpl implements GitCodeWriteClient {
@@ -29,11 +30,16 @@ export class GitCodeClientImpl implements GitCodeWriteClient {
 		return this.request<T>(path, query, tokenOverride, body);
 	}
 
+	async patch<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T> {
+		return this.request<T>(path, query, tokenOverride, body, 'PATCH');
+	}
+
 	private async request<T>(
 		path: string,
 		query?: Record<string, QueryValue>,
 		tokenOverride?: string,
 		body?: unknown,
+		method?: 'GET' | 'POST' | 'PATCH',
 	): Promise<T> {
 		const token = tokenOverride ?? (await this.sessionStore.read())?.accessToken;
 		if (!token) {
@@ -50,11 +56,11 @@ export class GitCodeClientImpl implements GitCodeWriteClient {
 		}
 
 		if (this.configuration.getTraceServerEnabled()) {
-			this.logger.debug(`${body ? 'POST' : 'GET'} ${requestUrl.toString()}`);
+			this.logger.debug(`${method ?? (body ? 'POST' : 'GET')} ${requestUrl.toString()}`);
 		}
 
 		return requestJson<T>({
-			method: body ? 'POST' : 'GET',
+			method: method ?? (body ? 'POST' : 'GET'),
 			url: requestUrl.toString(),
 			token,
 			body,

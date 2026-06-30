@@ -1,4 +1,4 @@
-import { CreatedPullRequestSummary, CreatePullRequestInput, PullRequestSummary } from '../../common/models';
+import { CreatedPullRequestSummary, CreatePullRequestInput, EditPullRequestInput, PullRequestSummary } from '../../common/models';
 
 interface UserLike {
 	login?: string;
@@ -100,4 +100,31 @@ function resolveCreatedState(dto: any): 'open' | 'closed' | 'merged' {
 		return 'closed';
 	}
 	return 'open';
+}
+
+export function mapEditPullRequestInput(input: EditPullRequestInput): Record<string, unknown> {
+	const body: Record<string, unknown> = {
+		title: input.title,
+	};
+
+	if (input.body !== undefined) {
+		body.body = input.body;
+	}
+	if (input.state !== undefined) {
+		body.state = input.state;
+	}
+	if (input.milestoneNumber !== undefined) {
+		body.milestone_number = input.milestoneNumber;
+	}
+	if (input.labels !== undefined) {
+		body.labels = input.labels;
+	}
+	if (input.draft !== undefined) {
+		body.draft = input.draft;
+	}
+	if (input.closeRelatedIssue !== undefined) {
+		body.close_related_issue = input.closeRelatedIssue;
+	}
+
+	return body;
 }

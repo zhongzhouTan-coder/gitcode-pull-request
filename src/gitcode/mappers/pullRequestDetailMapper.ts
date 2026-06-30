@@ -1,4 +1,5 @@
 import {
+	IssueMilestone,
 	PullRequestBranchRef,
 	PullRequestDetail,
 	PullRequestLabel,
@@ -76,6 +77,25 @@ function mapParticipants(participants: unknown): PullRequestParticipant[] {
 	return participants.map((participant) => mapParticipant(participant as UserLike));
 }
 
+function mapMilestone(dto: any): IssueMilestone | undefined {
+	if (!dto || typeof dto !== 'object') {
+		return undefined;
+	}
+
+	const title = String(dto?.title ?? '').trim();
+	if (!title) {
+		return undefined;
+	}
+
+	return {
+		number: Number(dto?.number ?? dto?.iid ?? dto?.id ?? 0),
+		title,
+		state: typeof dto?.state === 'string' ? dto.state : undefined,
+		dueOn: typeof dto?.due_on === 'string' ? dto.due_on : typeof dto?.dueOn === 'string' ? dto.dueOn : undefined,
+		url: typeof dto?.web_url === 'string' ? dto.web_url : typeof dto?.url === 'string' ? dto.url : undefined,
+	};
+}
+
 function flattenReasons(reason: unknown): string[] {
 	if (!reason || typeof reason !== 'object') {
 		return [];
@@ -150,6 +170,7 @@ export function mapPullRequestDetail(dto: any): PullRequestDetail {
 		reviewers: mapParticipants(dto?.approval_reviewers),
 		testers: mapParticipants(dto?.testers),
 		labels: mapLabels(dto?.labels),
+		milestone: mapMilestone(dto?.milestone),
 		mergeability: mapMergeabilityState(dto),
 	};
 }

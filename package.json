@@ -130,6 +130,11 @@
         "command": "gitcode.createPullRequest",
         "title": "GitCode: Create Pull Request",
         "icon": "$(add)"
+      },
+      {
+        "command": "gitcode.editPullRequest",
+        "title": "GitCode: Edit Pull Request",
+        "icon": "$(edit)"
       }
     ],
     "menus": {
