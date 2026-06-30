@@ -25,6 +25,7 @@ export const COMMAND_ID = {
 	createBranchForIssue: 'gitcode.createBranchForIssue',
 	createPullRequest: 'gitcode.createPullRequest',
 	editPullRequest: 'gitcode.editPullRequest',
+	submitPullRequestDiffComment: 'gitcode.submitPullRequestDiffComment',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';

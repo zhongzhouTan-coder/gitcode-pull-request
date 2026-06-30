@@ -1,6 +1,6 @@
-import { GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail } from '../../common/models';
-import { GitCodeClient } from '../client/gitcodeClient';
-import { mapListComment, mapCommentDetail, mergeCommentDetail } from '../mappers/commentMapper';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail } from '../../common/models';
+import { GitCodeWriteClient } from '../client/gitcodeClient';
+import { mapCreatePullRequestCommentInput, mapCreatePullRequestCommentResult, mapListComment, mapCommentDetail, mergeCommentDetail } from '../mappers/commentMapper';
 import { Logger } from '../../common/logger';
 
 export interface ListPullRequestCommentsOptions {
@@ -17,9 +17,39 @@ export interface ListPullRequestCommentsOptions {
  */
 export class CommentService {
 	constructor(
-		private readonly client: GitCodeClient,
+		private readonly client: GitCodeWriteClient,
 		private readonly logger: Logger,
 	) {}
+
+	async createPullRequestComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: CreatePullRequestCommentInput,
+	): Promise<CreatePullRequestCommentResult> {
+		const trimmedBody = input.body.trim();
+		if (!trimmedBody) {
+			throw new Error('Comment body is required.');
+		}
+
+		if (input.kind !== 'pullRequest' && !input.path.trim()) {
+			throw new Error('Comment path is required.');
+		}
+
+		if (input.kind === 'diff' && (!Number.isInteger(input.position) || input.position <= 0)) {
+			throw new Error('Comment position must be a positive line number.');
+		}
+
+		const payload = mapCreatePullRequestCommentInput({
+			...input,
+			body: trimmedBody,
+		});
+		const response = await this.client.post<unknown>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/comments`,
+			payload,
+		);
+
+		return mapCreatePullRequestCommentResult(response as Record<string, unknown>, trimmedBody);
+	}
 
 	/**
 	 * List all comments for a pull request.

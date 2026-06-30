@@ -316,19 +316,33 @@ function renderDiffCommentCard(comment: PullRequestDiffComment): string {
 	`;
 }
 
+function renderConversationComposer(): string {
+	return `
+		<div class="conversation-composer">
+			<label class="composer-label" for="conversation-comment-input">Write a comment</label>
+			<textarea id="conversation-comment-input" class="conversation-input" placeholder="Write a comment..."></textarea>
+			<div id="conversation-comment-error" class="comment-error conversation-error" aria-live="polite"></div>
+			<div class="conversation-actions">
+				<button id="conversation-comment-submit">Comment</button>
+			</div>
+		</div>
+	`;
+}
+
 function renderConversationSection(snapshot: PullRequestCommentsSnapshot): string {
 	const comments = [...snapshot.comments].sort((a, b) => {
 		return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 	});
 
 	if (!comments.length) {
-		return '<section><h2>Conversation</h2><div class="empty">No comments yet.</div></section>';
+		return `<section><h2>Conversation</h2>${renderConversationComposer()}<div class="empty">No comments yet.</div></section>`;
 	}
 
 	const countText = `${comments.length}`;
 	return `
 		<section>
 			<h2>Conversation (${countText})</h2>
+			${renderConversationComposer()}
 			<div class="conversation-list">
 				${comments.map((c) => renderConversationComment(c)).join('')}
 			</div>
@@ -337,11 +351,11 @@ function renderConversationSection(snapshot: PullRequestCommentsSnapshot): strin
 }
 
 function renderConversationLoading(): string {
-	return '<section><h2>Conversation</h2><div class="empty">Loading comments...</div></section>';
+	return `<section><h2>Conversation</h2>${renderConversationComposer()}<div class="empty">Loading comments...</div></section>`;
 }
 
 function renderConversationError(message: string): string {
-	return `<section><h2>Conversation</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
+	return `<section><h2>Conversation</h2>${renderConversationComposer()}<div class="comment-error">${escapeHtml(message)}</div></section>`;
 }
 
 // ---- Related Issues Rendering ----
@@ -794,6 +808,39 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		}
 		.muted, .empty { color: var(--muted); }
 		/* ---- Conversation / Comments ---- */
+		.conversation-composer {
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+			margin-bottom: 16px;
+		}
+		.composer-label {
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--muted);
+		}
+		.conversation-input {
+			min-height: 88px;
+			resize: vertical;
+			font: inherit;
+			color: inherit;
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border, var(--border));
+			border-radius: 8px;
+			padding: 10px 12px;
+		}
+		.conversation-input:focus {
+			outline: 1px solid var(--vscode-focusBorder);
+			outline-offset: 1px;
+		}
+		.conversation-actions {
+			display: flex;
+			justify-content: flex-start;
+		}
+		.conversation-error {
+			min-height: 18px;
+			margin: 0;
+		}
 		.conversation-list { display: flex; flex-direction: column; gap: 16px; }
 		.comment-card {
 			border: 1px solid var(--border);
@@ -1362,6 +1409,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		var selectedLabels = [];
 		var selectedMilestone = null;
 		var pendingStateAction = null;
+		var pendingConversationComment = false;
 
 		function labelKey(label) {
 			if (!label || typeof label !== 'object') {
@@ -1674,6 +1722,44 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			}
 		}
 
+		function setConversationCommentSubmitting(submitting) {
+			pendingConversationComment = submitting;
+			var button = document.getElementById('conversation-comment-submit');
+			var input = document.getElementById('conversation-comment-input');
+			if (button) {
+				button.disabled = submitting;
+				button.textContent = submitting ? 'Commenting...' : 'Comment';
+			}
+			if (input) {
+				input.disabled = submitting;
+			}
+		}
+
+		function showConversationCommentError(message) {
+			var errorEl = document.getElementById('conversation-comment-error');
+			if (errorEl) {
+				errorEl.textContent = message || '';
+			}
+		}
+
+		function submitConversationComment() {
+			if (pendingConversationComment) {
+				return;
+			}
+
+			var input = document.getElementById('conversation-comment-input');
+			if (!input) {
+				return;
+			}
+
+			showConversationCommentError('');
+			setConversationCommentSubmitting(true);
+			vscode.postMessage({
+				command: 'submitPullRequestComment',
+				body: input.value,
+			});
+		}
+
 		function buildInput(section) {
 			var title = document.querySelector('[data-section-input="title"]');
 			var currentTitleValue = title ? title.value.trim() : currentTitle;
@@ -1890,6 +1976,10 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				}
 				pendingStateAction = null;
 			}
+			if (msg.command === 'pullRequestCommentSubmitError') {
+				setConversationCommentSubmitting(false);
+				showConversationCommentError(msg.message || 'Unable to submit comment.');
+			}
 		});
 
 		document.getElementById('refresh-button')?.addEventListener('click', () => {
@@ -1897,6 +1987,15 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		});
 		document.getElementById('open-web-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'openOnWeb' });
+		});
+		document.getElementById('conversation-comment-submit')?.addEventListener('click', () => {
+			submitConversationComment();
+		});
+		document.getElementById('conversation-comment-input')?.addEventListener('keydown', (event) => {
+			if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+				event.preventDefault();
+				submitConversationComment();
+			}
 		});
 		document.getElementById('state-action-button')?.addEventListener('click', () => {
 			var button = document.getElementById('state-action-button');

@@ -49,6 +49,25 @@ suite('OverviewHtml', () => {
 		assert.match(html, /Comment body/);
 	});
 
+	test('renders a conversation composer and submit message wiring', () => {
+		const html = getOverviewWithCommentsHtml(
+			detail,
+			{
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				comments: [],
+			},
+			'nonce',
+		);
+
+		assert.match(html, /id="conversation-comment-input"/);
+		assert.match(html, /id="conversation-comment-submit"/);
+		assert.match(html, /command: 'submitPullRequestComment'/);
+		assert.match(html, /pullRequestCommentSubmitError/);
+		assert.match(html, /button\.textContent = submitting \? 'Commenting\.\.\.' : 'Comment';/);
+	});
+
 	test('posts openIssue messages for related issue title buttons', () => {
 		const relatedIssues: PullRequestRelatedIssuesSnapshot = {
 			repositoryKey: 'org/repo',

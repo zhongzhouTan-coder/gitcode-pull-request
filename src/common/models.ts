@@ -189,6 +189,31 @@ export interface PullRequestDiffCommentDetail {
 	location: PullRequestDiffCommentLocation;
 }
 
+export type CreatePullRequestCommentInput =
+	| {
+		kind: 'pullRequest';
+		body: string;
+	}
+	| {
+		kind: 'diff';
+		body: string;
+		path: string;
+		position: number;
+		positionType: 'text';
+	}
+	| {
+		kind: 'file';
+		body: string;
+		path: string;
+		positionType: 'binary';
+	};
+
+export interface CreatePullRequestCommentResult {
+	id: string;
+	noteId?: number;
+	body: string;
+}
+
 export type PullRequestComment =
 	| PullRequestGeneralComment
 	| PullRequestDiffComment;

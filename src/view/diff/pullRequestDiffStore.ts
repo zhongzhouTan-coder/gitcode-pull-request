@@ -29,6 +29,11 @@ export class PullRequestDiffStore {
 		return promise;
 	}
 
+	refresh(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestDiffSnapshot> {
+		this.invalidate(repository.fullName, pullRequestNumber);
+		return this.getOrFetch(repository, pullRequestNumber);
+	}
+
 	invalidate(repositoryKey: string, pullRequestNumber: number): void {
 		const key = `${repositoryKey}#${pullRequestNumber}:snapshot`;
 		this.snapshots.delete(key);

@@ -76,6 +76,14 @@ export function validatePullRequestStateChange(requestedState: string, detail: P
 	return [];
 }
 
+export function validatePullRequestCommentBody(body: string): string[] {
+	if (!body.trim()) {
+		return ['Comment body is required.'];
+	}
+
+	return [];
+}
+
 export class PullRequestOverviewPanel implements vscode.Disposable {
 	private static readonly panels = new Map<string, PullRequestOverviewPanel>();
 	private static activePanel: PullRequestOverviewPanel | undefined;
@@ -178,6 +186,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		this.panel.webview.onDidReceiveMessage(async (message: {
 			command?: string;
+			body?: string;
 			url?: string;
 			repository?: string;
 			issue?: number | string;
@@ -192,6 +201,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'openOnWeb') {
 				await this.openOnWeb();
+				return;
+			}
+
+			if (message.command === 'submitPullRequestComment' && typeof message.body === 'string') {
+				await this.handleSubmitPullRequestComment(message.body);
 				return;
 			}
 
@@ -479,6 +493,46 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.logger.error(`Failed to change state for PR #${this.context.pullRequestNumber}: ${errorMessage}`);
 			this.panel.webview.postMessage({
 				command: 'pullRequestStateChangeError',
+				message: errorMessage,
+			});
+		}
+	}
+
+	private async handleSubmitPullRequestComment(body: string): Promise<void> {
+		if (!this.detail) {
+			this.panel.webview.postMessage({
+				command: 'pullRequestCommentSubmitError',
+				message: 'Pull request context is not available.',
+			});
+			return;
+		}
+
+		const errors = validatePullRequestCommentBody(body);
+		if (errors.length) {
+			this.panel.webview.postMessage({
+				command: 'pullRequestCommentSubmitError',
+				message: errors.join(' '),
+			});
+			return;
+		}
+
+		try {
+			await this.commentsStore.submitComment(
+				this.context.repository,
+				this.context.pullRequestNumber,
+				{
+					kind: 'pullRequest',
+					body,
+				},
+			);
+
+			this.commentsSnapshot = undefined;
+			await this.load(true);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to submit pull request comment.';
+			this.logger.error(`Failed to submit comment for PR #${this.context.pullRequestNumber}: ${errorMessage}`);
+			this.panel.webview.postMessage({
+				command: 'pullRequestCommentSubmitError',
 				message: errorMessage,
 			});
 		}

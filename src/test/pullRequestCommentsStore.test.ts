@@ -44,4 +44,39 @@ suite('PullRequestCommentsStore', () => {
 		assert.strictEqual(notifications, 1);
 		store.dispose();
 	});
+
+	test('submitComment creates the comment and refreshes the snapshot', async () => {
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const calls: string[] = [];
+		const commentService = {
+			createPullRequestComment: async () => {
+				calls.push('create');
+				return { id: 'comment-1', body: 'Hello' };
+			},
+		} as unknown as CommentService;
+
+		const store = new PullRequestCommentsStore(authService, commentService);
+		let changeEventRepository = '';
+		store.onDidChange((event) => {
+			if (event) {
+				changeEventRepository = event.repositoryKey;
+			}
+		});
+
+		const result = await store.submitComment(repository, 7, {
+			kind: 'pullRequest',
+			body: 'Hello',
+		});
+
+		assert.deepStrictEqual(result, { id: 'comment-1', body: 'Hello' });
+		assert.deepStrictEqual(calls, ['create']);
+		assert.strictEqual(changeEventRepository, 'org/repo');
+		store.dispose();
+	});
 });

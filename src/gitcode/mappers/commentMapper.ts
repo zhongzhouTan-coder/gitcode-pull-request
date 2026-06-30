@@ -1,4 +1,6 @@
 import {
+	CreatePullRequestCommentInput,
+	CreatePullRequestCommentResult,
 	PullRequestComment,
 	PullRequestCommentAuthor,
 	PullRequestCommentReply,
@@ -64,6 +66,12 @@ interface GetCommentDto {
 	is_outdated?: unknown;
 	position?: GetCommentPositionDto;
 	user?: ListCommentUserDto;
+}
+
+interface CreatePullRequestCommentDto {
+	id?: unknown;
+	body?: unknown;
+	note_id?: unknown;
 }
 
 // ---- Helpers ----
@@ -278,5 +286,45 @@ export function mergeCommentDetail(
 			headSha: detail.location.headSha ?? listComment.location.headSha,
 			positionType: detail.location.positionType || listComment.location.positionType,
 		},
+	};
+}
+
+export function mapCreatePullRequestCommentInput(
+	input: CreatePullRequestCommentInput,
+): Record<string, unknown> {
+	const body: Record<string, unknown> = {
+		body: input.body,
+	};
+
+	if (input.kind === 'pullRequest') {
+		return body;
+	}
+
+	body.path = input.path;
+	body.position_type = input.positionType;
+
+	if (input.kind === 'diff') {
+		body.position = input.position;
+	}
+
+	return body;
+}
+
+export function mapCreatePullRequestCommentResult(
+	dto: CreatePullRequestCommentDto,
+	fallbackBody: string,
+): CreatePullRequestCommentResult {
+	const id = asString(dto.id);
+	if (!id) {
+		throw new Error('Failed to map created pull request comment: missing id.');
+	}
+
+	const noteId = asPositiveInt(dto.note_id);
+	const body = asString(dto.body) || fallbackBody;
+
+	return {
+		id,
+		noteId,
+		body,
 	};
 }

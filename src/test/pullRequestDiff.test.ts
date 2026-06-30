@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { mapDiffSnapshot } from '../gitcode/mappers/pullRequestDiffSnapshotMapper';
 import { RawContentService } from '../gitcode/services/rawContentService';
+import { createDiffCommentInput, validateDiffCommentDraft } from '../view/comments/diffCommentController';
 import { GitCodePullRequestFileSystemProvider } from '../view/diff/gitcodePullRequestFileSystemProvider';
 import { buildPrUri } from '../view/diff/prUriHelpers';
 
@@ -63,5 +64,65 @@ suite('PullRequestDiff', () => {
 		assert.strictEqual(stat.size, 0);
 		assert.strictEqual(reads, 0);
 		provider.dispose();
+	});
+
+	test('maps zero-based editor lines to one-based diff comment positions', () => {
+		const uri = buildPrUri({
+			owner: 'org',
+			repo: 'repo',
+			pullRequestNumber: 7,
+			side: 'head',
+			sha: 'headsha',
+			path: 'src/example.ts',
+		});
+
+		const input = createDiffCommentInput(uri, new vscode.Range(4, 0, 4, 5), 'Inline note');
+
+		assert.deepStrictEqual(input, {
+			kind: 'diff',
+			body: 'Inline note',
+			path: 'src/example.ts',
+			position: 5,
+			positionType: 'text',
+		});
+	});
+
+	test('rejects base-side diff comments before submission', () => {
+		const uri = buildPrUri({
+			owner: 'org',
+			repo: 'repo',
+			pullRequestNumber: 7,
+			side: 'base',
+			sha: 'basesha',
+			path: 'src/example.ts',
+		});
+
+		assert.deepStrictEqual(
+			validateDiffCommentDraft(uri, new vscode.Range(0, 0, 0, 0), 'Inline note'),
+			['Comments are only supported on the head side of a pull request diff.'],
+		);
+	});
+
+	test('rejects non-pull-request documents before submission', () => {
+		assert.deepStrictEqual(
+			validateDiffCommentDraft(vscode.Uri.file('/tmp/example.ts'), new vscode.Range(0, 0, 0, 0), 'Inline note'),
+			['Only pull request diff documents support comments.'],
+		);
+	});
+
+	test('rejects stale diff comment snapshots before submission', () => {
+		const uri = buildPrUri({
+			owner: 'org',
+			repo: 'repo',
+			pullRequestNumber: 7,
+			side: 'head',
+			sha: 'oldhead',
+			path: 'src/example.ts',
+		});
+
+		assert.deepStrictEqual(
+			validateDiffCommentDraft(uri, new vscode.Range(0, 0, 0, 0), 'Inline note', 'newhead'),
+			['This diff is out of date. Refresh the pull request diff before commenting.'],
+		);
 	});
 });

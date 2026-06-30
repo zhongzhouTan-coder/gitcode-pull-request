@@ -1,9 +1,92 @@
 import * as vscode from 'vscode';
+import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { PullRequestCommentsSnapshot } from '../../common/models';
+import { CreatePullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { createCommentThread, selectCommentsForDocument } from './commentThreadFactory';
 import { parsePrUri } from '../diff/prUriHelpers';
+import { PullRequestDiffStore } from '../diff/pullRequestDiffStore';
+
+function createRepository(owner: string, repo: string): GitCodeRepository {
+	return {
+		remoteName: '',
+		owner,
+		name: repo,
+		fullName: `${owner}/${repo}`,
+		webUrl: '',
+	};
+}
+
+export function validateDiffCommentDraft(
+	documentUri: vscode.Uri,
+	range: vscode.Range | undefined,
+	body: string,
+	currentHeadSha?: string,
+): string[] {
+	const parsed = parsePrUri(documentUri);
+	if (!parsed) {
+		return ['Only pull request diff documents support comments.'];
+	}
+
+	if (parsed.side !== 'head') {
+		return ['Comments are only supported on the head side of a pull request diff.'];
+	}
+
+	if (!parsed.sha) {
+		return ['Comments require the current pull request diff snapshot. Refresh the diff and try again.'];
+	}
+
+	if (currentHeadSha && parsed.sha !== currentHeadSha) {
+		return ['This diff is out of date. Refresh the pull request diff before commenting.'];
+	}
+
+	if (!parsed.path) {
+		return ['Comments require a file path.'];
+	}
+
+	if (!body.trim()) {
+		return ['Comment body is required.'];
+	}
+
+	if (range && range.start.line < 0) {
+		return ['Comments require a valid line number.'];
+	}
+
+	return [];
+}
+
+export function createDiffCommentInput(
+	documentUri: vscode.Uri,
+	range: vscode.Range | undefined,
+	body: string,
+): CreatePullRequestCommentInput {
+	const errors = validateDiffCommentDraft(documentUri, range, body);
+	if (errors.length) {
+		throw new Error(errors.join(' '));
+	}
+
+	const parsed = parsePrUri(documentUri);
+	if (!parsed) {
+		throw new Error('Only pull request diff documents support comments.');
+	}
+
+	if (!range) {
+		return {
+			kind: 'file',
+			body,
+			path: parsed.path,
+			positionType: 'binary',
+		};
+	}
+
+	return {
+		kind: 'diff',
+		body,
+		path: parsed.path,
+		position: range.start.line + 1,
+		positionType: 'text',
+	};
+}
 
 interface CommentThreadKey {
 	repositoryKey: string;
@@ -15,6 +98,19 @@ interface CommentThreadKey {
 
 function threadKeyToString(key: CommentThreadKey): string {
 	return `${key.repositoryKey}#${key.pullRequestNumber}:${key.path}:${key.side}:${key.discussionId}`;
+}
+
+function isCommentReply(value: unknown): value is vscode.CommentReply {
+	if (!value || typeof value !== 'object') {
+		return false;
+	}
+
+	const candidate = value as Partial<vscode.CommentReply>;
+	return Boolean(
+		candidate.thread
+		&& candidate.thread.uri instanceof vscode.Uri
+		&& typeof candidate.text === 'string',
+	);
 }
 
 /**
@@ -34,16 +130,30 @@ export class DiffCommentController implements vscode.Disposable {
 
 	constructor(
 		private readonly commentsStore: PullRequestCommentsStore,
+		private readonly diffStore: PullRequestDiffStore,
 		private readonly logger: Logger,
 	) {
 		this.controller = vscode.comments.createCommentController(
 			'gitcode-pull-request-comments',
 			'GitCode Pull Request Comments',
 		);
-		this.controller.commentingRangeProvider = undefined;
+		this.controller.options = {
+			prompt: 'Submit comment',
+			placeHolder: 'Write a comment',
+		};
+		this.controller.commentingRangeProvider = {
+			provideCommentingRanges: (document) => this.provideCommentingRanges(document),
+		};
 
 		this.disposables.push(
 			this.controller,
+			vscode.commands.registerCommand(COMMAND_ID.submitPullRequestDiffComment, async (reply?: vscode.CommentReply) => {
+				if (!isCommentReply(reply)) {
+					await vscode.window.showWarningMessage('Use this command from a pull request comment thread.');
+					return;
+				}
+				await this.handleCommentReply(reply);
+			}),
 			vscode.window.onDidChangeVisibleTextEditors(() => {
 				void this.updateThreads();
 			}),
@@ -69,6 +179,96 @@ export class DiffCommentController implements vscode.Disposable {
 		}
 		this.activeThreads.clear();
 		this.trackedDocs.clear();
+	}
+
+	private async provideCommentingRanges(
+		document: vscode.TextDocument,
+	): Promise<vscode.Range[] | vscode.CommentingRanges | undefined> {
+		const parsed = parsePrUri(document.uri);
+		if (!parsed || parsed.side !== 'head' || !parsed.path || !parsed.sha || document.lineCount < 1) {
+			return undefined;
+		}
+
+		const currentHeadSha = await this.getCurrentHeadSha(createRepository(parsed.owner, parsed.repo), parsed.pullRequestNumber, true);
+		if (!currentHeadSha || parsed.sha !== currentHeadSha) {
+			return undefined;
+		}
+
+		return {
+			enableFileComments: false,
+			ranges: [new vscode.Range(0, 0, document.lineCount - 1, 0)],
+		};
+	}
+
+	private async handleCommentReply(reply: vscode.CommentReply): Promise<void> {
+		const parsed = parsePrUri(reply.thread.uri);
+		const repository = parsed ? createRepository(parsed.owner, parsed.repo) : undefined;
+		const currentHeadSha = repository && parsed
+			? await this.getCurrentHeadSha(repository, parsed.pullRequestNumber, true)
+			: undefined;
+		if (parsed && !currentHeadSha) {
+			await vscode.window.showWarningMessage('Unable to verify the current pull request diff snapshot. Refresh the diff and try again.');
+			return;
+		}
+
+		const errors = validateDiffCommentDraft(reply.thread.uri, reply.thread.range, reply.text, currentHeadSha);
+		if (errors.length) {
+			await vscode.window.showWarningMessage(errors.join(' '));
+			return;
+		}
+
+		if (!parsed) {
+			await vscode.window.showWarningMessage('Only pull request diff documents support comments.');
+			return;
+		}
+
+		if (!repository) {
+			await vscode.window.showWarningMessage('Only pull request diff documents support comments.');
+			return;
+		}
+
+		const input = createDiffCommentInput(reply.thread.uri, reply.thread.range, reply.text);
+		const previousCanReply = reply.thread.canReply;
+		const previousLabel = reply.thread.label;
+
+		reply.thread.canReply = false;
+		reply.thread.label = 'Submitting comment...';
+
+		try {
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: 'Submitting pull request comment',
+				},
+				() => this.commentsStore.submitComment(repository, parsed.pullRequestNumber, input),
+			);
+
+			reply.thread.dispose();
+		} catch (error) {
+			reply.thread.canReply = previousCanReply;
+			reply.thread.label = previousLabel;
+			const message = error instanceof Error ? error.message : 'Failed to submit pull request comment.';
+			this.logger.error(`Failed to submit diff comment for PR #${parsed.pullRequestNumber}: ${message}`);
+			await vscode.window.showErrorMessage(message);
+		}
+	}
+
+	private async getCurrentHeadSha(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		forceRefresh = false,
+	): Promise<string | undefined> {
+		try {
+			const snapshot = forceRefresh
+				? await this.diffStore.refresh(repository, pullRequestNumber)
+				: await this.diffStore.getOrFetch(repository, pullRequestNumber);
+			return snapshot.refs.headSha || undefined;
+		} catch (error) {
+			this.logger.debug(
+				`Failed to load diff snapshot for PR #${pullRequestNumber} (${repository.fullName}): ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return undefined;
+		}
 	}
 
 	private handleDocumentClosed(doc: vscode.TextDocument): void {

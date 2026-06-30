@@ -140,6 +140,10 @@
         "command": "gitcode.editPullRequest",
         "title": "GitCode: Edit Pull Request",
         "icon": "$(edit)"
+      },
+      {
+        "command": "gitcode.submitPullRequestDiffComment",
+        "title": "Submit Pull Request Comment"
       }
     ],
     "menus": {
@@ -235,6 +239,13 @@
           "command": "gitcode.usePullRequestAsCopilotContext",
           "when": "view == pr:gitcode && viewItem == pullRequest",
           "group": "inline@3"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "gitcode.submitPullRequestDiffComment",
+          "when": "commentController == gitcode-pull-request-comments",
+          "group": "navigation"
         }
       ]
     },

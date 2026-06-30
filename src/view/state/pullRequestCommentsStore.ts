@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
 import { CommentService } from '../../gitcode/services/commentService';
 
 export interface CommentChangeEvent {
@@ -73,6 +73,25 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		const key = this.makeKeyFromParts(repositoryKey, pullRequestNumber);
 		this.snapshotPromises.delete(key);
 		this.onDidChangeEmitter.fire({ repositoryKey, pullRequestNumber });
+	}
+
+	async submitComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: CreatePullRequestCommentInput,
+	): Promise<CreatePullRequestCommentResult> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const result = await this.commentService.createPullRequestComment(
+			repository,
+			pullRequestNumber,
+			input,
+		);
+		await this.refresh(repository.fullName, pullRequestNumber);
+		return result;
 	}
 
 	/**

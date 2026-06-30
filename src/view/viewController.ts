@@ -110,8 +110,10 @@ export class ViewController implements vscode.Disposable {
 			options.authService,
 			commentService,
 		);
+		this.diffStore = new PullRequestDiffStore(options.pullRequestService);
 		this.diffCommentController = new DiffCommentController(
 			this.commentsStore,
+			this.diffStore,
 			options.logger,
 		);
 
@@ -203,7 +205,6 @@ export class ViewController implements vscode.Disposable {
 			rawContentService,
 			options.logger,
 		);
-		this.diffStore = new PullRequestDiffStore(options.pullRequestService);
 		this.diffController = new PullRequestDiffController(
 			this.diffStore,
 			this.patchContentProvider,

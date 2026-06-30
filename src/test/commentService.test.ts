@@ -1,7 +1,7 @@
 import * as assert from 'assert';
-import { GitCodeRepository } from '../common/models';
+import { CreatePullRequestCommentInput, GitCodeRepository } from '../common/models';
 import { Logger } from '../common/logger';
-import { GitCodeClient } from '../gitcode/client/gitcodeClient';
+import { GitCodeWriteClient } from '../gitcode/client/gitcodeClient';
 import { CommentService } from '../gitcode/services/commentService';
 
 suite('CommentService', () => {
@@ -15,7 +15,7 @@ suite('CommentService', () => {
 
 	test('limits comments before enriching diff comment details', async () => {
 		const detailCalls: string[] = [];
-		const client: GitCodeClient = {
+		const client: GitCodeWriteClient = {
 			get: async <T>(path: string): Promise<T> => {
 				if (path.includes('/pulls/comments/')) {
 					const id = path.split('/').pop() ?? '';
@@ -39,6 +39,12 @@ suite('CommentService', () => {
 					listDiffComment('middle', '2026-01-02T00:00:00Z'),
 				] as T;
 			},
+			post: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
 		};
 		const logger = { debug: () => undefined, error: () => undefined } as unknown as Logger;
 		const service = new CommentService(client, logger);
@@ -54,6 +60,115 @@ suite('CommentService', () => {
 		if (comments[0].kind === 'diff') {
 			assert.strictEqual(comments[0].location.path, 'src/newest.ts');
 		}
+	});
+
+	test('creates a pull request conversation comment with body only', async () => {
+		const calls: Array<{ path: string; body: unknown }> = [];
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(path: string, body?: unknown): Promise<T> => {
+				calls.push({ path, body });
+				return {
+					id: 'comment-1',
+					body: 'Looks good to me.',
+					note_id: 12,
+				} as T;
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		const result = await service.createPullRequestComment(repository, 3, {
+			kind: 'pullRequest',
+			body: 'Looks good to me.',
+		});
+
+		assert.deepStrictEqual(calls, [{
+			path: '/api/v5/repos/org/repo/pulls/3/comments',
+			body: { body: 'Looks good to me.' },
+		}]);
+		assert.deepStrictEqual(result, { id: 'comment-1', noteId: 12, body: 'Looks good to me.' });
+	});
+
+	test('creates an inline diff comment with path position and text type', async () => {
+		const calls: unknown[] = [];
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(_path: string, body?: unknown): Promise<T> => {
+				calls.push(body);
+				return { id: 'comment-2', body: 'Inline', note_id: 22 } as T;
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		await service.createPullRequestComment(repository, 3, {
+			kind: 'diff',
+			body: 'Inline',
+			path: 'src/example.ts',
+			position: 16,
+			positionType: 'text',
+		});
+
+		assert.deepStrictEqual(calls, [{
+			body: 'Inline',
+			path: 'src/example.ts',
+			position: 16,
+			position_type: 'text',
+		}]);
+	});
+
+	test('omits position for binary file comments', async () => {
+		const calls: unknown[] = [];
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(_path: string, body?: unknown): Promise<T> => {
+				calls.push(body);
+				return { id: 'comment-3', body: 'Binary' } as T;
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		await service.createPullRequestComment(repository, 3, {
+			kind: 'file',
+			body: 'Binary',
+			path: 'dist/app.bin',
+			positionType: 'binary',
+		});
+
+		assert.deepStrictEqual(calls, [{
+			body: 'Binary',
+			path: 'dist/app.bin',
+			position_type: 'binary',
+		}]);
+	});
+
+	test('rejects empty bodies before calling the API', async () => {
+		let called = false;
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(): Promise<T> => {
+				called = true;
+				return {} as T;
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		await assert.rejects(async () => service.createPullRequestComment(repository, 3, {
+			kind: 'pullRequest',
+			body: '   ',
+		} as CreatePullRequestCommentInput), /Comment body is required\./);
+		assert.strictEqual(called, false);
 	});
 });
 

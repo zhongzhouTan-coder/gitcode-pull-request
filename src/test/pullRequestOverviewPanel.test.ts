@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { PullRequestDetail } from '../common/models';
-import { isTrustedGitCodeUrl, validatePullRequestStateChange } from '../view/overview/pullRequestOverviewPanel';
+import { isTrustedGitCodeUrl, validatePullRequestCommentBody, validatePullRequestStateChange } from '../view/overview/pullRequestOverviewPanel';
 
 suite('PullRequestOverviewPanel', () => {
 	test('accepts HTTP(S) URLs from the configured GitCode origin', () => {
@@ -48,5 +48,10 @@ suite('PullRequestOverviewPanel', () => {
 		assert.deepStrictEqual(validatePullRequestStateChange('open', { ...detail, state: 'closed' }), []);
 		assert.deepStrictEqual(validatePullRequestStateChange('closed', { ...detail, state: 'closed' }), ['Only open pull requests can be closed.']);
 		assert.deepStrictEqual(validatePullRequestStateChange('open', { ...detail, state: 'merged' }), ['Merged pull requests cannot be reopened or closed.']);
+	});
+
+	test('validates pull request comment bodies', () => {
+		assert.deepStrictEqual(validatePullRequestCommentBody('   '), ['Comment body is required.']);
+		assert.deepStrictEqual(validatePullRequestCommentBody('Looks good'), []);
 	});
 });
