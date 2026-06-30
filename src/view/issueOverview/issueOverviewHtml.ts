@@ -68,19 +68,35 @@ function renderLabels(labels: IssueLabel[]): string {
 	)).join('')}</div>`;
 }
 
+function renderUserAvatar(user: IssueUser): string {
+	const initial = (user.name || user.login)[0]?.toUpperCase() || '?';
+	if (user.avatarUrl) {
+		try {
+			const url = new URL(user.avatarUrl);
+			if (url.protocol === 'https:') {
+				return `<img class="user-avatar" src="${escapeHtml(user.avatarUrl)}" alt="${escapeHtml(user.login)}" loading="lazy" onerror="this.outerHTML='<span class=\\'user-avatar user-avatar-initials\\'>${escapeHtml(initial)}</span>'">`;
+			}
+		} catch {
+			// Fall through to initials for malformed API data.
+		}
+	}
+	return `<span class="user-avatar user-avatar-initials">${escapeHtml(initial)}</span>`;
+}
+
 function renderUsers(users: IssueUser[]): string {
 	if (!users.length) {
 		return '<div class="empty">None</div>';
 	}
 
-	return `<div class="meta-list">${users.map((u) => {
+	return `<div class="assignee-list">${users.map((u) => {
 		const display = u.name && u.name !== u.login
-			? `${escapeHtml(u.name)} (@${escapeHtml(u.login)})`
+			? `<span>${escapeHtml(u.name)}</span><span class="muted">@${escapeHtml(u.login)}</span>`
 			: `@${escapeHtml(u.login)}`;
+		const content = `${renderUserAvatar(u)}<span class="assignee-name">${display}</span>`;
 		if (u.htmlUrl) {
-			return `<button class="participant-btn" data-action="openUrl" data-url="${escapeHtml(u.htmlUrl)}" title="${escapeHtml(u.login)}">${display}</button>`;
+			return `<button class="participant-btn assignee-row" data-action="openUrl" data-url="${escapeHtml(u.htmlUrl)}" title="${escapeHtml(u.login)}">${content}</button>`;
 		}
-		return `<span>${display}</span>`;
+		return `<span class="assignee-row">${content}</span>`;
 	}).join('')}</div>`;
 }
 
@@ -89,62 +105,95 @@ function renderMilestone(detail: IssueDetail): string {
 		return '<div class="empty">None</div>';
 	}
 
-	const parts: string[] = [escapeHtml(detail.milestone.title)];
-	if (detail.milestone.dueOn) {
-		parts.push(` (due ${escapeHtml(detail.milestone.dueOn)})`);
-	}
-	if (detail.milestone.state) {
-		parts.push(` — ${escapeHtml(detail.milestone.state)}`);
-	}
+	return `<div class="sidebar-value">${escapeHtml(detail.milestone.title)}</div>`;
+}
 
-	return `<div>${parts.join('')}</div>`;
+function renderDateRows(detail: IssueDetail): string {
+	const rows = [
+		['Created', detail.createdAt],
+		['Updated', detail.updatedAt],
+		...(detail.finishedAt ? [['Finished', detail.finishedAt]] as [string, string][] : []),
+	] as [string, string | undefined][];
+
+	return `<div class="date-list">${rows.map(([label, value]) => `<div class="date-row">
+		<span class="date-label">${escapeHtml(label)}</span>
+		<span class="date-value">${escapeHtml(formatDate(value))}</span>
+	</div>`).join('')}</div>`;
+}
+
+function renderRepository(detail: IssueDetail): string {
+	const repo = detail.repository;
+	const repoName = repo.name ?? repo.fullName.split('/').at(-1) ?? repo.fullName;
+	const owner = repo.fullName.includes('/') ? repo.fullName.split('/').slice(0, -1).join('/') : '';
+	const rows = [
+		owner ? ['Owner', owner] : undefined,
+		['Name', repoName],
+		['Full name', repo.fullName],
+		repo.path && repo.path !== repoName ? ['Path', repo.path] : undefined,
+		detail.visibilityReason ? ['Visibility', detail.visibilityReason] : undefined,
+	].filter((row): row is [string, string] => Boolean(row));
+	const description = repo.description
+		? `<div class="repository-description">${escapeHtml(repo.description)}</div>`
+		: '';
+
+	return `<div class="repository-block">
+		<div class="repository-title">${escapeHtml(owner ? `${owner}/${repoName}` : repoName)}</div>
+		${description}
+		<div class="repository-rows">
+			${rows.map(([label, value]) => `<div class="repository-row">
+				<span class="repository-label">${escapeHtml(label)}</span>
+				<span class="repository-value">${escapeHtml(value)}</span>
+			</div>`).join('')}
+		</div>
+	</div>`;
 }
 
 function renderSidebar(detail: IssueDetail): string {
 	return `
-		<div class="meta-group">
-			<h3>Assignees</h3>
-			${renderUsers(detail.assignees)}
+		<div class="card sidebar-card">
+			<div class="meta-group">
+				<h3>Assignees</h3>
+				${renderUsers(detail.assignees)}
+			</div>
+			<div class="meta-group">
+				<h3>Labels</h3>
+				${renderLabels(detail.labels)}
+			</div>
+			<div class="meta-group">
+				<h3>Milestone</h3>
+				${renderMilestone(detail)}
+			</div>
 		</div>
-		<div class="meta-group">
-			<h3>Labels</h3>
-			${renderLabels(detail.labels)}
+		<div class="card sidebar-card">
+			<div class="sidebar-field-grid">
+				<div class="sidebar-field">
+					<span class="sidebar-field-label">Type</span>
+					<span class="sidebar-value">${escapeHtml(detail.issueTypeDetail?.title ?? detail.issueType ?? 'None')}</span>
+				</div>
+				<div class="sidebar-field">
+					<span class="sidebar-field-label">Priority</span>
+					<span class="sidebar-value">${escapeHtml(detail.priorityDetail?.title ?? 'None')}</span>
+				</div>
+				<div class="sidebar-field">
+					<span class="sidebar-field-label">Workflow</span>
+					<span class="sidebar-value">${escapeHtml(detail.issueStateDetail?.title ?? detail.issueState ?? 'None')}</span>
+				</div>
+				<div class="sidebar-field">
+					<span class="sidebar-field-label">Comments</span>
+					<span class="sidebar-value">${detail.comments}</span>
+				</div>
+			</div>
 		</div>
-		<div class="meta-group">
-			<h3>Milestone</h3>
-			${renderMilestone(detail)}
-		</div>
-		<div class="meta-group">
-			<h3>Type</h3>
-			<div>${escapeHtml(detail.issueType || 'None')}</div>
-		</div>
-		<div class="meta-group">
-			<h3>Priority</h3>
-			<div>${escapeHtml(detail.priorityDetail?.title ?? 'None')}</div>
-		</div>
-		<div class="meta-group">
-			<h3>Workflow State</h3>
-			<div>${escapeHtml(detail.issueStateDetail?.title ?? detail.issueState ?? 'None')}</div>
-		</div>
-		<div class="meta-group">
-			<h3>Comments</h3>
-			<div>${detail.comments}</div>
-		</div>
-	</div>
-	<div class="card">
-		<div class="meta-group">
-			<h3>Dates</h3>
-			<ul class="meta-list">
-				<li>Created: ${escapeHtml(formatDate(detail.createdAt))}</li>
-				<li>Updated: ${escapeHtml(formatDate(detail.updatedAt))}</li>
-				${detail.finishedAt ? `<li>Finished: ${escapeHtml(formatDate(detail.finishedAt))}</li>` : ''}
-			</ul>
-		</div>
-		<div class="meta-group">
-			<h3>Repository</h3>
-			<div>${escapeHtml(detail.repository.fullName)}</div>
-		</div>
-	</div>`;
+		<div class="card sidebar-card">
+			<div class="meta-group">
+				<h3>Dates</h3>
+				${renderDateRows(detail)}
+			</div>
+			<div class="meta-group">
+				<h3>Repository</h3>
+				${renderRepository(detail)}
+			</div>
+		</div>`;
 }
 
 export interface IssueOverviewHtmlOptions {
@@ -444,6 +493,35 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.meta-group h3 { margin: 0 0 8px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 		.meta-list { margin: 0; padding-left: 18px; }
 		.meta-list li { margin: 4px 0; }
+		.sidebar-card {
+			background: color-mix(in srgb, var(--card) 94%, var(--vscode-editor-background, transparent));
+		}
+		.sidebar-value {
+			font-size: 13px;
+			font-weight: 550;
+			overflow-wrap: anywhere;
+		}
+		.sidebar-field-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 8px;
+		}
+		.sidebar-field {
+			min-width: 0;
+			padding: 9px 10px;
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			background: color-mix(in srgb, var(--card) 82%, var(--vscode-editor-background, transparent));
+		}
+		.sidebar-field-label {
+			display: block;
+			margin-bottom: 3px;
+			color: var(--muted);
+			font-size: 11px;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+		}
 		.labels { display: flex; flex-wrap: wrap; gap: 8px; }
 		.label-chip {
 			display: inline-flex;
@@ -452,6 +530,46 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			border-radius: 999px;
 			background: color-mix(in srgb, var(--label-color) 18%, transparent);
 			border: 1px solid color-mix(in srgb, var(--label-color) 45%, transparent);
+		}
+		.assignee-list {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+		}
+		.assignee-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			width: 100%;
+			min-width: 0;
+			padding: 4px 6px;
+			margin: 0;
+			border-radius: 7px;
+		}
+		.user-avatar {
+			width: 24px;
+			height: 24px;
+			border-radius: 999px;
+			flex: 0 0 auto;
+			object-fit: cover;
+		}
+		.user-avatar-initials {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 18%, transparent);
+			color: var(--vscode-textLink-foreground, #58a6ff);
+			font-size: 11px;
+			font-weight: 700;
+		}
+		.assignee-name {
+			display: flex;
+			flex-direction: column;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			line-height: 1.25;
 		}
 		.participant-btn {
 			border: none;
@@ -465,6 +583,69 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		}
 		.participant-btn:hover {
 			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 12%, transparent);
+		}
+		.participant-btn.assignee-row {
+			color: inherit;
+			padding: 4px 6px;
+		}
+		.date-list {
+			display: flex;
+			flex-direction: column;
+			gap: 7px;
+		}
+		.date-row {
+			display: grid;
+			grid-template-columns: 62px minmax(0, 1fr);
+			gap: 10px;
+			align-items: baseline;
+		}
+		.date-label {
+			color: var(--muted);
+			font-size: 11px;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+		}
+		.date-value {
+			font-size: 12px;
+			overflow-wrap: anywhere;
+		}
+		.repository-block {
+			min-width: 0;
+		}
+		.repository-title {
+			margin-bottom: 7px;
+			font-weight: 700;
+			overflow-wrap: anywhere;
+		}
+		.repository-description {
+			margin-bottom: 8px;
+			color: var(--muted);
+			font-size: 12px;
+			overflow-wrap: anywhere;
+		}
+		.repository-rows {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+		}
+		.repository-row {
+			display: grid;
+			grid-template-columns: 72px minmax(0, 1fr);
+			gap: 8px;
+			align-items: baseline;
+		}
+		.repository-label {
+			color: var(--muted);
+			font-size: 11px;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+		}
+		.repository-value {
+			font-family: var(--vscode-editor-font-family);
+			font-size: 12px;
+			overflow-wrap: anywhere;
 		}
 		.muted, .empty { color: var(--muted); }
 		.error { color: var(--vscode-errorForeground, #f85149); padding: 8px 0; }
@@ -598,9 +779,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			${conversationHtml}
 		</main>
 		<aside>
-			<div class="card">
-				${renderSidebar(detail)}
-			</div>
+			${renderSidebar(detail)}
 		</aside>
 	</div>
 	${includeScripts ? `<script nonce="${nonce}">

@@ -91,8 +91,8 @@ const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox
 	<path d="M3 2v11h11V8.5h1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5v1H3Zm5.5 0V1H15v6.5h-1V2.7L7.9 8.9l-.8-.8L13.3 2H8.5Z" fill="currentColor"/>
 </svg>`;
 
-/** Pencil/edit icon (16×16) for section editing. */
-const PENCIL_ICON = `<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+/** Compact pencil/edit icon for section editing. */
+const PENCIL_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
 	<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10ZM11.207 2.5 13.5 4.793 12.793 5.5 10.5 3.207 11.207 2.5Zm1.586 2.793L10.5 3 4 9.5 5.5 12l.5.5 6.793-6.793ZM3 13.5l-.586 1.086 2.293-.293L3.5 13ZM7.5 9.5 9 11l.793-.793L8.5 9.207 7.5 9.5Z"/>
 </svg>`;
 
@@ -131,27 +131,64 @@ function renderLabels(labels: PullRequestLabel[]): string {
 	)).join('')}</div>`;
 }
 
+function renderStatusCheck(label: string, value: string, state: 'pass' | 'fail' | 'unknown'): string {
+	return `<div class="status-check status-check-${state}">
+		<span class="status-check-mark" aria-hidden="true">${state === 'pass' ? 'OK' : state === 'fail' ? '!' : '-'}</span>
+		<span class="status-check-copy">
+			<span class="status-check-label">${escapeHtml(label)}</span>
+			<span class="status-check-value">${escapeHtml(value)}</span>
+		</span>
+	</div>`;
+}
+
 function renderStatus(detail: PullRequestDetail): string {
-	const lines: string[] = [];
-	lines.push(`<div class="status-line"><span class="status-name">Mergeable</span><span>${detail.mergeability.mergeable ? 'Yes' : 'No'}</span></div>`);
+	const mergeability = detail.mergeability;
+	const blocked = !mergeability.mergeable
+		|| mergeability.canMergeCheck === false
+		|| mergeability.hasConflicts === true
+		|| mergeability.ciPassed === false
+		|| mergeability.reviewPassed === false
+		|| mergeability.reasons.length > 0;
+	const statusTone = blocked ? 'blocked' : 'ready';
+	const statusTitle = blocked ? 'Merge blocked' : 'Ready to merge';
+	const statusDescription = blocked
+		? 'Resolve blockers before merging.'
+		: 'Available checks are clear.';
+	const checks: string[] = [
+		renderStatusCheck('Mergeability', mergeability.mergeable ? 'Mergeable' : 'Not mergeable', mergeability.mergeable ? 'pass' : 'fail'),
+	];
+
 	if (detail.mergeability.canMergeCheck !== undefined) {
-		lines.push(`<div class="status-line"><span class="status-name">Merge check</span><span>${detail.mergeability.canMergeCheck ? 'Ready' : 'Blocked'}</span></div>`);
+		checks.push(renderStatusCheck('Merge check', mergeability.canMergeCheck ? 'Ready' : 'Blocked', mergeability.canMergeCheck ? 'pass' : 'fail'));
 	}
 	if (detail.mergeability.hasConflicts !== undefined) {
-		lines.push(`<div class="status-line"><span class="status-name">Conflicts</span><span>${detail.mergeability.hasConflicts ? 'Detected' : 'None'}</span></div>`);
+		checks.push(renderStatusCheck('Conflicts', mergeability.hasConflicts ? 'Detected' : 'None', mergeability.hasConflicts ? 'fail' : 'pass'));
 	}
 	if (detail.mergeability.ciPassed !== undefined) {
-		lines.push(`<div class="status-line"><span class="status-name">CI</span><span>${detail.mergeability.ciPassed ? 'Passed' : 'Pending / Failed'}</span></div>`);
+		checks.push(renderStatusCheck('CI', mergeability.ciPassed ? 'Passed' : 'Pending / failed', mergeability.ciPassed ? 'pass' : 'fail'));
 	}
 	if (detail.mergeability.reviewPassed !== undefined) {
-		lines.push(`<div class="status-line"><span class="status-name">Review</span><span>${detail.mergeability.reviewPassed ? 'Passed' : 'Pending / Blocked'}</span></div>`);
+		checks.push(renderStatusCheck('Review', mergeability.reviewPassed ? 'Passed' : 'Pending / blocked', mergeability.reviewPassed ? 'pass' : 'fail'));
 	}
 
-	if (detail.mergeability.reasons.length) {
-		lines.push(`<ul class="reason-list">${detail.mergeability.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>`);
-	}
+	const reasons = mergeability.reasons.length
+		? `<div class="status-reasons" aria-label="Merge restriction reasons">
+			<div class="status-reasons-title">Needs attention</div>
+			<ul>${mergeability.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>
+		</div>`
+		: '';
 
-	return lines.join('');
+	return `<div class="status-card status-card-${statusTone}">
+		<div class="status-hero">
+			<div class="status-orb" aria-hidden="true">${blocked ? '!' : 'OK'}</div>
+			<div class="status-hero-copy">
+				<div class="status-title">${statusTitle}</div>
+				<div class="status-description">${statusDescription}</div>
+			</div>
+		</div>
+		<div class="status-check-grid">${checks.join('')}</div>
+		${reasons}
+	</div>`;
 }
 
 function stateLabel(detail: PullRequestDetail): string {
@@ -320,22 +357,24 @@ function renderIssueLabels(labels: IssueLabel[]): string {
 }
 
 function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
-	const stateClass = issue.state === 'closed' ? 'badge-closed' : 'badge-open';
+	const stateClass = issue.state === 'closed' ? 'closed' : 'open';
 	const repositoryName = issue.repository?.fullName ?? '';
-	const repositoryDisplay = repositoryName ? `<span class="muted"> · ${escapeHtml(repositoryName)}</span>` : '';
 
 	const metaParts: string[] = [];
-	metaParts.push(`<span class="badge ${stateClass}">${issue.state === 'closed' ? 'Closed' : 'Open'}</span>`);
+	metaParts.push(`<span class="issue-state issue-state-${stateClass}"><span class="issue-state-dot" aria-hidden="true"></span>${issue.state === 'closed' ? 'Closed' : 'Open'}</span>`);
 	if (issue.author.login) {
-		metaParts.push(`<span>@${escapeHtml(issue.author.login)}</span>`);
+		metaParts.push(`<span class="issue-meta-chip">@${escapeHtml(issue.author.login)}</span>`);
 	}
 	if (issue.issueType) {
-		metaParts.push(`<span>${escapeHtml(issue.issueType)}</span>`);
+		metaParts.push(`<span class="issue-meta-chip">${escapeHtml(issue.issueType)}</span>`);
 	}
 	if (issue.issueState) {
-		metaParts.push(`<span>${escapeHtml(issue.issueState)}</span>`);
+		metaParts.push(`<span class="issue-meta-chip">${escapeHtml(issue.issueState)}</span>`);
 	}
-	metaParts.push(`<span class="muted">Updated ${escapeHtml(formatDate(issue.updatedAt))}</span>`);
+	if (repositoryName) {
+		metaParts.push(`<span class="issue-meta-chip">${escapeHtml(repositoryName)}</span>`);
+	}
+	metaParts.push(`<span class="issue-meta-time">Updated ${escapeHtml(formatDate(issue.updatedAt))}</span>`);
 
 	const titleHtml = issue.url
 		? `<button class="issue-title-btn" data-action="openIssue" data-repository="${escapeHtml(repositoryName)}" data-issue="${issue.number}" data-url="${escapeHtml(issue.url ?? '')}">#${issue.number} ${escapeHtml(issue.title)}</button>`
@@ -346,15 +385,15 @@ function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
 		: '';
 
 	return `
-		<div class="related-issue-row">
+		<div class="related-issue-row related-issue-${stateClass}">
+			<div class="related-issue-rail" aria-hidden="true"></div>
 			<div class="related-issue-main">
 				<div class="related-issue-title-row">
 					${titleHtml}
 					${externalLink}
 				</div>
 				<div class="related-issue-meta">
-					${metaParts.join(' · ')}
-					${repositoryDisplay}
+					${metaParts.join('')}
 				</div>
 				${renderIssueLabels(issue.labels)}
 			</div>
@@ -443,6 +482,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			--badge-merged: #8250df;
 			--badge-draft: #6e7781;
 			--card: var(--vscode-sideBar-background, rgba(127,127,127,0.08));
+			--success: var(--vscode-testing-iconPassed, #1f883d);
+			--danger: var(--vscode-testing-iconFailed, #cf222e);
+			--warning: var(--vscode-editorWarning-foreground, #9a6700);
 		}
 		body {
 			font-family: var(--vscode-font-family);
@@ -526,8 +568,68 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		}
 		.meta-group + .meta-group { margin-top: 16px; }
 		.meta-group h3 { margin: 0 0 8px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-		.meta-list, .reason-list { margin: 0; padding-left: 18px; }
-		.meta-list li, .reason-list li { margin: 4px 0; }
+		.meta-list { margin: 0; padding-left: 18px; }
+		.meta-list li { margin: 4px 0; }
+		.branch-flow {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+		.branch-row,
+		.timestamp-row {
+			display: grid;
+			grid-template-columns: 58px minmax(0, 1fr);
+			gap: 10px;
+			align-items: start;
+		}
+		.branch-label,
+		.timestamp-label {
+			color: var(--muted);
+			font-size: 11px;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			padding-top: 2px;
+		}
+		.branch-chip {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			min-width: 0;
+			padding: 7px 9px;
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			background: color-mix(in srgb, var(--card) 88%, var(--vscode-editor-background, transparent));
+		}
+		.branch-ref {
+			font-family: var(--vscode-editor-font-family);
+			font-size: 12px;
+			font-weight: 650;
+			overflow-wrap: anywhere;
+		}
+		.branch-repo {
+			color: var(--muted);
+			font-size: 11px;
+			overflow-wrap: anywhere;
+		}
+		.branch-arrow {
+			width: 1px;
+			height: 10px;
+			margin-left: 28px;
+			background: var(--border);
+		}
+		.timestamp-list {
+			display: flex;
+			flex-direction: column;
+			gap: 7px;
+		}
+		.timestamp-value {
+			font-size: 12px;
+			overflow-wrap: anywhere;
+		}
+		.timestamp-value.missing {
+			color: var(--muted);
+		}
 		.labels { display: flex; flex-wrap: wrap; gap: 8px; }
 		.label-chip {
 			display: inline-flex;
@@ -575,15 +677,117 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			text-overflow: ellipsis;
 			white-space: nowrap;
 		}
-		.status-line {
-			display: flex;
-			justify-content: space-between;
-			gap: 12px;
-			padding: 6px 0;
-			border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+		.status-card {
+			position: relative;
+			overflow: hidden;
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			background: color-mix(in srgb, var(--card) 94%, var(--vscode-editor-background, transparent));
 		}
-		.status-line:last-of-type { border-bottom: none; }
-		.status-name { color: var(--muted); }
+		.status-card-ready { --status-color: var(--success); }
+		.status-card-blocked { --status-color: var(--danger); }
+		.status-hero {
+			display: flex;
+			align-items: flex-start;
+			gap: 10px;
+			padding: 12px;
+		}
+		.status-orb {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-width: 28px;
+			height: 28px;
+			border-radius: 999px;
+			background: color-mix(in srgb, var(--status-color) 8%, transparent);
+			border: 1px solid color-mix(in srgb, var(--status-color) 24%, var(--border));
+			color: var(--status-color);
+			font-size: 10px;
+			font-weight: 800;
+			letter-spacing: 0.02em;
+			flex: 0 0 auto;
+		}
+		.status-hero-copy {
+			min-width: 0;
+		}
+		.status-title {
+			font-size: 14px;
+			font-weight: 700;
+			line-height: 1.3;
+		}
+		.status-description {
+			color: var(--muted);
+			margin-top: 2px;
+			font-size: 12px;
+		}
+		.status-check-grid {
+			display: grid;
+			grid-template-columns: 1fr;
+			gap: 6px;
+			padding: 0 12px 12px;
+		}
+		.status-check {
+			display: flex;
+			align-items: flex-start;
+			gap: 8px;
+			min-width: 0;
+			padding: 7px 8px;
+			border: 1px solid color-mix(in srgb, var(--check-color) 12%, var(--border));
+			border-radius: 8px;
+			background: transparent;
+		}
+		.status-check-pass { --check-color: var(--success); }
+		.status-check-fail { --check-color: var(--danger); }
+		.status-check-unknown { --check-color: var(--warning); }
+		.status-check-mark {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-width: 18px;
+			height: 18px;
+			border-radius: 999px;
+			background: color-mix(in srgb, var(--check-color) 7%, transparent);
+			color: var(--check-color);
+			font-size: 9px;
+			font-weight: 800;
+			line-height: 1;
+		}
+		.status-check-copy {
+			display: flex;
+			flex-direction: column;
+			gap: 1px;
+			min-width: 0;
+		}
+		.status-check-label {
+			color: var(--muted);
+			font-size: 11px;
+		}
+		.status-check-value {
+			font-weight: 650;
+			font-size: 12px;
+			overflow-wrap: anywhere;
+		}
+		.status-reasons {
+			margin: 0 12px 12px;
+			padding: 9px 10px;
+			border: 1px solid color-mix(in srgb, var(--danger) 14%, var(--border));
+			border-radius: 8px;
+			background: transparent;
+		}
+		.status-reasons-title {
+			margin-bottom: 4px;
+			color: var(--danger);
+			font-weight: 700;
+			font-size: 12px;
+		}
+		.status-reasons ul {
+			margin: 0;
+			padding-left: 18px;
+		}
+		.status-reasons li {
+			margin: 3px 0;
+			font-size: 12px;
+		}
 		.muted, .empty { color: var(--muted); }
 		/* ---- Conversation / Comments ---- */
 		.conversation-list { display: flex; flex-direction: column; gap: 16px; }
@@ -685,18 +889,30 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.related-issues-list {
 			display: flex;
 			flex-direction: column;
-			gap: 12px;
+			gap: 8px;
 		}
 		.related-issue-row {
+			--issue-color: var(--success);
+			display: grid;
+			grid-template-columns: 3px minmax(0, 1fr);
+			gap: 12px;
 			border: 1px solid var(--border);
-			border-radius: 10px;
-			padding: 14px 16px;
-			background: var(--card);
+			border-radius: 9px;
+			padding: 11px 12px 11px 0;
+			background: color-mix(in srgb, var(--card) 90%, var(--vscode-editor-background, transparent));
+		}
+		.related-issue-closed {
+			--issue-color: var(--badge-merged);
+		}
+		.related-issue-rail {
+			border-radius: 999px;
+			background: color-mix(in srgb, var(--issue-color) 62%, var(--border));
 		}
 		.related-issue-main {
 			display: flex;
 			flex-direction: column;
-			gap: 8px;
+			gap: 7px;
+			min-width: 0;
 		}
 		.related-issue-title-row {
 			display: flex;
@@ -708,7 +924,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			background: none;
 			color: var(--vscode-textLink-foreground);
 			font: inherit;
-			font-size: 15px;
+			font-size: 14px;
 			font-weight: 600;
 			cursor: pointer;
 			text-align: left;
@@ -720,7 +936,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			text-decoration: underline;
 		}
 		.issue-title {
-			font-size: 15px;
+			font-size: 14px;
 			font-weight: 600;
 			color: var(--vscode-foreground);
 			flex: 1;
@@ -741,14 +957,40 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.related-issue-meta {
 			display: flex;
 			flex-wrap: wrap;
-			gap: 4px;
+			gap: 5px;
 			align-items: center;
-			font-size: 13px;
+			font-size: 11px;
 			color: var(--muted);
 		}
-		.related-issue-meta .badge {
-			font-size: 11px;
-			padding: 2px 8px;
+		.issue-state,
+		.issue-meta-chip,
+		.issue-meta-time {
+			display: inline-flex;
+			align-items: center;
+			min-width: 0;
+			border-radius: 999px;
+			padding: 2px 7px;
+			border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+			background: color-mix(in srgb, var(--card) 76%, transparent);
+		}
+		.issue-state {
+			color: var(--issue-color);
+			border-color: color-mix(in srgb, var(--issue-color) 18%, var(--border));
+			background: transparent;
+			font-weight: 650;
+		}
+		.issue-state-dot {
+			width: 6px;
+			height: 6px;
+			margin-right: 5px;
+			border-radius: 999px;
+			background: currentColor;
+		}
+		.issue-meta-time {
+			border-color: transparent;
+			background: transparent;
+			padding-left: 0;
+			padding-right: 0;
 		}
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
@@ -758,17 +1000,17 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
-			width: 20px;
-			height: 20px;
+			width: 16px;
+			height: 16px;
 			border: none;
 			background: transparent;
 			color: var(--muted);
 			cursor: pointer;
-			border-radius: 4px;
+			border-radius: 3px;
 			opacity: 0;
 			transition: opacity 0.15s, background 0.15s;
 			flex-shrink: 0;
-			padding: 2px;
+			padding: 0;
 		}
 		.edit-section-wrapper:hover .edit-icon-btn,
 		.edit-section-wrapper:focus-within .edit-icon-btn,
@@ -937,10 +1179,6 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 	</div>
 	<div class="layout">
 		<main>
-			<section>
-				<h2>Status Summary</h2>
-				${renderStatus(detail)}
-			</section>
 			<section class="edit-section-wrapper">
 				<div class="edit-section-header">
 					<h2>Description</h2>
@@ -961,6 +1199,10 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			${conversationSection}
 		</main>
 		<aside>
+			<div class="card status-summary-card">
+				<h3>Status Summary</h3>
+				${renderStatus(detail)}
+			</div>
 			<div class="card">
 				<div class="meta-group">
 					<h3>Reviewers</h3>
@@ -1074,19 +1316,44 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			<div class="card">
 				<div class="meta-group">
 					<h3>Branches</h3>
-					<ul class="meta-list">
-						<li>Source: ${escapeHtml(detail.source.repositoryFullName ?? detail.source.ref)} / ${escapeHtml(detail.source.ref)}</li>
-						<li>Target: ${escapeHtml(detail.target.repositoryFullName ?? detail.target.ref)} / ${escapeHtml(detail.target.ref)}</li>
-					</ul>
+					<div class="branch-flow">
+						<div class="branch-row">
+							<div class="branch-label">From</div>
+							<div class="branch-chip">
+								<div class="branch-ref">${escapeHtml(detail.source.ref)}</div>
+								<div class="branch-repo">${escapeHtml(detail.source.repositoryFullName ?? detail.source.label)}</div>
+							</div>
+						</div>
+						<div class="branch-arrow" aria-hidden="true"></div>
+						<div class="branch-row">
+							<div class="branch-label">Into</div>
+							<div class="branch-chip">
+								<div class="branch-ref">${escapeHtml(detail.target.ref)}</div>
+								<div class="branch-repo">${escapeHtml(detail.target.repositoryFullName ?? detail.target.label)}</div>
+							</div>
+						</div>
+					</div>
 				</div>
 				<div class="meta-group">
 					<h3>Timestamps</h3>
-					<ul class="meta-list">
-						<li>Created: ${escapeHtml(formatDate(detail.createdAt))}</li>
-						<li>Updated: ${escapeHtml(formatDate(detail.updatedAt))}</li>
-						<li>Closed: ${escapeHtml(formatDate(detail.closedAt))}</li>
-						<li>Merged: ${escapeHtml(formatDate(detail.mergedAt))}</li>
-					</ul>
+					<div class="timestamp-list">
+						<div class="timestamp-row">
+							<div class="timestamp-label">Created</div>
+							<div class="timestamp-value">${escapeHtml(formatDate(detail.createdAt))}</div>
+						</div>
+						<div class="timestamp-row">
+							<div class="timestamp-label">Updated</div>
+							<div class="timestamp-value">${escapeHtml(formatDate(detail.updatedAt))}</div>
+						</div>
+						<div class="timestamp-row">
+							<div class="timestamp-label">Closed</div>
+							<div class="timestamp-value ${detail.closedAt ? '' : 'missing'}">${escapeHtml(formatDate(detail.closedAt))}</div>
+						</div>
+						<div class="timestamp-row">
+							<div class="timestamp-label">Merged</div>
+							<div class="timestamp-value ${detail.mergedAt ? '' : 'missing'}">${escapeHtml(formatDate(detail.mergedAt))}</div>
+						</div>
+					</div>
 				</div>
 			</div>
 		</aside>

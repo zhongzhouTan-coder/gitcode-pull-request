@@ -9,16 +9,19 @@ export function getCreatePullRequestHtml(): string {
 		:root {
 			--bg-primary: var(--vscode-editor-background, #1e1e1e);
 			--bg-secondary: var(--vscode-sideBar-background, #252526);
+			--surface: var(--bg-secondary);
+			--surface-soft: transparent;
 			--bg-input: var(--vscode-input-background, #3c3c3c);
 			--fg-primary: var(--vscode-editor-foreground, #cccccc);
 			--fg-secondary: var(--vscode-descriptionForeground, #999999);
-			--border-color: var(--vscode-input-border, #555555);
+			--border-color: var(--vscode-panel-border, var(--vscode-input-border, #555555));
 			--focus-border: var(--vscode-focusBorder, #007acc);
+			--accent: var(--vscode-textLink-foreground, #58a6ff);
 			--button-bg: var(--vscode-button-background, #007acc);
 			--button-fg: var(--vscode-button-foreground, #ffffff);
 			--button-hover: var(--vscode-button-hoverBackground, #1a8ad4);
 			--error-color: var(--vscode-errorForeground, #f48771);
-			--warning-color: #cca700;
+			--warning-color: var(--vscode-editorWarning-foreground, #cca700);
 			--checkbox-bg: var(--vscode-checkbox-background, #3c3c3c);
 			--checkbox-border: var(--vscode-checkbox-border, #555555);
 		}
@@ -30,52 +33,125 @@ export function getCreatePullRequestHtml(): string {
 			font-size: var(--vscode-font-size, 13px);
 			color: var(--fg-primary);
 			background: var(--bg-primary);
-			padding: 16px;
+			padding: 14px;
 			line-height: 1.5;
 		}
 
 		h2 {
-			font-size: 18px;
-			font-weight: 600;
-			margin-bottom: 16px;
+			font-size: 20px;
+			font-weight: 700;
+			line-height: 1.2;
+		}
+
+		.pr-shell {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+			max-width: 760px;
+			margin: 0 auto;
+		}
+
+		.pr-hero {
+			position: relative;
+			overflow: hidden;
+			padding: 16px;
+			border: 1px solid var(--border-color);
+			border-radius: 14px;
+			background: transparent;
+		}
+
+		.pr-hero::after {
+			content: "";
+			position: absolute;
+			right: -28px;
+			top: -34px;
+			width: 86px;
+			height: 86px;
+			border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+			border-radius: 999px;
+		}
+
+		.pr-eyebrow {
+			margin-bottom: 5px;
+			color: var(--accent);
+			font-size: 11px;
+			font-weight: 800;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+		}
+
+		.pr-subtitle {
+			margin-top: 6px;
+			color: var(--fg-secondary);
+			max-width: 56ch;
+		}
+
+		.form-section {
+			padding: 14px;
+			border: 1px solid var(--border-color);
+			border-radius: 12px;
+			background: transparent;
+		}
+
+		.section-heading {
+			display: flex;
+			align-items: baseline;
+			justify-content: space-between;
+			gap: 10px;
+			margin-bottom: 12px;
+		}
+
+		.section-heading h3 {
+			font-size: 13px;
+			font-weight: 750;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+		}
+
+		.section-kicker {
+			color: var(--fg-secondary);
+			font-size: 12px;
 		}
 
 		.form-group {
-			margin-bottom: 14px;
+			min-width: 0;
+			margin-bottom: 12px;
 		}
 
 		label {
 			display: block;
-			font-size: 12px;
-			font-weight: 600;
+			font-size: 11px;
+			font-weight: 750;
 			color: var(--fg-secondary);
-			margin-bottom: 4px;
+			margin-bottom: 5px;
 			text-transform: uppercase;
-			letter-spacing: 0.5px;
+			letter-spacing: 0.06em;
 		}
 
 		input[type="text"],
 		textarea,
 		select {
 			width: 100%;
-			padding: 6px 10px;
+			padding: 8px 10px;
 			font-size: 13px;
 			font-family: var(--vscode-font-family, -apple-system, sans-serif);
 			color: var(--fg-primary);
 			background: var(--bg-input);
 			border: 1px solid var(--border-color);
-			border-radius: 2px;
+			border-radius: 8px;
 			outline: none;
+			transition: border-color 0.12s ease, box-shadow 0.12s ease;
 		}
 
 		input[type="text"]:focus,
 		textarea:focus,
 		select:focus {
 			border-color: var(--focus-border);
+			box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-border) 18%, transparent);
 		}
 
 		textarea {
-			min-height: 100px;
+			min-height: 136px;
 			resize: vertical;
 		}
 
@@ -89,11 +165,11 @@ export function getCreatePullRequestHtml(): string {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 6px;
-			min-height: 28px;
-			padding: 4px;
+			min-height: 34px;
+			padding: 5px;
 			border: 1px solid var(--border-color);
-			border-radius: 2px;
-			background: var(--bg-secondary);
+			border-radius: 8px;
+			background: transparent;
 		}
 
 		.selected-chip {
@@ -101,10 +177,10 @@ export function getCreatePullRequestHtml(): string {
 			align-items: center;
 			gap: 4px;
 			max-width: 100%;
-			padding: 2px 6px;
-			border: 1px solid var(--border-color);
-			border-radius: 2px;
-			background: var(--bg-input);
+			padding: 3px 7px;
+			border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-color));
+			border-radius: 999px;
+			background: transparent;
 			color: var(--fg-primary);
 		}
 
@@ -127,8 +203,9 @@ export function getCreatePullRequestHtml(): string {
 			max-height: 140px;
 			overflow: auto;
 			border: 1px solid var(--border-color);
-			border-radius: 2px;
+			border-radius: 8px;
 			background: var(--bg-secondary);
+			box-shadow: 0 10px 28px color-mix(in srgb, #000 18%, transparent);
 		}
 
 		.option-list.hidden {
@@ -137,7 +214,7 @@ export function getCreatePullRequestHtml(): string {
 
 		.option-item {
 			width: 100%;
-			padding: 5px 8px;
+			padding: 7px 9px;
 			text-align: left;
 			background: transparent;
 			color: var(--fg-primary);
@@ -152,34 +229,77 @@ export function getCreatePullRequestHtml(): string {
 		}
 
 		.empty-options {
-			padding: 6px 8px;
+			padding: 8px 9px;
 			color: var(--fg-secondary);
 		}
 
 		.row {
-			display: flex;
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 12px;
 		}
 
 		.row > .form-group {
-			flex: 1;
+			margin-bottom: 12px;
+		}
+
+		.branch-matrix {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr);
+			gap: 10px;
+		}
+
+		.route-card {
+			padding: 12px;
+			border: 1px solid var(--border-color);
+			border-radius: 11px;
+			background: transparent;
+		}
+
+		.route-label {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			margin-bottom: 10px;
+			color: var(--fg-secondary);
+			font-size: 11px;
+			font-weight: 800;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+		}
+
+		.route-dot {
+			width: 7px;
+			height: 7px;
+			border-radius: 999px;
+			background: var(--accent);
+		}
+
+		.route-dot.target {
+			background: var(--vscode-testing-iconPassed, #2da44e);
 		}
 
 		.checkbox-group {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 16px;
-			margin-bottom: 14px;
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 8px;
+			margin-bottom: 0;
 		}
 
 		.checkbox-item {
 			display: flex;
-			align-items: center;
-			gap: 6px;
+			align-items: flex-start;
+			gap: 8px;
+			min-width: 0;
+			padding: 9px 10px;
+			border: 1px solid var(--border-color);
+			border-radius: 9px;
+			background: transparent;
 			cursor: pointer;
 		}
 
 		.checkbox-item input[type="checkbox"] {
+			margin-top: 2px;
 			accent-color: var(--focus-border);
 		}
 
@@ -191,26 +311,34 @@ export function getCreatePullRequestHtml(): string {
 			font-size: 13px;
 			color: var(--fg-primary);
 			cursor: pointer;
+			line-height: 1.35;
 		}
 
 		.button-row {
+			position: sticky;
+			bottom: 0;
 			display: flex;
 			justify-content: flex-end;
 			gap: 8px;
-			margin-top: 20px;
+			margin: 0 -14px -14px;
+			padding: 12px 14px;
+			border-top: 1px solid var(--border-color);
+			background: var(--bg-primary);
+			backdrop-filter: blur(12px);
 		}
 
 		button {
-			padding: 6px 16px;
+			padding: 7px 14px;
 			font-size: 13px;
 			border: none;
-			border-radius: 2px;
+			border-radius: 8px;
 			cursor: pointer;
 		}
 
 		.btn-primary {
 			background: var(--button-bg);
 			color: var(--button-fg);
+			font-weight: 650;
 		}
 
 		.btn-primary:hover {
@@ -235,29 +363,36 @@ export function getCreatePullRequestHtml(): string {
 		.error-message {
 			color: var(--error-color);
 			font-size: 12px;
-			margin-top: 4px;
+			margin-bottom: 8px;
+			padding: 8px 10px;
+			border: 1px solid color-mix(in srgb, var(--error-color) 28%, var(--border-color));
+			border-radius: 8px;
+			background: color-mix(in srgb, var(--error-color) 7%, transparent);
 		}
 
 		.warning-message {
 			color: var(--warning-color);
 			font-size: 12px;
-			margin-top: 4px;
-			padding: 8px;
-			background: rgba(204, 167, 0, 0.1);
-			border-left: 3px solid var(--warning-color);
-			border-radius: 2px;
+			margin-bottom: 10px;
+			padding: 9px 10px;
+			background: color-mix(in srgb, var(--warning-color) 9%, transparent);
+			border: 1px solid color-mix(in srgb, var(--warning-color) 26%, var(--border-color));
+			border-radius: 8px;
 		}
 
 		.loading {
 			text-align: center;
-			padding: 40px;
+			padding: 48px 18px;
 			color: var(--fg-secondary);
 		}
 
 		.idle-state {
 			text-align: center;
-			padding: 40px 16px;
+			padding: 44px 16px;
 			color: var(--fg-secondary);
+			border: 1px dashed var(--border-color);
+			border-radius: 14px;
+			background: transparent;
 		}
 
 		.hidden {
@@ -276,6 +411,24 @@ export function getCreatePullRequestHtml(): string {
 		#error-state {
 			color: var(--error-color);
 		}
+
+		@media (max-width: 560px) {
+			body {
+				padding: 10px;
+			}
+
+			.row,
+			.checkbox-group,
+			.sidebar-field-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.pr-hero,
+			.form-section {
+				border-radius: 11px;
+				padding: 12px;
+			}
+		}
 	</style>
 </head>
 <body>
@@ -283,111 +436,144 @@ export function getCreatePullRequestHtml(): string {
 	<div id="loading-state" class="loading hidden">Loading...</div>
 	<div id="error-state" class="hidden"></div>
 
-	<form id="create-form" class="hidden">
-		<h2>Create Pull Request</h2>
+	<form id="create-form" class="pr-shell hidden">
+		<div class="pr-hero">
+			<div class="pr-eyebrow">GitCode workflow</div>
+			<h2>Create Pull Request</h2>
+			<p class="pr-subtitle">Choose the branch route, describe the change, then assign ownership before opening the pull request.</p>
+		</div>
 
 		<div id="error-area"></div>
 		<div id="warning-area"></div>
 
-		<div class="row">
-			<div class="form-group">
-				<label for="source-repository">Source Repository</label>
-				<select id="source-repository">
-					<option value="">Select source repository...</option>
-				</select>
+		<section class="form-section">
+			<div class="section-heading">
+				<h3>Branch Route</h3>
+				<span class="section-kicker">from source into target</span>
 			</div>
-			<div class="form-group">
-				<label for="target-repository">Target Repository</label>
-				<select id="target-repository">
-					<option value="">Select target repository...</option>
-				</select>
-			</div>
-		</div>
-
-		<div class="row">
-			<div class="form-group">
-				<label for="source-branch">Source Branch</label>
-				<select id="source-branch">
-					<option value="">Select source branch...</option>
-				</select>
-			</div>
-			<div class="form-group">
-				<label for="target-branch">Target Branch</label>
-				<select id="target-branch">
-					<option value="">Select target branch...</option>
-				</select>
-			</div>
-		</div>
-
-		<div class="form-group">
-			<label for="title">Title</label>
-			<input type="text" id="title" placeholder="Pull request title..." required>
-		</div>
-
-		<div class="form-group">
-			<label for="body">Description</label>
-			<textarea id="body" placeholder="Pull request description..."></textarea>
-		</div>
-
-		<div class="checkbox-group">
-			<div class="checkbox-item">
-				<input type="checkbox" id="draft">
-				<label for="draft">Draft</label>
-			</div>
-			<div class="checkbox-item">
-				<input type="checkbox" id="prune">
-				<label for="prune">Delete source branch after merge</label>
-			</div>
-			<div class="checkbox-item">
-				<input type="checkbox" id="squash">
-				<label for="squash">Squash commits</label>
-			</div>
-			<div class="checkbox-item">
-				<input type="checkbox" id="close-issue">
-				<label for="close-issue">Close related issue after merge</label>
-			</div>
-		</div>
-
-		<div class="row">
-			<div class="form-group">
-				<label for="labels">Labels</label>
-				<div class="multi-picker">
-					<input type="text" id="labels" autocomplete="off" placeholder="Search labels...">
-					<div id="label-options" class="option-list"></div>
-					<div id="selected-labels" class="selected-items"></div>
+			<div class="branch-matrix">
+				<div class="route-card">
+					<div class="route-label"><span class="route-dot"></span>Source</div>
+					<div class="row">
+						<div class="form-group">
+							<label for="source-repository">Repository</label>
+							<select id="source-repository">
+								<option value="">Select source repository...</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label for="source-branch">Branch</label>
+							<select id="source-branch">
+								<option value="">Select source branch...</option>
+							</select>
+						</div>
+					</div>
+				</div>
+				<div class="route-card">
+					<div class="route-label"><span class="route-dot target"></span>Target</div>
+					<div class="row">
+						<div class="form-group">
+							<label for="target-repository">Repository</label>
+							<select id="target-repository">
+								<option value="">Select target repository...</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label for="target-branch">Branch</label>
+							<select id="target-branch">
+								<option value="">Select target branch...</option>
+							</select>
+						</div>
+					</div>
 				</div>
 			</div>
-			<div class="form-group">
-				<label for="milestone">Milestone</label>
-				<select id="milestone">
-					<option value="">No milestone</option>
-				</select>
-			</div>
-		</div>
+		</section>
 
-		<div class="row">
+		<section class="form-section">
+			<div class="section-heading">
+				<h3>Content</h3>
+				<span class="section-kicker">what reviewers will read first</span>
+			</div>
 			<div class="form-group">
-				<label for="assignees">Assignees</label>
-				<div class="multi-picker">
-					<input type="text" id="assignees" autocomplete="off" placeholder="Search members...">
-					<div id="assignee-options" class="option-list"></div>
-					<div id="selected-assignees" class="selected-items"></div>
+				<label for="title">Title</label>
+				<input type="text" id="title" placeholder="Summarize the change..." required>
+			</div>
+			<div class="form-group">
+				<label for="body">Description</label>
+				<textarea id="body" placeholder="Add context, testing notes, and reviewer guidance..."></textarea>
+			</div>
+		</section>
+
+		<section class="form-section">
+			<div class="section-heading">
+				<h3>Review Metadata</h3>
+				<span class="section-kicker">labels, owners, and release target</span>
+			</div>
+			<div class="row">
+				<div class="form-group">
+					<label for="labels">Labels</label>
+					<div class="multi-picker">
+						<input type="text" id="labels" autocomplete="off" placeholder="Search labels...">
+						<div id="label-options" class="option-list"></div>
+						<div id="selected-labels" class="selected-items"></div>
+					</div>
+				</div>
+				<div class="form-group">
+					<label for="milestone">Milestone</label>
+					<select id="milestone">
+						<option value="">No milestone</option>
+					</select>
 				</div>
 			</div>
-			<div class="form-group">
-				<label for="testers">Testers</label>
-				<div class="multi-picker">
-					<input type="text" id="testers" autocomplete="off" placeholder="Search members...">
-					<div id="tester-options" class="option-list"></div>
-					<div id="selected-testers" class="selected-items"></div>
+			<div class="row">
+				<div class="form-group">
+					<label for="assignees">Assignees</label>
+					<div class="multi-picker">
+						<input type="text" id="assignees" autocomplete="off" placeholder="Search members...">
+						<div id="assignee-options" class="option-list"></div>
+						<div id="selected-assignees" class="selected-items"></div>
+					</div>
+				</div>
+				<div class="form-group">
+					<label for="testers">Testers</label>
+					<div class="multi-picker">
+						<input type="text" id="testers" autocomplete="off" placeholder="Search members...">
+						<div id="tester-options" class="option-list"></div>
+						<div id="selected-testers" class="selected-items"></div>
+					</div>
 				</div>
 			</div>
-		</div>
+		</section>
 
-		<div id="squash-message-group" class="form-group hidden">
-			<label for="squash-message">Squash Commit Message</label>
-			<input type="text" id="squash-message" placeholder="Squash commit message...">
-		</div>
+		<section class="form-section">
+			<div class="section-heading">
+				<h3>Merge Options</h3>
+				<span class="section-kicker">how this PR should land</span>
+			</div>
+			<div class="checkbox-group">
+				<div class="checkbox-item">
+					<input type="checkbox" id="draft">
+					<label for="draft">Draft</label>
+				</div>
+				<div class="checkbox-item">
+					<input type="checkbox" id="prune">
+					<label for="prune">Delete source branch after merge</label>
+				</div>
+				<div class="checkbox-item">
+					<input type="checkbox" id="squash">
+					<label for="squash">Squash commits</label>
+				</div>
+				<div class="checkbox-item">
+					<input type="checkbox" id="close-issue">
+					<label for="close-issue">Close related issue after merge</label>
+				</div>
+			</div>
+
+			<div id="squash-message-group" class="form-group hidden">
+				<label for="squash-message">Squash Commit Message</label>
+				<input type="text" id="squash-message" placeholder="Squash commit message...">
+			</div>
+		</section>
 
 		<div class="button-row">
 			<button type="button" id="cancel-btn" class="btn-secondary">Cancel</button>
