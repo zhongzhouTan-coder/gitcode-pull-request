@@ -1,4 +1,4 @@
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail, RevisePullRequestCommentStatusInput } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapCreatePullRequestCommentInput, mapCreatePullRequestCommentResult, mapListComment, mapCommentDetail, mergeCommentDetail } from '../mappers/commentMapper';
 import { Logger } from '../../common/logger';
@@ -169,5 +169,29 @@ export class CommentService {
 		}
 
 		return results;
+	}
+
+	/**
+	 * Revise the resolved status of a pull request diff discussion.
+	 *
+	 * PUT /api/v5/repos/:owner/:repo/pulls/:number/comments/:discussion_id
+	 * Body: { "resolved": true | false }
+	 */
+	async revisePullRequestCommentStatus(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: RevisePullRequestCommentStatusInput,
+	): Promise<void> {
+		if (!input.discussionId) {
+			throw new Error('discussionId is required.');
+		}
+
+		const path = `/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/comments/${encodeURIComponent(input.discussionId)}`;
+		const body = { resolved: input.resolved };
+
+		await this.client.put<unknown>(
+			path,
+			body,
+		);
 	}
 }

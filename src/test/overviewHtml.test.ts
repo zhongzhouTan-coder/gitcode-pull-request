@@ -242,13 +242,14 @@ suite('OverviewHtml', () => {
 			'nonce',
 		);
 
-		assert.match(html, /<div class="comment-top-row">[\s\S]*<div class="comment-review-status" aria-label="Review status: Resolved">[\s\S]*<span class="comment-review-status-label">Review status<\/span>[\s\S]*<span class="comment-review-status-value">Resolved<\/span>/);
-		assert.match(html, /<div class="comment-top-row">[\s\S]*<div class="comment-review-status" aria-label="Review status: Unresolved">[\s\S]*<span class="comment-review-status-label">Review status<\/span>[\s\S]*<span class="comment-review-status-value">Unresolved<\/span>/);
+		assert.match(html, /<div class="comment-review-status" aria-label="Review status: Resolved">[\s\S]*<span class="comment-toggle-label">Review status<\/span>[\s\S]*<input type="checkbox" class="comment-toggle-input" data-action="revisePullRequestCommentStatus" data-discussion-id="discussion-1" data-resolved="false" checked>[\s\S]*<span class="comment-toggle-state">Resolved<\/span>/);
+		assert.match(html, /<div class="comment-review-status" aria-label="Review status: Unresolved">[\s\S]*<span class="comment-toggle-label">Review status<\/span>[\s\S]*<input type="checkbox" class="comment-toggle-input" data-action="revisePullRequestCommentStatus" data-discussion-id="discussion-3" data-resolved="true" >[\s\S]*<span class="comment-toggle-state">Unresolved<\/span>/);
 		assert.match(html, /Code comment · <span class="comment-file">src\/example\.ts<\/span> · line 24/);
 		assert.match(html, /Code comment · <span class="comment-file">src\/example\.ts<\/span> · line 31/);
 		assert.match(html, /badge badge-outdated">Outdated<\/span>/);
-		assert.strictEqual(html.match(/comment-review-status-value">Resolved<\/span>/g)?.length, 1);
-		assert.strictEqual(html.match(/comment-review-status-value">Unresolved<\/span>/g)?.length, 1);
+		assert.strictEqual(html.match(/comment-toggle-state">Resolved<\/span>/g)?.length, 1);
+		assert.strictEqual(html.match(/comment-toggle-state">Unresolved<\/span>/g)?.length, 1);
+		assert.strictEqual(html.match(/class="comment-toggle-input"/g)?.length, 2);
 		assert.strictEqual(html.match(/badge badge-resolved">Resolved<\/span>/g)?.length ?? 0, 0);
 		assert.strictEqual(html.match(/badge badge-unresolved">Unresolved<\/span>/g)?.length ?? 0, 0);
 	});

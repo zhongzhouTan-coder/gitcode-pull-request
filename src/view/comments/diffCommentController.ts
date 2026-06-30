@@ -3,7 +3,7 @@ import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
 import { CreatePullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
-import { createCommentThread, selectCommentsForDocument } from './commentThreadFactory';
+import { applyCommentThread, createCommentThread, selectCommentsForDocument } from './commentThreadFactory';
 import { parsePrUri } from '../diff/prUriHelpers';
 import { PullRequestDiffStore } from '../diff/pullRequestDiffStore';
 
@@ -137,6 +137,11 @@ export class DiffCommentController implements vscode.Disposable {
 	private readonly controller: vscode.CommentController;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly activeThreads = new Map<string, vscode.CommentThread>();
+	private readonly threadMetadata = new Map<vscode.CommentThread, {
+		repository: GitCodeRepository;
+		pullRequestNumber: number;
+		discussionId: string;
+	}>();
 	private readonly trackedDocs = new Set<string>();
 
 	constructor(
@@ -165,6 +170,12 @@ export class DiffCommentController implements vscode.Disposable {
 				}
 				await this.handleCommentReply(reply);
 			}),
+			vscode.commands.registerCommand(COMMAND_ID.resolveDiffComment, async (thread?: vscode.CommentThread) => {
+				await this.handleResolveThread(thread);
+			}),
+			vscode.commands.registerCommand(COMMAND_ID.unresolveDiffComment, async (thread?: vscode.CommentThread) => {
+				await this.handleUnresolveThread(thread);
+			}),
 			vscode.window.onDidChangeVisibleTextEditors(() => {
 				void this.updateThreads();
 			}),
@@ -189,6 +200,7 @@ export class DiffCommentController implements vscode.Disposable {
 			thread.dispose();
 		}
 		this.activeThreads.clear();
+		this.threadMetadata.clear();
 		this.trackedDocs.clear();
 	}
 
@@ -261,6 +273,56 @@ export class DiffCommentController implements vscode.Disposable {
 		}
 	}
 
+	private async handleResolveThread(thread?: vscode.CommentThread): Promise<void> {
+		await this.handleThreadStatusChange(thread, true);
+	}
+
+	private async handleUnresolveThread(thread?: vscode.CommentThread): Promise<void> {
+		await this.handleThreadStatusChange(thread, false);
+	}
+
+	private async handleThreadStatusChange(thread: vscode.CommentThread | undefined, resolved: boolean): Promise<void> {
+		if (!thread) {
+			await vscode.window.showWarningMessage('No comment thread is active.');
+			return;
+		}
+
+		const metadata = this.threadMetadata.get(thread);
+		if (!metadata) {
+			await vscode.window.showWarningMessage('Unable to identify the pull request comment thread.');
+			return;
+		}
+
+		const previousState = thread.state;
+		const previousLabel = thread.label;
+
+		thread.state = resolved
+			? vscode.CommentThreadState.Resolved
+			: vscode.CommentThreadState.Unresolved;
+		thread.label = resolved ? 'Resolving...' : 'Reopening...';
+
+		try {
+			const result = await this.commentsStore.reviseCommentStatus(
+				metadata.repository,
+				metadata.pullRequestNumber,
+				{ discussionId: metadata.discussionId, resolved },
+			);
+
+			if (result.status === 'failed') {
+				thread.state = previousState;
+				thread.label = previousLabel;
+				await vscode.window.showErrorMessage(result.error ?? 'Failed to revise comment status.');
+			} else {
+				await this.updateThreads();
+			}
+		} catch (error) {
+			thread.state = previousState;
+			thread.label = previousLabel;
+			const message = error instanceof Error ? error.message : 'Failed to revise comment status.';
+			await vscode.window.showErrorMessage(message);
+		}
+	}
+
 	private async getCurrentHeadSha(
 		repository: GitCodeRepository,
 		pullRequestNumber: number,
@@ -286,6 +348,7 @@ export class DiffCommentController implements vscode.Disposable {
 			if (thread.uri.toString() === uriStr) {
 				thread.dispose();
 				this.activeThreads.delete(key);
+				this.threadMetadata.delete(thread);
 			}
 		}
 		this.trackedDocs.delete(uriStr);
@@ -363,35 +426,40 @@ export class DiffCommentController implements vscode.Disposable {
 
 		for (const [strKey, { key, uri }] of desiredKeys.entries()) {
 			const existing = this.activeThreads.get(strKey);
-			if (existing) {
-				newActive.set(strKey, existing);
-			} else {
-				// Create a new thread for this comment discussion
-				const repoKey = key.repositoryKey;
-				const [owner, repo] = repoKey.split('/');
-				if (!owner || !repo) {
-					continue;
-				}
+			const repoKey = key.repositoryKey;
+			const [owner, repo] = repoKey.split('/');
+			if (!owner || !repo) {
+				continue;
+			}
 
-				try {
-					const snapshot = await this.commentsStore.getOrFetch(
-						{ remoteName: '', owner, name: repo, fullName: repoKey, webUrl: '' },
-						key.pullRequestNumber,
-					);
+			try {
+				const snapshot = await this.commentsStore.getOrFetch(
+					{ remoteName: '', owner, name: repo, fullName: repoKey, webUrl: '' },
+					key.pullRequestNumber,
+				);
 
-					const comment = snapshot.comments.find(
-						(c) => c.kind === 'diff' && c.discussionId === key.discussionId,
-					);
+				const comment = snapshot.comments.find(
+					(c) => c.kind === 'diff' && c.discussionId === key.discussionId,
+				);
 
-					if (comment && comment.kind === 'diff') {
+				if (comment && comment.kind === 'diff') {
+					if (existing) {
+						applyCommentThread(existing, comment, comment.body);
+						newActive.set(strKey, existing);
+					} else {
 						const thread = createCommentThread(this.controller, comment, uri, comment.body);
 						if (thread) {
 							newActive.set(strKey, thread);
+							this.threadMetadata.set(thread, {
+								repository: { remoteName: '', owner, name: repo, fullName: repoKey, webUrl: '' },
+								pullRequestNumber: key.pullRequestNumber,
+								discussionId: key.discussionId,
+							});
 						}
 					}
-				} catch {
-					// Comment not bound inline — skip
 				}
+			} catch {
+				// Comment not bound inline — skip
 			}
 		}
 
@@ -399,6 +467,7 @@ export class DiffCommentController implements vscode.Disposable {
 		for (const [strKey, thread] of this.activeThreads.entries()) {
 			if (!newActive.has(strKey)) {
 				thread.dispose();
+				this.threadMetadata.delete(thread);
 			}
 		}
 

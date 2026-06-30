@@ -12,6 +12,7 @@ export interface GitCodeClient {
 
 export interface GitCodeWriteClient extends GitCodeClient {
 	post<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
+	put<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
 	patch<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
 }
 
@@ -30,6 +31,10 @@ export class GitCodeClientImpl implements GitCodeWriteClient {
 		return this.request<T>(path, query, tokenOverride, body);
 	}
 
+	async put<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T> {
+		return this.request<T>(path, query, tokenOverride, body, 'PUT');
+	}
+
 	async patch<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T> {
 		return this.request<T>(path, query, tokenOverride, body, 'PATCH');
 	}
@@ -39,7 +44,7 @@ export class GitCodeClientImpl implements GitCodeWriteClient {
 		query?: Record<string, QueryValue>,
 		tokenOverride?: string,
 		body?: unknown,
-		method?: 'GET' | 'POST' | 'PATCH',
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH',
 	): Promise<T> {
 		const token = tokenOverride ?? (await this.sessionStore.read())?.accessToken;
 		if (!token) {

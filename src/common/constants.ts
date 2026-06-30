@@ -26,6 +26,8 @@ export const COMMAND_ID = {
 	createPullRequest: 'gitcode.createPullRequest',
 	editPullRequest: 'gitcode.editPullRequest',
 	submitPullRequestDiffComment: 'gitcode.submitPullRequestDiffComment',
+	resolveDiffComment: 'gitcode.resolveDiffComment',
+	unresolveDiffComment: 'gitcode.unresolveDiffComment',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';

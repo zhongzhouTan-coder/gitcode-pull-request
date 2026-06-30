@@ -193,6 +193,8 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			section?: EditPullRequestSection;
 			input?: EditPullRequestInput;
 			state?: string;
+			discussionId?: string;
+			resolved?: boolean;
 		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
@@ -206,6 +208,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'submitPullRequestComment' && typeof message.body === 'string') {
 				await this.handleSubmitPullRequestComment(message.body);
+				return;
+			}
+
+			if (message.command === 'revisePullRequestCommentStatus' && typeof message.discussionId === 'string' && typeof message.resolved === 'boolean') {
+				await this.handleRevisePullRequestCommentStatus(message.discussionId, message.resolved);
 				return;
 			}
 
@@ -536,5 +543,26 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				message: errorMessage,
 			});
 		}
+	}
+
+	private async handleRevisePullRequestCommentStatus(discussionId: string, resolved: boolean): Promise<void> {
+		const result = await this.commentsStore.reviseCommentStatus(
+			this.context.repository,
+			this.context.pullRequestNumber,
+			{ discussionId, resolved },
+		);
+
+		if (result.status === 'failed') {
+			this.panel.webview.postMessage({
+				command: 'reviseCommentStatusError',
+				discussionId,
+				error: result.error ?? 'Failed to revise comment status.',
+			});
+			return;
+		}
+
+		// On success, reload to show refreshed comments from the store
+		this.commentsSnapshot = undefined;
+		await this.load(true);
 	}
 }

@@ -214,6 +214,18 @@ export interface CreatePullRequestCommentResult {
 	body: string;
 }
 
+export interface RevisePullRequestCommentStatusInput {
+	discussionId: string;
+	resolved: boolean;
+}
+
+export interface PullRequestCommentStatusOperation {
+	discussionId: string;
+	resolved: boolean;
+	status: 'pending' | 'failed';
+	error?: string;
+}
+
 export type PullRequestComment =
 	| PullRequestGeneralComment
 	| PullRequestDiffComment;

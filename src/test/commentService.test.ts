@@ -42,6 +42,9 @@ suite('CommentService', () => {
 			post: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
@@ -84,6 +87,9 @@ suite('CommentService', () => {
 			post: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
@@ -114,6 +120,9 @@ suite('CommentService', () => {
 					note_id: 12,
 				} as T;
 			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
@@ -139,6 +148,9 @@ suite('CommentService', () => {
 			post: async <T>(_path: string, body?: unknown): Promise<T> => {
 				calls.push(body);
 				return { id: 'comment-2', body: 'Inline', note_id: 22 } as T;
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
@@ -170,6 +182,9 @@ suite('CommentService', () => {
 				calls.push(body);
 				return { id: 'comment-3', body: 'Binary' } as T;
 			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
@@ -197,6 +212,9 @@ suite('CommentService', () => {
 			post: async <T>(): Promise<T> => {
 				called = true;
 				return {} as T;
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');

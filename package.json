@@ -144,6 +144,14 @@
       {
         "command": "gitcode.submitPullRequestDiffComment",
         "title": "Submit Pull Request Comment"
+      },
+      {
+        "command": "gitcode.resolveDiffComment",
+        "title": "Resolve"
+      },
+      {
+        "command": "gitcode.unresolveDiffComment",
+        "title": "Mark as Unresolved"
       }
     ],
     "menus": {
@@ -246,6 +254,16 @@
           "command": "gitcode.submitPullRequestDiffComment",
           "when": "commentController == gitcode-pull-request-comments",
           "group": "navigation"
+        },
+        {
+          "command": "gitcode.resolveDiffComment",
+          "when": "commentController == gitcode-pull-request-comments && commentThread == gitcode.diffComment.unresolved",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitcode.unresolveDiffComment",
+          "when": "commentController == gitcode-pull-request-comments && commentThread == gitcode.diffComment.resolved",
+          "group": "navigation@1"
         }
       ]
     },

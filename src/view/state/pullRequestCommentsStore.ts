@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestCommentStatusOperation, RevisePullRequestCommentStatusInput } from '../../common/models';
 import { CommentService } from '../../gitcode/services/commentService';
 
 export interface CommentChangeEvent {
@@ -21,6 +21,7 @@ type CommentKey = `${string}#${number}`;
 export class PullRequestCommentsStore implements vscode.Disposable {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<CommentsChangeEvent>();
 	private readonly snapshotPromises = new Map<CommentKey, Promise<PullRequestCommentsSnapshot>>();
+	private readonly pendingOperations = new Map<string, Promise<PullRequestCommentStatusOperation>>();
 
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -95,6 +96,113 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 	}
 
 	/**
+	 * Revise the resolved status of a pull request diff discussion.
+	 *
+	 * Serializes concurrent operations per discussionId so that duplicate
+	 * requests are ignored while one is already running.
+	 *
+	 * Returns the operation result for UI feedback. On success the store
+	 * is refreshed from the API; on failure the previous snapshot is kept.
+	 */
+	async reviseCommentStatus(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: RevisePullRequestCommentStatusInput,
+	): Promise<PullRequestCommentStatusOperation> {
+		// If there is already a pending operation for this discussion, return it
+		const existing = this.pendingOperations.get(input.discussionId);
+		if (existing) {
+			return existing;
+		}
+
+		const operationPromise = this.executeReviseCommentStatus(repository, pullRequestNumber, input);
+		this.pendingOperations.set(input.discussionId, operationPromise);
+
+		try {
+			return await operationPromise;
+		} finally {
+			this.pendingOperations.delete(input.discussionId);
+		}
+	}
+
+	private async executeReviseCommentStatus(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: RevisePullRequestCommentStatusInput,
+	): Promise<PullRequestCommentStatusOperation> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			return {
+				discussionId: input.discussionId,
+				resolved: input.resolved,
+				status: 'failed',
+				error: 'Sign in to GitCode first.',
+			};
+		}
+
+		// Validate that the target comment exists and is a diff comment
+		const snapshot = await this.getOrFetch(repository, pullRequestNumber);
+		const comment = snapshot.comments.find((c) => c.discussionId === input.discussionId);
+
+		if (!comment) {
+			return {
+				discussionId: input.discussionId,
+				resolved: input.resolved,
+				status: 'failed',
+				error: 'Comment not found.',
+			};
+		}
+
+		if (comment.kind !== 'diff') {
+			return {
+				discussionId: input.discussionId,
+				resolved: input.resolved,
+				status: 'failed',
+				error: 'Only diff comments can be resolved or unresolved.',
+			};
+		}
+
+		// Validate that the requested state differs from current
+		if (comment.resolved === input.resolved) {
+			return {
+				discussionId: input.discussionId,
+				resolved: input.resolved,
+				status: 'failed',
+				error: 'Comment is already in the requested state.',
+			};
+		}
+
+		try {
+			await this.commentService.revisePullRequestCommentStatus(
+				repository,
+				pullRequestNumber,
+				input,
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to revise comment status.';
+			return {
+				discussionId: input.discussionId,
+				resolved: input.resolved,
+				status: 'failed',
+				error: message,
+			};
+		}
+
+		// On success, refresh the store so consumers re-render from API state
+		try {
+			await this.refresh(repository.fullName, pullRequestNumber);
+		} catch {
+			// Status changed but refresh failed — still report success to the caller
+		}
+
+		return {
+			discussionId: input.discussionId,
+			resolved: input.resolved,
+			status: 'pending',
+		};
+	}
+
+	/**
 	 * Invalidate without emitting a change event (used when clearing all state).
 	 */
 	invalidate(repositoryKey: string, pullRequestNumber: number): void {
@@ -112,6 +220,7 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 
 	dispose(): void {
 		this.snapshotPromises.clear();
+		this.pendingOperations.clear();
 		this.onDidChangeEmitter.dispose();
 	}
 

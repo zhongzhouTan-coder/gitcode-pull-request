@@ -19,6 +19,22 @@ export function createCommentThread(
 		return undefined;
 	}
 
+	const thread = controller.createCommentThread(documentUri, range, []);
+	applyCommentThread(thread, comment, parentBody);
+
+	return thread;
+}
+
+export function applyCommentThread(
+	thread: vscode.CommentThread,
+	comment: PullRequestDiffComment,
+	parentBody: string,
+): void {
+	const range = createRange(comment);
+	if (range) {
+		thread.range = range;
+	}
+
 	const parentComment: vscode.Comment = {
 		body: createMarkdownString(parentBody),
 		author: createAuthor(comment.author),
@@ -35,14 +51,13 @@ export function createCommentThread(
 		mode: vscode.CommentMode.Preview,
 	}));
 
-	const thread = controller.createCommentThread(documentUri, range, [parentComment, ...replies]);
+	thread.comments = [parentComment, ...replies];
 	thread.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed;
 	thread.state = comment.resolved
 		? vscode.CommentThreadState.Resolved
 		: vscode.CommentThreadState.Unresolved;
 	thread.canReply = false;
-
-	return thread;
+	thread.contextValue = comment.resolved ? 'gitcode.diffComment.resolved' : 'gitcode.diffComment.unresolved';
 }
 
 function createRange(comment: PullRequestDiffComment): vscode.Range | undefined {

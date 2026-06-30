@@ -1,8 +1,6 @@
 import {
 	EditPullRequestOptions,
 	IssueLabel,
-	IssueRepositoryRef,
-	IssueUser,
 	PullRequestComment,
 	PullRequestCommentReply,
 	PullRequestCommentsSnapshot,
@@ -228,10 +226,17 @@ function renderDiffCommentLocation(comment: PullRequestDiffComment): string {
 }
 
 function renderDiffCommentReviewStatus(comment: PullRequestDiffComment): string {
-	const status = comment.resolved ? 'Resolved' : 'Unresolved';
-	return `<div class="comment-review-status" aria-label="Review status: ${status}">
-		<span class="comment-review-status-label">Review status</span>
-		<span class="comment-review-status-value">${status}</span>
+	const checked = comment.resolved ? 'checked' : '';
+	const currentStatus = comment.resolved ? 'Resolved' : 'Unresolved';
+	const targetStatus = comment.resolved ? 'Unresolved' : 'Resolved';
+	const label = `Mark discussion as ${targetStatus.toLowerCase()}`;
+	return `<div class="comment-review-status" aria-label="Review status: ${currentStatus}">
+		<label class="comment-toggle" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">
+			<span class="comment-toggle-label">Review status</span>
+			<input type="checkbox" class="comment-toggle-input" data-action="revisePullRequestCommentStatus" data-discussion-id="${escapeHtml(comment.discussionId)}" data-resolved="${!comment.resolved}" ${checked}>
+			<span class="comment-toggle-slider"></span>
+			<span class="comment-toggle-state">${currentStatus}</span>
+		</label>
 	</div>`;
 }
 
@@ -910,20 +915,70 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.comment-location { color: var(--muted); }
 		.comment-review-status {
 			display: inline-flex;
-			align-items: baseline;
-			justify-content: flex-end;
-			gap: 6px;
+			align-items: center;
 			flex: 0 0 auto;
 			padding-top: 5px;
 			font-size: 13px;
 			white-space: nowrap;
 		}
-		.comment-review-status-label {
-			color: var(--muted);
+		.comment-toggle {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+			cursor: pointer;
+			user-select: none;
 		}
-		.comment-review-status-value {
+		.comment-toggle-label {
+			color: var(--muted);
+			font-size: 12px;
+		}
+		.comment-toggle-input {
+			position: absolute;
+			opacity: 0;
+			width: 0;
+			height: 0;
+			pointer-events: none;
+		}
+		.comment-toggle-slider {
+			position: relative;
+			width: 32px;
+			height: 18px;
+			flex-shrink: 0;
+			border-radius: 999px;
+			background: var(--vscode-input-border, #30363d);
+			transition: background .18s ease;
+		}
+		.comment-toggle-slider::after {
+			content: '';
+			position: absolute;
+			top: 2px;
+			left: 2px;
+			width: 14px;
+			height: 14px;
+			border-radius: 999px;
+			background: var(--vscode-editor-background);
+			transition: transform .18s ease;
+		}
+		.comment-toggle-input:checked + .comment-toggle-slider {
+			background: var(--vscode-textLink-foreground, #58a6ff);
+		}
+		.comment-toggle-input:checked + .comment-toggle-slider::after {
+			transform: translateX(14px);
+		}
+		.comment-toggle-input:disabled + .comment-toggle-slider {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+		.comment-toggle-state {
 			font-weight: 600;
+			font-size: 12px;
+			min-width: 72px;
 			color: var(--vscode-foreground);
+		}
+		.comment-toggle-error {
+			color: var(--vscode-errorForeground);
+			font-size: 11px;
+			margin-left: 4px;
 		}
 		@media (max-width: 720px) {
 			.comment-top-row {
@@ -931,9 +986,11 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				gap: 4px;
 			}
 			.comment-review-status {
-				justify-content: flex-start;
 				padding-top: 0;
 				white-space: normal;
+			}
+			.comment-toggle-label {
+				display: none;
 			}
 		}
 		.badge-outdated {
@@ -1801,6 +1858,46 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			});
 		}
 
+		function updateCommentToggleStatus(input, resolved) {
+			var statusContainer = input.closest('.comment-review-status');
+			var label = input.closest('.comment-toggle');
+			var statusText = statusContainer ? statusContainer.querySelector('.comment-toggle-state') : null;
+			var currentStatus = resolved ? 'Resolved' : 'Unresolved';
+			var targetStatus = resolved ? 'Unresolved' : 'Resolved';
+			var actionLabel = 'Mark discussion as ' + targetStatus.toLowerCase();
+
+			input.dataset.resolved = String(!resolved);
+			if (statusText) {
+				statusText.textContent = currentStatus;
+			}
+			if (statusContainer) {
+				statusContainer.setAttribute('aria-label', 'Review status: ' + currentStatus);
+				var errorEl = statusContainer.querySelector('.comment-toggle-error');
+				if (errorEl) {
+					errorEl.remove();
+				}
+			}
+			if (label) {
+				label.setAttribute('title', actionLabel);
+				label.setAttribute('aria-label', actionLabel);
+			}
+		}
+
+		function showCommentToggleError(input, message) {
+			var statusContainer = input.closest('.comment-review-status');
+			if (!statusContainer) {
+				return;
+			}
+
+			var errorEl = statusContainer.querySelector('.comment-toggle-error');
+			if (!errorEl) {
+				errorEl = document.createElement('span');
+				errorEl.className = 'comment-toggle-error';
+				statusContainer.appendChild(errorEl);
+			}
+			errorEl.textContent = message || 'Failed to revise comment status.';
+		}
+
 		function buildInput(section) {
 			var title = document.querySelector('[data-section-input="title"]');
 			var currentTitleValue = title ? title.value.trim() : currentTitle;
@@ -2021,6 +2118,15 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				setConversationCommentSubmitting(false);
 				showConversationCommentError(msg.message || 'Unable to submit comment.');
 			}
+			if (msg.command === 'reviseCommentStatusError' && msg.discussionId) {
+				var toggle = document.querySelector('.comment-toggle-input[data-discussion-id="' + CSS.escape(msg.discussionId) + '"]');
+				if (toggle) {
+					toggle.checked = !toggle.checked;
+					toggle.disabled = false;
+					updateCommentToggleStatus(toggle, toggle.checked);
+					showCommentToggleError(toggle, msg.error || 'Failed to revise comment status.');
+				}
+			}
 		});
 
 		document.getElementById('refresh-button')?.addEventListener('click', () => {
@@ -2037,6 +2143,28 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				event.preventDefault();
 				submitConversationComment();
 			}
+		});
+		document.querySelectorAll('.comment-toggle-input').forEach((toggle) => {
+			toggle.addEventListener('change', (event) => {
+				var input = event.currentTarget;
+				if (!input) {
+					return;
+				}
+
+				var discussionId = input.dataset.discussionId;
+				if (!discussionId) {
+					return;
+				}
+
+				var resolved = input.checked;
+				input.disabled = true;
+				updateCommentToggleStatus(input, resolved);
+				vscode.postMessage({
+					command: 'revisePullRequestCommentStatus',
+					discussionId: discussionId,
+					resolved: resolved,
+				});
+			});
 		});
 		document.getElementById('state-action-button')?.addEventListener('click', () => {
 			var button = document.getElementById('state-action-button');
