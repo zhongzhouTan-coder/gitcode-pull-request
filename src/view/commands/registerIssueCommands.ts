@@ -15,6 +15,7 @@ import { CopilotIssueContextStore } from '../copilot/copilotIssueContextStore';
 import { IssueNode, IssueNodeContext, getIssueUrl } from '../tree/nodes/issueNode';
 import { GitRemote, GitRepository } from '../../common/git/gitTypes';
 import { parseGitCodeRemote } from '../../common/git/remoteParser';
+import { CreateIssueHelper } from '../createIssue/createIssueHelper';
 
 interface RegisterIssueCommandsOptions {
 	authService: AuthService;
@@ -26,6 +27,7 @@ interface RegisterIssueCommandsOptions {
 	prCommentsStore: PullRequestCommentsStore;
 	copilotIssueContextStore: CopilotIssueContextStore;
 	repositoryContext: RepositoryContextService;
+	createIssueHelper: CreateIssueHelper;
 	logger: Logger;
 }
 
@@ -218,11 +220,14 @@ async function pickIssueBranchBase(
 }
 
 export function registerIssueCommands(options: RegisterIssueCommandsOptions): vscode.Disposable {
-	const { authService, store, issueOverviewStore, issueCommentsStore, issueRelatedPrsStore, prOverviewStore, prCommentsStore, copilotIssueContextStore, repositoryContext, logger } = options;
+	const { authService, store, issueOverviewStore, issueCommentsStore, issueRelatedPrsStore, prOverviewStore, prCommentsStore, copilotIssueContextStore, repositoryContext, createIssueHelper, logger } = options;
 
 	const gitService = new LocalGitService();
 
 	return vscode.Disposable.from(
+		vscode.commands.registerCommand(COMMAND_ID.createIssue, async () => {
+			await createIssueHelper.create();
+		}),
 		vscode.commands.registerCommand(COMMAND_ID.refreshIssues, async () => {
 			await store.refreshAll();
 		}),

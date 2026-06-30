@@ -242,6 +242,10 @@ export interface IssueSummary {
 	milestone?: IssueMilestone;
 }
 
+export interface CreatedIssueSummary extends IssueSummary {
+	htmlUrl?: string;
+}
+
 // ---- Issue Detail Types ----
 
 export interface IssueWorkflowState {
@@ -449,6 +453,41 @@ export interface CreatePullRequestInitialIssueContext {
 	issueUrl?: string;
 }
 
+// ---- Create Issue Types ----
+
+export interface CreateIssueInput {
+	title: string;
+	body: string;
+	assignees: string[];
+	labels: string[];
+	milestoneNumber?: number;
+	securityHole: boolean;
+	templatePath?: string;
+}
+
+export interface IssueTemplateOption {
+	label: string;
+	path: string;
+	body?: string;
+	source: 'project' | 'organization' | 'manual';
+}
+
+export interface CreateIssueDefaults {
+	repository: GitCodeRepository;
+	labels: GitCodeLabel[];
+	milestones: GitCodeMilestone[];
+	members: GitCodeUser[];
+	templates: IssueTemplateOption[];
+	title: string;
+	body: string;
+	assignees: string[];
+	selectedLabels: string[];
+	milestoneNumber?: number;
+	securityHole: boolean;
+	templatePath: string;
+	warnings?: string[];
+}
+
 export interface GitCodeRepositoryDetail {
 	id: number;
 	fullName: string;
@@ -457,6 +496,7 @@ export interface GitCodeRepositoryDetail {
 	defaultBranch: string;
 	webUrl: string;
 	fork: boolean;
+	issueTemplateSource?: 'project' | 'organization' | string;
 }
 
 export interface GitCodeBranch {

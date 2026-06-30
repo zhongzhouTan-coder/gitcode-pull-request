@@ -87,4 +87,41 @@ suite('PullRequestOverviewStore', () => {
 
 		assert.strictEqual(calls, 2);
 	});
+
+	test('edit invalidates cached detail for the pull request', async () => {
+		let getCalls = 0;
+		let editCalls = 0;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {
+			getPullRequest: async () => {
+				getCalls += 1;
+				return {
+					...detail,
+					title: getCalls === 1 ? 'Before edit' : 'After edit',
+				};
+			},
+			editPullRequest: async () => {
+				editCalls += 1;
+				return {
+					...detail,
+					title: 'After edit',
+				};
+			},
+		} as unknown as PullRequestService;
+
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+		await store.getDetail(repository, 2);
+		await store.editPullRequest(repository, 2, { title: 'After edit' });
+		const refreshed = await store.getDetail(repository, 2);
+
+		assert.strictEqual(editCalls, 1);
+		assert.strictEqual(getCalls, 2);
+		assert.strictEqual(refreshed.title, 'After edit');
+	});
 });

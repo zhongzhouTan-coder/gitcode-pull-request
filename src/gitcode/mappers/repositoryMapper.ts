@@ -9,5 +9,8 @@ export function mapRepositoryDetail(dto: any): GitCodeRepositoryDetail {
 		defaultBranch: String(dto?.default_branch ?? dto?.defaultBranch ?? 'main'),
 		webUrl: String(dto?.web_url ?? dto?.html_url ?? ''),
 		fork: Boolean(dto?.fork ?? dto?.is_fork ?? false),
+		issueTemplateSource: typeof dto?.issue_template_source === 'string'
+			? dto.issue_template_source
+			: undefined,
 	};
 }

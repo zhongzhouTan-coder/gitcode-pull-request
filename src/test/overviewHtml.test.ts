@@ -136,8 +136,9 @@ suite('OverviewHtml', () => {
 		assert.match(html, /function resetSectionState\(section\)/);
 		assert.match(html, /titleInput\.value = detailSnapshot\.title \|\| ''/);
 		assert.match(html, /bodyInput\.value = detailSnapshot\.body \|\| ''/);
-		assert.match(html, /stateInput\.value = detailSnapshot\.state \|\| 'opened'/);
+		assert.match(html, /stateInput\.value = detailSnapshot\.state \|\| 'open'/);
 		assert.match(html, /draftInput\.checked = Boolean\(detailSnapshot\.draft\)/);
+		assert.match(html, /if \(section === 'closeRelatedIssue'\) \{[\s\S]*closeRelatedIssueInput\.checked = false;/);
 		assert.match(html, /resetSectionState\(section\);[\s\S]*if \(section === 'labels'\)/);
 	});
 });

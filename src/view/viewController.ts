@@ -37,6 +37,7 @@ import { registerCopilotPullRequestParticipant } from './copilot/registerCopilot
 import { registerCopilotIssueParticipant } from './copilot/registerCopilotIssueParticipant';
 import { CreatePullRequestHelper } from './createPullRequest/createPullRequestHelper';
 import { CreatePullRequestViewProvider } from './createPullRequest/createPullRequestViewProvider';
+import { CreateIssueHelper } from './createIssue/createIssueHelper';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
 import { GitCodeClientImpl } from '../gitcode/client/gitcodeClient';
@@ -74,6 +75,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly copilotContextStore: CopilotPullRequestContextStore;
 	private readonly copilotIssueContextStore: CopilotIssueContextStore;
 	private readonly createPullRequestHelper: CreatePullRequestHelper;
+	private readonly createIssueHelper: CreateIssueHelper;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly layoutSupplier: () => 'tree' | 'flat';
 
@@ -123,6 +125,12 @@ export class ViewController implements vscode.Disposable {
 			this.store,
 		);
 
+		const rawContentService = new RawContentService(
+			options.configuration,
+			options.sessionStore,
+			options.logger,
+		);
+
 		// Create Pull Request components
 		const createPullRequestProvider = new CreatePullRequestViewProvider(
 			options.context.extensionUri,
@@ -166,6 +174,19 @@ export class ViewController implements vscode.Disposable {
 			issueService,
 			options.configuration,
 		);
+		this.createIssueHelper = new CreateIssueHelper(
+			options.repositoryResolver,
+			repositoryService,
+			rawContentService,
+			issueService,
+			this.issueStore,
+			this.issueOverviewStore,
+			this.issueCommentsStore,
+			this.issueRelatedPrsStore,
+			this.overviewStore,
+			this.commentsStore,
+			options.logger,
+		);
 		this.issueTreeDataProvider = new IssueTreeDataProvider(
 			this.issueStore,
 			options.logger,
@@ -175,11 +196,6 @@ export class ViewController implements vscode.Disposable {
 		this.layoutSupplier = () => options.configuration.getPullRequestFileListLayout();
 
 		// Diff view components
-		const rawContentService = new RawContentService(
-			options.configuration,
-			options.sessionStore,
-			options.logger,
-		);
 		this.fileSystemProvider = new GitCodePullRequestFileSystemProvider(
 			rawContentService,
 			options.logger,
@@ -238,6 +254,7 @@ export class ViewController implements vscode.Disposable {
 				prCommentsStore: this.commentsStore,
 				copilotIssueContextStore: this.copilotIssueContextStore,
 				repositoryContext: options.repositoryContext,
+				createIssueHelper: this.createIssueHelper,
 				logger: options.logger,
 			}),
 			registerOverviewCommands({

@@ -453,7 +453,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 	const detailSnapshotJson = serializeForInlineScript({
 		title: detail.title,
 		body: detail.body,
-		state: detail.state === 'open' ? 'opened' : 'closed',
+		state: detail.state === 'closed' ? 'closed' : 'open',
 		draft: detail.isDraft,
 		labels: detail.labels,
 		milestone: detail.milestone ?? null,
@@ -1449,7 +1449,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			if (section === 'state') {
 				const stateInput = document.querySelector('[data-section-input="state"]');
 				if (stateInput) {
-					stateInput.value = detailSnapshot.state || 'opened';
+					stateInput.value = detailSnapshot.state || 'open';
 				}
 				return;
 			}
@@ -1477,6 +1477,13 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				initializeSelectionState();
 				syncMilestoneSelect();
 				return;
+			}
+
+			if (section === 'closeRelatedIssue') {
+				const closeRelatedIssueInput = document.querySelector('[data-section-input="closeRelatedIssue"]');
+				if (closeRelatedIssueInput) {
+					closeRelatedIssueInput.checked = false;
+				}
 			}
 		}
 

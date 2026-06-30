@@ -15,6 +15,7 @@ export const COMMAND_ID = {
 	setPullRequestFilesLayoutTree: 'gitcode.setPullRequestFilesLayoutTree',
 	setPullRequestFilesLayoutFlat: 'gitcode.setPullRequestFilesLayoutFlat',
 	refreshIssues: 'gitcode.refreshIssues',
+	createIssue: 'gitcode.createIssue',
 	openIssue: 'gitcode.openIssue',
 	openIssueOnWeb: 'gitcode.openIssueOnWeb',
 	copyIssueUrl: 'gitcode.copyIssueUrl',

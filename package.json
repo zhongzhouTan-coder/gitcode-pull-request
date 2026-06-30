@@ -93,6 +93,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "gitcode.createIssue",
+        "title": "GitCode: Create Issue",
+        "icon": "$(add)"
+      },
+      {
         "command": "gitcode.openIssue",
         "title": "GitCode: Open Issue",
         "icon": "$(eye)"
@@ -165,9 +170,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "gitcode.refreshIssues",
+          "command": "gitcode.createIssue",
           "when": "view == issues:gitcode",
           "group": "navigation@1"
+        },
+        {
+          "command": "gitcode.refreshIssues",
+          "when": "view == issues:gitcode",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
