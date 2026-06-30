@@ -180,4 +180,76 @@ suite('OverviewHtml', () => {
 		assert.match(html, /pullRequestStateChangeError/);
 		assert.match(html, /button\.textContent = pendingStateAction === 'closed' \? 'Close pull request' : 'Reopen pull request';/);
 	});
+
+	test('renders review status separately from metadata badges for diff comments only', () => {
+		const html = getOverviewWithCommentsHtml(
+			detail,
+			{
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				comments: [
+					{
+						kind: 'diff',
+						id: '1',
+						discussionId: 'discussion-1',
+						body: 'Resolved diff comment',
+						author: { id: '1', login: 'alice' },
+						createdAt: '2026-06-20T10:00:00+08:00',
+						updatedAt: '2026-06-20T10:00:00+08:00',
+						replies: [],
+						resolved: true,
+						isOutdated: true,
+						location: {
+							path: 'src/example.ts',
+							side: 'head',
+							startLine: 24,
+							endLine: 24,
+							positionType: 'text',
+						},
+					},
+					{
+						kind: 'diff',
+						id: '3',
+						discussionId: 'discussion-3',
+						body: 'Unresolved diff comment',
+						author: { id: '3', login: 'carol' },
+						createdAt: '2026-06-20T10:00:00+08:00',
+						updatedAt: '2026-06-20T10:00:00+08:00',
+						replies: [],
+						resolved: false,
+						isOutdated: false,
+						location: {
+							path: 'src/example.ts',
+							side: 'head',
+							startLine: 31,
+							endLine: 31,
+							positionType: 'text',
+						},
+					},
+					{
+						kind: 'pullRequest',
+						id: '2',
+						discussionId: 'discussion-2',
+						body: 'General comment',
+						author: { id: '2', login: 'bob' },
+						createdAt: '2026-06-20T10:00:00+08:00',
+						updatedAt: '2026-06-20T10:00:00+08:00',
+						replies: [],
+					},
+				],
+			},
+			'nonce',
+		);
+
+		assert.match(html, /<div class="comment-top-row">[\s\S]*<div class="comment-review-status" aria-label="Review status: Resolved">[\s\S]*<span class="comment-review-status-label">Review status<\/span>[\s\S]*<span class="comment-review-status-value">Resolved<\/span>/);
+		assert.match(html, /<div class="comment-top-row">[\s\S]*<div class="comment-review-status" aria-label="Review status: Unresolved">[\s\S]*<span class="comment-review-status-label">Review status<\/span>[\s\S]*<span class="comment-review-status-value">Unresolved<\/span>/);
+		assert.match(html, /Code comment · <span class="comment-file">src\/example\.ts<\/span> · line 24/);
+		assert.match(html, /Code comment · <span class="comment-file">src\/example\.ts<\/span> · line 31/);
+		assert.match(html, /badge badge-outdated">Outdated<\/span>/);
+		assert.strictEqual(html.match(/comment-review-status-value">Resolved<\/span>/g)?.length, 1);
+		assert.strictEqual(html.match(/comment-review-status-value">Unresolved<\/span>/g)?.length, 1);
+		assert.strictEqual(html.match(/badge badge-resolved">Resolved<\/span>/g)?.length ?? 0, 0);
+		assert.strictEqual(html.match(/badge badge-unresolved">Unresolved<\/span>/g)?.length ?? 0, 0);
+	});
 });

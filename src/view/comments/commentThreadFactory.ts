@@ -94,7 +94,7 @@ function createCommentLabel(comment: PullRequestDiffComment): string | undefined
 	if (comment.isOutdated) {
 		return 'Outdated';
 	}
-	return undefined;
+	return 'Unresolved';
 }
 
 /**

@@ -17,6 +17,17 @@ function createRepository(owner: string, repo: string): GitCodeRepository {
 	};
 }
 
+export function createCommentingRanges(lineCount: number): vscode.CommentingRanges | undefined {
+	if (lineCount < 1) {
+		return undefined;
+	}
+
+	return {
+		enableFileComments: true,
+		ranges: [new vscode.Range(0, 0, lineCount - 1, 0)],
+	};
+}
+
 export function validateDiffCommentDraft(
 	documentUri: vscode.Uri,
 	range: vscode.Range | undefined,
@@ -185,7 +196,7 @@ export class DiffCommentController implements vscode.Disposable {
 		document: vscode.TextDocument,
 	): Promise<vscode.Range[] | vscode.CommentingRanges | undefined> {
 		const parsed = parsePrUri(document.uri);
-		if (!parsed || parsed.side !== 'head' || !parsed.path || !parsed.sha || document.lineCount < 1) {
+		if (!parsed || parsed.side !== 'head' || !parsed.path || !parsed.sha) {
 			return undefined;
 		}
 
@@ -194,10 +205,7 @@ export class DiffCommentController implements vscode.Disposable {
 			return undefined;
 		}
 
-		return {
-			enableFileComments: false,
-			ranges: [new vscode.Range(0, 0, document.lineCount - 1, 0)],
-		};
+		return createCommentingRanges(document.lineCount);
 	}
 
 	private async handleCommentReply(reply: vscode.CommentReply): Promise<void> {

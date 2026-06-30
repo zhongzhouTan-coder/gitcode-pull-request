@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { mapDiffSnapshot } from '../gitcode/mappers/pullRequestDiffSnapshotMapper';
 import { RawContentService } from '../gitcode/services/rawContentService';
-import { createDiffCommentInput, validateDiffCommentDraft } from '../view/comments/diffCommentController';
+import { createCommentingRanges, createDiffCommentInput, validateDiffCommentDraft } from '../view/comments/diffCommentController';
 import { GitCodePullRequestFileSystemProvider } from '../view/diff/gitcodePullRequestFileSystemProvider';
 import { buildPrUri } from '../view/diff/prUriHelpers';
 
@@ -85,6 +85,36 @@ suite('PullRequestDiff', () => {
 			position: 5,
 			positionType: 'text',
 		});
+	});
+
+	test('creates file-level comment input when no line range is provided', () => {
+		const uri = buildPrUri({
+			owner: 'org',
+			repo: 'repo',
+			pullRequestNumber: 7,
+			side: 'head',
+			sha: 'headsha',
+			path: 'dist/app.bin',
+		});
+
+		const input = createDiffCommentInput(uri, undefined, 'Binary note');
+
+		assert.deepStrictEqual(input, {
+			kind: 'file',
+			body: 'Binary note',
+			path: 'dist/app.bin',
+			positionType: 'binary',
+		});
+	});
+
+	test('enables file comments for eligible pull request diff documents', () => {
+		const ranges = createCommentingRanges(12);
+
+		assert.deepStrictEqual(ranges, {
+			enableFileComments: true,
+			ranges: [new vscode.Range(0, 0, 11, 0)],
+		});
+		assert.strictEqual(createCommentingRanges(0), undefined);
 	});
 
 	test('rejects base-side diff comments before submission', () => {

@@ -227,15 +227,20 @@ function renderDiffCommentLocation(comment: PullRequestDiffComment): string {
 	return parts.join(' · ');
 }
 
+function renderDiffCommentReviewStatus(comment: PullRequestDiffComment): string {
+	const status = comment.resolved ? 'Resolved' : 'Unresolved';
+	return `<div class="comment-review-status" aria-label="Review status: ${status}">
+		<span class="comment-review-status-label">Review status</span>
+		<span class="comment-review-status-value">${status}</span>
+	</div>`;
+}
+
 function renderDiffCommentBadges(comment: PullRequestDiffComment): string {
-	const badges: string[] = [];
-	if (comment.resolved) {
-		badges.push('<span class="badge badge-resolved">Resolved</span>');
+	if (!comment.isOutdated) {
+		return '';
 	}
-	if (comment.isOutdated) {
-		badges.push('<span class="badge badge-outdated">Outdated</span>');
-	}
-	return badges.join(' ');
+
+	return '<span class="badge badge-outdated">Outdated</span>';
 }
 
 function renderCommentAvatar(author: PullRequestComment['author']): string {
@@ -298,17 +303,21 @@ function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
 }
 
 function renderDiffCommentCard(comment: PullRequestDiffComment): string {
+	const badges = renderDiffCommentBadges(comment);
 	return `
 		<div class="comment-card comment-card-diff">
-			<div class="comment-header">
-				${renderCommentAvatar(comment.author)}
-				<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
-				<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
-				${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
+			<div class="comment-top-row">
+				<div class="comment-header">
+					${renderCommentAvatar(comment.author)}
+					<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
+					<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
+					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
+				</div>
+				${renderDiffCommentReviewStatus(comment)}
 			</div>
 			<div class="comment-meta">
 				<span class="comment-location">${renderDiffCommentLocation(comment)}</span>
-				${renderDiffCommentBadges(comment)}
+				${badges}
 			</div>
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
 			${renderConversationReplies(comment.replies)}
@@ -851,11 +860,19 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.comment-card-diff {
 			border-left: 4px solid var(--vscode-textLink-foreground, #58a6ff);
 		}
+		.comment-top-row {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 12px;
+			margin-bottom: 10px;
+		}
 		.comment-header {
 			display: flex;
 			align-items: center;
 			gap: 10px;
-			margin-bottom: 10px;
+			flex-wrap: wrap;
+			min-width: 0;
 		}
 		.comment-avatar {
 			width: 28px;
@@ -891,9 +908,33 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			font-size: 13px;
 		}
 		.comment-location { color: var(--muted); }
-		.badge-resolved {
-			background: var(--badge-merged);
-			color: white;
+		.comment-review-status {
+			display: inline-flex;
+			align-items: baseline;
+			justify-content: flex-end;
+			gap: 6px;
+			flex: 0 0 auto;
+			padding-top: 5px;
+			font-size: 13px;
+			white-space: nowrap;
+		}
+		.comment-review-status-label {
+			color: var(--muted);
+		}
+		.comment-review-status-value {
+			font-weight: 600;
+			color: var(--vscode-foreground);
+		}
+		@media (max-width: 720px) {
+			.comment-top-row {
+				flex-direction: column;
+				gap: 4px;
+			}
+			.comment-review-status {
+				justify-content: flex-start;
+				padding-top: 0;
+				white-space: normal;
+			}
 		}
 		.badge-outdated {
 			background: var(--badge-draft);

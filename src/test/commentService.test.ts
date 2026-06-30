@@ -62,6 +62,46 @@ suite('CommentService', () => {
 		}
 	});
 
+	test('preserves resolved state when enriching diff comments', async () => {
+		const client: GitCodeWriteClient = {
+			get: async <T>(path: string): Promise<T> => {
+				if (path.includes('/pulls/comments/')) {
+					return {
+						id: 'resolved-thread',
+						discussion_id: 'discussion-resolved-thread',
+						comment_type: 'DiffNote',
+						is_outdated: true,
+						position: {
+							new_path: 'src/resolved-thread.ts',
+							new_line: 24,
+							position_type: 'text',
+						},
+					} as T;
+				}
+
+				return [listDiffComment('resolved-thread', '2026-01-03T00:00:00Z', true)] as T;
+			},
+			post: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+		const logger = { debug: () => undefined, error: () => undefined } as unknown as Logger;
+		const service = new CommentService(client, logger);
+
+		const comments = await service.listPullRequestComments(repository, 1);
+
+		assert.strictEqual(comments.length, 1);
+		assert.strictEqual(comments[0].kind, 'diff');
+		if (comments[0].kind === 'diff') {
+			assert.strictEqual(comments[0].resolved, true);
+			assert.strictEqual(comments[0].isOutdated, true);
+			assert.strictEqual(comments[0].location.path, 'src/resolved-thread.ts');
+		}
+	});
+
 	test('creates a pull request conversation comment with body only', async () => {
 		const calls: Array<{ path: string; body: unknown }> = [];
 		const client: GitCodeWriteClient = {
@@ -172,7 +212,7 @@ suite('CommentService', () => {
 	});
 });
 
-function listDiffComment(id: string, createdAt: string): Record<string, unknown> {
+function listDiffComment(id: string, createdAt: string, resolved: boolean = false): Record<string, unknown> {
 	return {
 		id,
 		discussion_id: `discussion-${id}`,
@@ -180,7 +220,7 @@ function listDiffComment(id: string, createdAt: string): Record<string, unknown>
 		created_at: createdAt,
 		updated_at: createdAt,
 		comment_type: 'diff_comment',
-		resolved: false,
+		resolved,
 		diff_position: {
 			start_new_line: 10,
 			end_new_line: 10,
