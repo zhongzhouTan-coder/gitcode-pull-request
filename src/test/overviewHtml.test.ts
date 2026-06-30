@@ -136,9 +136,29 @@ suite('OverviewHtml', () => {
 		assert.match(html, /function resetSectionState\(section\)/);
 		assert.match(html, /titleInput\.value = detailSnapshot\.title \|\| ''/);
 		assert.match(html, /bodyInput\.value = detailSnapshot\.body \|\| ''/);
-		assert.match(html, /stateInput\.value = detailSnapshot\.state \|\| 'open'/);
 		assert.match(html, /draftInput\.checked = Boolean\(detailSnapshot\.draft\)/);
 		assert.match(html, /if \(section === 'closeRelatedIssue'\) \{[\s\S]*closeRelatedIssueInput\.checked = false;/);
 		assert.match(html, /resetSectionState\(section\);[\s\S]*if \(section === 'labels'\)/);
+	});
+
+	test('renders pull request state management as an action button', () => {
+		const openHtml = getOverviewHtml(detail, 'nonce');
+		const closedHtml = getOverviewHtml({ ...detail, state: 'closed' }, 'nonce');
+		const mergedHtml = getOverviewHtml({ ...detail, state: 'merged' }, 'nonce');
+
+		assert.match(openHtml, /id="state-action-button" data-state-action="closed"[^>]*>Close pull request<\/button>/);
+		assert.match(closedHtml, /id="state-action-button" data-state-action="open"[^>]*>Reopen pull request<\/button>/);
+		assert.match(mergedHtml, /id="state-action-button" data-state-action="open" disabled>Reopen pull request<\/button>/);
+		assert.doesNotMatch(openHtml, /data-section-input="state"/);
+		assert.doesNotMatch(openHtml, /data-section="state" title="Edit state"/);
+	});
+
+	test('posts pull request state change messages from the action button', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+
+		assert.match(html, /command: 'changePullRequestState'/);
+		assert.match(html, /state: pendingStateAction/);
+		assert.match(html, /pullRequestStateChangeError/);
+		assert.match(html, /button\.textContent = pendingStateAction === 'closed' \? 'Close pull request' : 'Reopen pull request';/);
 	});
 });

@@ -464,6 +464,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 	const milestoneText = detail.milestone
 		? escapeHtml(detail.milestone.title)
 		: '<span class="muted">None</span>';
+	const stateAction = detail.state === 'open' ? 'closed' : 'open';
+	const stateActionLabel = detail.state === 'open' ? 'Close pull request' : 'Reopen pull request';
+	const stateActionDisabled = detail.state === 'merged' ? 'disabled' : '';
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -504,7 +507,8 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.badge-closed { background: var(--badge-closed); }
 		.badge-merged { background: var(--badge-merged); }
 		.badge-draft { background: var(--badge-draft); }
-		.actions { margin-top: 16px; display: flex; gap: 12px; }
+		.actions { margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; }
+		.action-error { margin-top: 8px; color: var(--vscode-errorForeground); font-size: 13px; min-height: 18px; }
 		button {
 			display: inline-flex;
 			align-items: center;
@@ -1175,7 +1179,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		<div class="actions">
 			<button id="refresh-button" class="secondary">${REFRESH_ICON} Refresh</button>
 			<button id="open-web-button" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
+			<button id="state-action-button" data-state-action="${stateAction}" ${stateActionDisabled}>${stateActionLabel}</button>
 		</div>
+		<div class="action-error" id="state-action-error"></div>
 	</div>
 	<div class="layout">
 		<main>
@@ -1259,21 +1265,8 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			<div class="card edit-section-wrapper">
 				<div class="edit-section-header">
 					<h3>State</h3>
-					<button class="edit-icon-btn" data-section="state" title="Edit state" aria-label="Edit state">${PENCIL_ICON}</button>
 				</div>
 				<div class="section-view-state">${stateLabel(detail)}</div>
-				<div class="section-edit-area" data-section-edit="state" style="display:none">
-					<select data-section-input="state">
-						<option value="open" ${detail.state === 'open' ? 'selected' : ''}>Open</option>
-						<option value="closed" ${detail.state === 'closed' ? 'selected' : ''}>Closed</option>
-					</select>
-					<div class="section-edit-actions">
-						<button class="btn-primary btn-save-section" data-section="state">Save</button>
-						<button class="btn-secondary btn-cancel-section" data-section="state">Cancel</button>
-						<span class="section-edit-saving" style="display:none">Saving...</span>
-					</div>
-					<div class="section-edit-error" style="display:none"></div>
-				</div>
 			</div>
 			<div class="card edit-section-wrapper">
 				<div class="edit-section-header">
@@ -1368,6 +1361,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		var editingSection = null;
 		var selectedLabels = [];
 		var selectedMilestone = null;
+		var pendingStateAction = null;
 
 		function labelKey(label) {
 			if (!label || typeof label !== 'object') {
@@ -1442,14 +1436,6 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				const bodyInput = document.querySelector('[data-section-input="body"]');
 				if (bodyInput) {
 					bodyInput.value = detailSnapshot.body || '';
-				}
-				return;
-			}
-
-			if (section === 'state') {
-				const stateInput = document.querySelector('[data-section-input="state"]');
-				if (stateInput) {
-					stateInput.value = detailSnapshot.state || 'open';
 				}
 				return;
 			}
@@ -1709,9 +1695,6 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				case 'milestone':
 						input.milestoneNumber = selectedMilestone ? Number(selectedMilestone.number) : undefined;
 					break;
-				case 'state':
-					input.state = getSectionInput('state') || undefined;
-					break;
 				case 'draft':
 					input.draft = getSectionInput('draft');
 					break;
@@ -1895,6 +1878,18 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				setSaving(msg.section, false);
 				showSectionError(msg.section, msg.message);
 			}
+			if (msg.command === 'pullRequestStateChangeError') {
+				var button = document.getElementById('state-action-button');
+				if (button) {
+					button.disabled = false;
+					button.textContent = pendingStateAction === 'closed' ? 'Close pull request' : 'Reopen pull request';
+				}
+				var errorEl = document.getElementById('state-action-error');
+				if (errorEl) {
+					errorEl.textContent = msg.message || 'Unable to update pull request state.';
+				}
+				pendingStateAction = null;
+			}
 		});
 
 		document.getElementById('refresh-button')?.addEventListener('click', () => {
@@ -1902,6 +1897,23 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		});
 		document.getElementById('open-web-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'openOnWeb' });
+		});
+		document.getElementById('state-action-button')?.addEventListener('click', () => {
+			var button = document.getElementById('state-action-button');
+			if (!button || button.disabled) {
+				return;
+			}
+			var errorEl = document.getElementById('state-action-error');
+			if (errorEl) {
+				errorEl.textContent = '';
+			}
+			pendingStateAction = button.getAttribute('data-state-action');
+			button.disabled = true;
+			button.textContent = pendingStateAction === 'closed' ? 'Closing pull request...' : 'Reopening pull request...';
+			vscode.postMessage({
+				command: 'changePullRequestState',
+				state: pendingStateAction,
+			});
 		});
 		document.querySelectorAll('[data-action="openUrl"]').forEach((el) => {
 			el.addEventListener('click', () => {

@@ -8,8 +8,10 @@ overview page.
 The feature must:
 
 - call the GitCode edit pull request API documented in [api.md](api.md)
-- let users update pull request title, description, state, labels, milestone,
-  draft state, and close-related-issue preference
+- let users update pull request title, description, labels, milestone, draft
+  state, and close-related-issue preference
+- let users close or reopen the pull request with a dedicated state action
+  button, matching the issue overview state management style
 - expose edit icons in each editable overview section, similar to GitHub pull
   request pages
 - prefill inline section editors from the currently loaded pull request detail
@@ -30,11 +32,14 @@ does not include source or target branch fields.
 - Support editing:
   - title
   - body
-  - state
   - milestone selected from the repository milestone list API
   - labels selected from the repository label list API
   - draft flag
   - close-related-issue flag
+- Support changing pull request state through a dedicated action button:
+  - open pull requests show `Close pull request`
+  - closed pull requests show `Reopen pull request`
+  - merged pull requests render the action disabled
 - Load labels and milestones from the existing repository APIs so metadata
   sections can use the same option data as create pull request.
 - Validate required fields before submitting.
@@ -51,8 +56,7 @@ does not include source or target branch fields.
 - Editing reviewers, testers, assignees, squash options, or source branch
   deletion behavior.
 - Editing files, commits, comments, or inline review threads.
-- Merge, close-only, reopen-only, or draft-only actions outside the section
-  editors.
+- Merge actions.
 - Bulk editing multiple pull requests.
 - Optimistic updates before the API call succeeds.
 - Opening a separate edit page, modal, or webview panel.
@@ -83,7 +87,7 @@ Sidebar
   Milestone                                   [pencil]
     MindStudio 26.2.0
 
-  State                                       [pencil]
+  State
     Open
 
   Draft                                       [pencil]
@@ -100,6 +104,15 @@ pencil icon, aria-label="Edit title"
 pencil icon, aria-label="Edit description"
 pencil icon, aria-label="Edit labels"
 ```
+
+State uses a text action button in the overview action row, consistent with the
+issue overview page:
+
+```text
+[Refresh] [Open on GitCode] [Close pull request]
+```
+
+The state sidebar remains read-only and displays the current state.
 
 When the user clicks an edit icon, only that section changes into edit mode.
 Other sections remain readable.
@@ -176,7 +189,6 @@ Behavior:
 Validation rules:
 
 - title is required after trimming
-- state must be `opened` or `closed`
 - selected labels must come from the loaded label option list
 - labels are stored in the view state as `GitCodeLabel[]` and converted to the
   API's comma-separated `labels` string only when building `EditPullRequestInput`
@@ -189,6 +201,13 @@ Validation rules:
 - unchanged submissions should be allowed only if the user explicitly presses
   save; the API response still becomes the refreshed source of truth
 
+State action validation rules:
+
+- requested state must be `open` or `closed`
+- only open pull requests can be closed
+- only closed pull requests can be reopened
+- merged pull requests cannot be reopened or closed from the overview
+
 Section submit behavior:
 
 - Title section sends the current title.
@@ -197,10 +216,19 @@ Section submit behavior:
   options.
 - Milestone section sends the current title plus the number from the selected
   milestone option, or omits milestone when `No milestone` is selected.
-- State section sends the current title plus the selected state.
 - Draft section sends the current title plus the draft value.
 - Close-related-issue section sends the current title plus the
   close-related-issue value.
+
+State action submit behavior:
+
+- Close action sends the current title plus `state: 'closed'`.
+- Reopen action sends the current title plus `state: 'open'`.
+- On success, show `GitCode pull request #123 closed` or
+  `GitCode pull request #123 reopened`, refresh comments, refresh the overview,
+  and refresh the pull request tree when available.
+- On failure, re-enable the action button and show the API error in the overview
+  action error area.
 
 The edit API marks `title` as required, so every section save must include the
 current title even when the title section is not being edited.
@@ -225,7 +253,7 @@ Suggested input model:
 export interface EditPullRequestInput {
   title: string;
   body?: string;
-  state?: 'opened' | 'closed';
+  state?: 'open' | 'closed';
   milestoneNumber?: number;
   labels?: string;
   draft?: boolean;

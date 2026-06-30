@@ -56,6 +56,26 @@ export function isTrustedGitCodeUrl(candidate: string, webUrl: string): boolean 
 	}
 }
 
+export function validatePullRequestStateChange(requestedState: string, detail: PullRequestDetail): string[] {
+	if (requestedState !== 'open' && requestedState !== 'closed') {
+		return ['Pull request state must be open or closed.'];
+	}
+
+	if (detail.state === 'merged') {
+		return ['Merged pull requests cannot be reopened or closed.'];
+	}
+
+	if (requestedState === 'closed' && detail.state !== 'open') {
+		return ['Only open pull requests can be closed.'];
+	}
+
+	if (requestedState === 'open' && detail.state !== 'closed') {
+		return ['Only closed pull requests can be reopened.'];
+	}
+
+	return [];
+}
+
 export class PullRequestOverviewPanel implements vscode.Disposable {
 	private static readonly panels = new Map<string, PullRequestOverviewPanel>();
 	private static activePanel: PullRequestOverviewPanel | undefined;
@@ -163,6 +183,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			issue?: number | string;
 			section?: EditPullRequestSection;
 			input?: EditPullRequestInput;
+			state?: string;
 		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
@@ -176,6 +197,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'savePullRequestSection' && message.section && message.input) {
 				await this.handleSaveSection(message.section, message.input);
+				return;
+			}
+
+			if (message.command === 'changePullRequestState' && message.state) {
+				await this.handleChangePullRequestState(message.state);
 				return;
 			}
 
@@ -403,6 +429,56 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.panel.webview.postMessage({
 				command: 'sectionSaveError',
 				section,
+				message: errorMessage,
+			});
+		}
+	}
+
+	private async handleChangePullRequestState(state: string): Promise<void> {
+		if (!this.detail) {
+			return;
+		}
+
+		const errors = validatePullRequestStateChange(state, this.detail);
+		if (errors.length) {
+			this.panel.webview.postMessage({
+				command: 'pullRequestStateChangeError',
+				message: errors.join(' '),
+			});
+			return;
+		}
+
+		try {
+			await this.store.editPullRequest(
+				this.context.repository,
+				this.context.pullRequestNumber,
+				{
+					title: this.detail.title,
+					state: state as 'open' | 'closed',
+				},
+			);
+
+			vscode.window.showInformationMessage(
+				`GitCode pull request #${this.context.pullRequestNumber} ${state === 'closed' ? 'closed' : 'reopened'}.`,
+			);
+
+			await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			const treeStore = PullRequestOverviewPanel.treeStore;
+			if (treeStore) {
+				treeStore.refreshRepository(this.context.repository.fullName).catch(() => {
+					treeStore.refreshAll();
+				});
+			}
+
+			this.commentsSnapshot = undefined;
+			this.relatedIssuesSnapshot = undefined;
+			this.editOptions = undefined;
+			await this.load(true);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to update pull request state.';
+			this.logger.error(`Failed to change state for PR #${this.context.pullRequestNumber}: ${errorMessage}`);
+			this.panel.webview.postMessage({
+				command: 'pullRequestStateChangeError',
 				message: errorMessage,
 			});
 		}
