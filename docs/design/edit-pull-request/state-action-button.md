@@ -4,6 +4,8 @@
 
 Implemented — 2026-06-30
 
+Updated — 2026-07-01
+
 ## Context
 
 The pull request overview previously managed PR state as an editable sidebar
@@ -23,8 +25,10 @@ header:
 - closed PRs show `Reopen pull request`
 - merged PRs show the reopen action disabled
 
-The sidebar state card remains read-only and no longer renders a state edit
-pencil, select input, Save button, or Cancel button.
+The sidebar no longer renders a pull request state card. State remains visible in
+the header badge, and state changes remain available through the dedicated
+header action button. This avoids showing duplicate state controls in the
+overview.
 
 ## Implementation
 

@@ -170,6 +170,8 @@ suite('OverviewHtml', () => {
 		assert.match(mergedHtml, /id="state-action-button" data-state-action="open" disabled>Reopen pull request<\/button>/);
 		assert.doesNotMatch(openHtml, /data-section-input="state"/);
 		assert.doesNotMatch(openHtml, /data-section="state" title="Edit state"/);
+		assert.doesNotMatch(openHtml, /<h3>State<\/h3>/);
+		assert.doesNotMatch(openHtml, /section-view-state/);
 	});
 
 	test('posts pull request state change messages from the action button', () => {

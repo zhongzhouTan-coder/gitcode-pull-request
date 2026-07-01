@@ -1553,12 +1553,6 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			</div>
 			<div class="card edit-section-wrapper">
 				<div class="edit-section-header">
-					<h3>State</h3>
-				</div>
-				<div class="section-view-state">${stateLabel(detail)}</div>
-			</div>
-			<div class="card edit-section-wrapper">
-				<div class="edit-section-header">
 					<h3>Draft</h3>
 					<button class="edit-icon-btn" data-section="draft" title="Edit draft" aria-label="Edit draft">${PENCIL_ICON}</button>
 				</div>
