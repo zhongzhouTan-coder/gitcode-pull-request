@@ -1,6 +1,7 @@
 import { GitCodeUser } from '../../common/models';
 import { GitCodeClient } from '../client/gitcodeClient';
 import { mapUsers } from '../mappers/userMapper';
+import { DEFAULT_LIST_PAGE_SIZE } from './pagination';
 
 interface CurrentUserResponse {
 	login?: string;
@@ -23,7 +24,7 @@ export class UserService {
 		};
 	}
 
-	async searchUsers(query: string, perPage: number = 20): Promise<GitCodeUser[]> {
+	async searchUsers(query: string, perPage: number = DEFAULT_LIST_PAGE_SIZE): Promise<GitCodeUser[]> {
 		if (!query || query.trim().length === 0) {
 			return [];
 		}
@@ -33,6 +34,7 @@ export class UserService {
 			{
 				q: query.trim(),
 				per_page: perPage,
+				page: 1,
 			},
 		);
 

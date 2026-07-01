@@ -94,7 +94,7 @@ const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox
 
 /** Compact pencil/edit icon for section editing. */
 const PENCIL_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-	<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10ZM11.207 2.5 13.5 4.793 12.793 5.5 10.5 3.207 11.207 2.5Zm1.586 2.793L10.5 3 4 9.5 5.5 12l.5.5 6.793-6.793ZM3 13.5l-.586 1.086 2.293-.293L3.5 13ZM7.5 9.5 9 11l.793-.793L8.5 9.207 7.5 9.5Z"/>
+	<path d="M11.01 1.427a1.75 1.75 0 0 1 2.475 0l1.088 1.088a1.75 1.75 0 0 1 0 2.475l-8.5 8.5a1.75 1.75 0 0 1-.78.448l-3.08.88a.75.75 0 0 1-.927-.927l.88-3.08a1.75 1.75 0 0 1 .448-.78l8.5-8.5Zm1.414 1.06a.25.25 0 0 0-.353 0l-1.057 1.056 1.44 1.44 1.056-1.057a.25.25 0 0 0 0-.353l-1.086-1.086Zm-2.47 2.117L3.675 10.88a.25.25 0 0 0-.064.112l-.533 1.866 1.866-.533a.25.25 0 0 0 .112-.064l6.278-6.278-1.44-1.44Z"/>
 </svg>`;
 
 function renderParticipants(participants: PullRequestParticipant[]): string {
@@ -394,27 +394,107 @@ function renderConversationSection(snapshot: PullRequestCommentsSnapshot, diffCo
 	});
 
 	if (!comments.length) {
-		return `<section><h2>Conversation</h2>${renderConversationComposer()}<div class="empty">No comments yet.</div></section>`;
+		return `<section><h2>Conversation</h2><div class="empty">No comments yet.</div>${renderConversationComposer()}</section>`;
 	}
 
 	const countText = `${comments.length}`;
 	return `
 		<section>
 			<h2>Conversation (${countText})</h2>
-			${renderConversationComposer()}
 			<div class="conversation-list">
 				${comments.map((c) => renderConversationComment(c, diffContexts)).join('')}
 			</div>
+			${renderConversationComposer()}
 		</section>
 	`;
 }
 
 function renderConversationLoading(): string {
-	return `<section><h2>Conversation</h2>${renderConversationComposer()}<div class="empty">Loading comments...</div></section>`;
+	return `<section><h2>Conversation</h2><div class="empty">Loading comments...</div>${renderConversationComposer()}</section>`;
 }
 
 function renderConversationError(message: string): string {
-	return `<section><h2>Conversation</h2>${renderConversationComposer()}<div class="comment-error">${escapeHtml(message)}</div></section>`;
+	return `<section><h2>Conversation</h2><div class="comment-error">${escapeHtml(message)}</div>${renderConversationComposer()}</section>`;
+}
+
+interface TimelineRenderOptions {
+	diffContexts?: ReadonlyMap<string, DiffCommentContext>;
+	activityError?: string;
+}
+
+type TimelineEntry =
+	| { kind: 'comment'; createdAt: string; comment: PullRequestComment }
+	| { kind: 'activity'; createdAt: string; log: PullRequestOperationLog };
+
+function timelineTime(value: string): number {
+	const time = new Date(value).getTime();
+	return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+}
+
+function renderTimelineActivityItem(log: PullRequestOperationLog): string {
+	return `<div class="timeline-entry timeline-entry-activity">${renderActivityItem(log)}</div>`;
+}
+
+function renderTimelineCommentItem(comment: PullRequestComment, diffContexts?: ReadonlyMap<string, DiffCommentContext>): string {
+	return `<div class="timeline-entry timeline-entry-comment">${renderConversationComment(comment, diffContexts)}</div>`;
+}
+
+export function renderTimelineSection(
+	commentsSnapshot: PullRequestCommentsSnapshot,
+	activitySnapshot?: PullRequestOperationLogsSnapshot,
+	options: TimelineRenderOptions = {},
+): string {
+	const entries: TimelineEntry[] = [
+		...commentsSnapshot.comments.map((comment): TimelineEntry => ({
+			kind: 'comment',
+			createdAt: comment.createdAt,
+			comment,
+		})),
+		...(activitySnapshot?.logs ?? []).map((log): TimelineEntry => ({
+			kind: 'activity',
+			createdAt: log.createdAt,
+			log,
+		})),
+	].sort((a, b) => timelineTime(a.createdAt) - timelineTime(b.createdAt));
+
+	const activityErrorHtml = options.activityError
+		? `<div class="comment-error timeline-error">${escapeHtml(options.activityError)}</div>`
+		: '';
+
+	if (!entries.length) {
+		return `<section><h2>Timeline</h2><div class="empty">No timeline activity yet.</div>${activityErrorHtml}${renderConversationComposer()}</section>`;
+	}
+
+	return `
+		<section>
+			<h2>Timeline (${entries.length})</h2>
+			<div class="timeline-list">
+				${entries.map((entry) => entry.kind === 'comment'
+		? renderTimelineCommentItem(entry.comment, options.diffContexts)
+		: renderTimelineActivityItem(entry.log)).join('')}
+			</div>
+			${activityErrorHtml}
+			${renderConversationComposer()}
+		</section>
+	`;
+}
+
+export function renderTimelineLoading(): string {
+	return `<section><h2>Timeline</h2><div class="empty">Loading timeline...</div>${renderConversationComposer()}</section>`;
+}
+
+export function renderTimelineError(message: string, activitySnapshot?: PullRequestOperationLogsSnapshot, activityError?: string): string {
+	const activityEntries = activitySnapshot?.logs.length
+		? `<div class="timeline-list">${[...activitySnapshot.logs]
+			.sort((a, b) => timelineTime(a.createdAt) - timelineTime(b.createdAt))
+			.map(renderTimelineActivityItem)
+			.join('')}</div>`
+		: '';
+	const activityErrorHtml = activityError
+		? `<div class="comment-error timeline-error">${escapeHtml(activityError)}</div>`
+		: '';
+
+	return `<section><h2>Timeline</h2><div class="comment-error">${escapeHtml(message)}</div>${activityEntries}${activityErrorHtml}${renderConversationComposer()}</section>`;
 }
 
 // ---- Related Issues Rendering ----
@@ -620,6 +700,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 	const stateAction = detail.state === 'open' ? 'closed' : 'open';
 	const stateActionLabel = detail.state === 'open' ? 'Close pull request' : 'Reopen pull request';
 	const stateActionDisabled = detail.state === 'merged' ? 'disabled' : '';
+	const stateActionClass = detail.state === 'open' ? 'danger' : 'primary';
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -660,7 +741,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.badge-closed { background: var(--badge-closed); }
 		.badge-merged { background: var(--badge-merged); }
 		.badge-draft { background: var(--badge-draft); }
-		.actions { margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; }
+		.actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 		.action-error { margin-top: 8px; color: var(--vscode-errorForeground); font-size: 13px; min-height: 18px; }
 		button {
 			display: inline-flex;
@@ -679,6 +760,24 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		button.secondary {
 			background: transparent;
 			color: var(--vscode-foreground);
+		}
+		button.icon-button {
+			width: 32px;
+			height: 32px;
+			justify-content: center;
+			gap: 0;
+			padding: 0;
+			background: transparent;
+			color: var(--vscode-foreground);
+		}
+		button.danger {
+			border-color: color-mix(in srgb, var(--danger) 65%, var(--border));
+			background: color-mix(in srgb, var(--danger) 18%, var(--vscode-button-background));
+			color: var(--vscode-button-foreground);
+		}
+		button.danger:hover:not(:disabled),
+		button.danger:focus-visible:not(:disabled) {
+			background: color-mix(in srgb, var(--danger) 30%, var(--vscode-button-background));
 		}
 		button:disabled { opacity: 0.5; cursor: default; }
 		section, aside .card {
@@ -1028,12 +1127,28 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			font-size: 13px;
 			overflow-wrap: anywhere;
 		}
+		.timeline-list {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+		.timeline-entry-activity {
+			padding-left: 8px;
+			border-left: 2px solid color-mix(in srgb, var(--border) 65%, transparent);
+		}
+		.timeline-entry-activity .activity-item {
+			border-bottom: none;
+			padding: 6px 0;
+		}
+		.timeline-error {
+			margin-top: 12px;
+		}
 		/* ---- Conversation / Comments ---- */
 		.conversation-composer {
 			display: flex;
 			flex-direction: column;
 			gap: 10px;
-			margin-bottom: 16px;
+			margin-top: 16px;
 		}
 		.composer-label {
 			font-size: 12px;
@@ -1457,14 +1572,12 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
-			width: 16px;
-			height: 16px;
-			border: none;
+			width: 28px;
+			height: 28px;
 			background: transparent;
 			color: var(--muted);
 			cursor: pointer;
-			border-radius: 3px;
-			opacity: 0;
+			opacity: 0.75;
 			transition: opacity 0.15s, background 0.15s;
 			flex-shrink: 0;
 			padding: 0;
@@ -1473,6 +1586,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.edit-section-wrapper:focus-within .edit-icon-btn,
 		.edit-icon-btn:focus-visible {
 			opacity: 1;
+			color: var(--vscode-foreground);
 		}
 		.edit-icon-btn:hover,
 		.edit-icon-btn:focus-visible {
@@ -1630,9 +1744,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			<span>Updated ${escapeHtml(formatDate(detail.updatedAt))}</span>
 		</div>
 		<div class="actions">
-			<button id="refresh-button" class="secondary">${REFRESH_ICON} Refresh</button>
-			<button id="open-web-button" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
-			<button id="state-action-button" data-state-action="${stateAction}" ${stateActionDisabled}>${stateActionLabel}</button>
+			<button id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh pull request">${REFRESH_ICON}</button>
+			<button id="open-web-button" class="secondary" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
+			<button id="state-action-button" class="${stateActionClass}" data-state-action="${stateAction}" ${stateActionDisabled}>${stateActionLabel}</button>
 		</div>
 		<div class="action-error" id="state-action-error"></div>
 	</div>
@@ -2683,12 +2797,33 @@ export function getOverviewWithCommentsHtml(
 	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml);
 }
 
+export function getOverviewWithTimelineHtml(
+	detail: PullRequestDetail,
+	commentsSnapshot: PullRequestCommentsSnapshot,
+	nonce: string,
+	relatedIssuesHtml?: string,
+	editOptions?: EditPullRequestOptions,
+	diffContexts?: ReadonlyMap<string, DiffCommentContext>,
+	activitySnapshot?: PullRequestOperationLogsSnapshot,
+	activityError?: string,
+): string {
+	return getOverviewHtml(
+		detail,
+		nonce,
+		renderTimelineSection(commentsSnapshot, activitySnapshot, { diffContexts, activityError }),
+		relatedIssuesHtml,
+		editOptions,
+		true,
+		undefined,
+	);
+}
+
 export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationLoading(), relatedIssuesHtml, editOptions, false, activityHtml);
+	return getOverviewHtml(detail, nonce, renderTimelineLoading(), relatedIssuesHtml, editOptions, false, activityHtml);
 }
 
 export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string): string {
-	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage), relatedIssuesHtml, editOptions, true, activityHtml);
+	return getOverviewHtml(detail, nonce, renderTimelineError(errorMessage), relatedIssuesHtml, editOptions, true, activityHtml);
 }
 
 export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {

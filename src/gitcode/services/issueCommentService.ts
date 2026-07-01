@@ -1,6 +1,7 @@
 import { CreateIssueCommentInput, CreateIssueCommentResult, GitCodeRepository, IssueComment } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapCreateIssueCommentResult, mapIssueComments } from '../mappers/issueCommentMapper';
+import { listPagedRecords } from './pagination';
 
 /**
  * Fetches issue comments from the GitCode API.
@@ -15,15 +16,12 @@ export class IssueCommentService {
 		repository: GitCodeRepository,
 		issueNumber: number,
 	): Promise<IssueComment[]> {
-		const response = await this.client.get<unknown[]>(
+		const response = await listPagedRecords<Record<string, unknown>>(
+			this.client,
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/${issueNumber}/comments`,
 		);
 
-		if (!Array.isArray(response)) {
-			return [];
-		}
-
-		return mapIssueComments(response as Record<string, unknown>[]);
+		return mapIssueComments(response);
 	}
 
 	/**

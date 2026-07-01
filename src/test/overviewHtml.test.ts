@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { EditPullRequestOptions, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestRelatedIssuesSnapshot } from '../common/models';
-import { getOverviewHtml, getOverviewWithCommentsHtml, renderActivityError, renderActivityLoading, renderActivitySection, renderRelatedIssuesSection } from '../view/overview/overviewHtml';
+import { getOverviewHtml, getOverviewWithCommentsHtml, getOverviewWithTimelineHtml, renderActivityError, renderActivityLoading, renderActivitySection, renderRelatedIssuesSection } from '../view/overview/overviewHtml';
 
 suite('OverviewHtml', () => {
 	const detail: PullRequestDetail = {
@@ -63,9 +63,85 @@ suite('OverviewHtml', () => {
 
 		assert.match(html, /id="conversation-comment-input"/);
 		assert.match(html, /id="conversation-comment-submit"/);
+		assert.ok(html.indexOf('No comments yet.') < html.indexOf('id="conversation-comment-input"'));
 		assert.match(html, /command: 'submitPullRequestComment'/);
 		assert.match(html, /pullRequestCommentSubmitError/);
 		assert.match(html, /button\.textContent = submitting \? 'Commenting\.\.\.' : 'Comment';/);
+	});
+
+	test('renders pull request comment composer after loaded comments', () => {
+		const html = getOverviewWithCommentsHtml(
+			detail,
+			{
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				comments: [{
+					kind: 'pullRequest',
+					id: '1',
+					discussionId: '1',
+					body: 'Existing comment',
+					author: { id: '1', login: 'alice' },
+					createdAt: '2026-06-20T10:00:00+08:00',
+					updatedAt: '2026-06-20T10:00:00+08:00',
+					replies: [],
+				}],
+			},
+			'nonce',
+		);
+
+		assert.ok(html.indexOf('Existing comment') < html.indexOf('id="conversation-comment-input"'));
+	});
+
+	test('renders comments and activity as one chronological timeline', () => {
+		const comments: PullRequestCommentsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			loadedAt: Date.now(),
+			comments: [{
+				kind: 'pullRequest',
+				id: 'comment-1',
+				discussionId: 'discussion-1',
+				body: 'Middle comment',
+				author: { id: '1', login: 'alice' },
+				createdAt: '2026-06-20T10:05:00+08:00',
+				updatedAt: '2026-06-20T10:05:00+08:00',
+				replies: [],
+			}],
+		};
+		const activity: PullRequestOperationLogsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			loadedAt: Date.now(),
+			logs: [
+				{
+					id: 'activity-1',
+					content: 'opened pull request',
+					action: 'opened',
+					actionType: 'opened',
+					actor: { login: 'bob' },
+					createdAt: '2026-06-20T10:00:00+08:00',
+					updatedAt: '2026-06-20T10:00:00+08:00',
+				},
+				{
+					id: 'activity-2',
+					content: 'updated title',
+					action: 'title',
+					actionType: 'title',
+					actor: { login: 'carol' },
+					createdAt: '2026-06-20T10:10:00+08:00',
+					updatedAt: '2026-06-20T10:10:00+08:00',
+				},
+			],
+		};
+
+		const html = getOverviewWithTimelineHtml(detail, comments, 'nonce', undefined, undefined, undefined, activity);
+
+		assert.match(html, /Timeline \(3\)/);
+		assert.ok(html.indexOf('opened pull request') < html.indexOf('Middle comment'));
+		assert.ok(html.indexOf('Middle comment') < html.indexOf('updated title'));
+		assert.ok(html.indexOf('updated title') < html.indexOf('id="conversation-comment-input"'));
+		assert.doesNotMatch(html, /<h2>Activity/);
 	});
 
 	test('posts openIssue messages for related issue title buttons', () => {
@@ -165,9 +241,11 @@ suite('OverviewHtml', () => {
 		const closedHtml = getOverviewHtml({ ...detail, state: 'closed' }, 'nonce');
 		const mergedHtml = getOverviewHtml({ ...detail, state: 'merged' }, 'nonce');
 
-		assert.match(openHtml, /id="state-action-button" data-state-action="closed"[^>]*>Close pull request<\/button>/);
-		assert.match(closedHtml, /id="state-action-button" data-state-action="open"[^>]*>Reopen pull request<\/button>/);
-		assert.match(mergedHtml, /id="state-action-button" data-state-action="open" disabled>Reopen pull request<\/button>/);
+		assert.match(openHtml, /id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh pull request">/);
+		assert.match(openHtml, /id="open-web-button" class="secondary"/);
+		assert.match(openHtml, /id="state-action-button" class="danger" data-state-action="closed"[^>]*>Close pull request<\/button>/);
+		assert.match(closedHtml, /id="state-action-button" class="primary" data-state-action="open"[^>]*>Reopen pull request<\/button>/);
+		assert.match(mergedHtml, /id="state-action-button" class="primary" data-state-action="open" disabled>Reopen pull request<\/button>/);
 		assert.doesNotMatch(openHtml, /data-section-input="state"/);
 		assert.doesNotMatch(openHtml, /data-section="state" title="Edit state"/);
 		assert.doesNotMatch(openHtml, /<h3>State<\/h3>/);

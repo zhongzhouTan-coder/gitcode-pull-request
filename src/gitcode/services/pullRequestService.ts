@@ -6,6 +6,7 @@ import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
 import { mapPullRequestOperationLogs } from '../mappers/pullRequestOperationLogMapper';
 import { mapCreatePullRequestInput, mapCreatedPullRequest, mapEditPullRequestInput, mapPullRequest } from '../mappers/pullRequestMapper';
 import { mapPullRequestRelatedIssues } from '../mappers/pullRequestRelatedIssueMapper';
+import { listPagedRecords, pageQuery } from './pagination';
 
 export interface PullRequestFilters {
 	state?: 'open' | 'closed' | 'all';
@@ -25,8 +26,7 @@ export class PullRequestService {
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls`,
 			{
 				state: filters.state ?? 'open',
-				per_page: filters.perPage,
-				page: filters.page,
+				...pageQuery(filters),
 				base: filters.base,
 				sort: filters.sort,
 				direction: filters.direction,
@@ -71,7 +71,8 @@ export class PullRequestService {
 	}
 
 	async listPullRequestFiles(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestFileChange[]> {
-		const response = await this.client.get<any[]>(
+		const response = await listPagedRecords<any>(
+			this.client,
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/files`,
 		);
 
@@ -87,7 +88,8 @@ export class PullRequestService {
 	}
 
 	async listPullRequestRelatedIssues(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestRelatedIssue[]> {
-		const response = await this.client.get<any[]>(
+		const response = await listPagedRecords<any>(
+			this.client,
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/issues`,
 		);
 
@@ -95,9 +97,9 @@ export class PullRequestService {
 	}
 
 	async listPullRequestOperationLogs(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestOperationLog[]> {
-		const response = await this.client.get<any[]>(
+		const response = await listPagedRecords<any>(
+			this.client,
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/operate_logs`,
-			{ per_page: 100, page: 1 },
 		);
 
 		return mapPullRequestOperationLogs(response);

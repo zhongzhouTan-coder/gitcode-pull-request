@@ -2,6 +2,7 @@ import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPull
 import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapCreatePullRequestCommentInput, mapCreatePullRequestCommentResult, mapListComment, mapCommentDetail, mergeCommentDetail } from '../mappers/commentMapper';
 import { Logger } from '../../common/logger';
+import { listPagedRecords } from './pagination';
 
 export interface ListPullRequestCommentsOptions {
 	limit?: number;
@@ -61,9 +62,7 @@ export class CommentService {
 		pullRequestNumber: number,
 		options: ListPullRequestCommentsOptions = {},
 	): Promise<PullRequestComment[]> {
-		const response = await this.client.get<unknown[]>(
-			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/comments`,
-		);
+		const response = await this.listPullRequestCommentRecords(repository, pullRequestNumber);
 
 		if (!Array.isArray(response)) {
 			return [];
@@ -108,6 +107,16 @@ export class CommentService {
 		const enrichedById = new Map(enrichedDiffs.map((comment) => [comment.id, comment]));
 
 		return comments.map((comment) => enrichedById.get(comment.id) ?? comment);
+	}
+
+	private async listPullRequestCommentRecords(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+	): Promise<unknown[]> {
+		return listPagedRecords<unknown>(
+			this.client,
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/comments`,
+		);
 	}
 
 	/**

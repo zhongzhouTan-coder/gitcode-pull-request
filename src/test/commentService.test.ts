@@ -108,6 +108,51 @@ suite('CommentService', () => {
 		}
 	});
 
+	test('loads pull request comments across paginated result pages', async () => {
+		const listCalls: Array<{ path: string; query?: Record<string, string | number | boolean | undefined> }> = [];
+		const client: GitCodeWriteClient = {
+			get: async <T>(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<T> => {
+				if (path.includes('/pulls/comments/')) {
+					const id = path.split('/').pop() ?? '';
+					return {
+						id,
+						discussion_id: `discussion-${id}`,
+						comment_type: 'DiffNote',
+						is_outdated: false,
+						position: {
+							new_path: `src/${id}.ts`,
+							new_line: 10,
+							position_type: 'text',
+						},
+					} as T;
+				}
+
+				listCalls.push({ path, query });
+				const page = query?.page;
+				const count = page === 1 ? 100 : page === 2 ? 1 : 0;
+				return Array.from({ length: count }, (_, index) => listGeneralComment(`page-${page}-${index}`, '2026-01-03T00:00:00Z')) as T;
+			},
+			post: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+
+		const comments = await service.listPullRequestComments(repository, 1);
+
+		assert.strictEqual(comments.length, 101);
+		assert.deepStrictEqual(listCalls.map((call) => call.query), [
+			{ per_page: 100, page: 1 },
+			{ per_page: 100, page: 2 },
+		]);
+	});
+
 	test('creates a pull request conversation comment with body only', async () => {
 		const calls: Array<{ path: string; body: unknown }> = [];
 		const client: GitCodeWriteClient = {
@@ -317,6 +362,21 @@ function listDiffComment(id: string, createdAt: string, resolved: boolean = fals
 			end_new_line: 10,
 			position_type: 'text',
 		},
+		user: {
+			id: 'user-1',
+			login: 'alice',
+		},
+	};
+}
+
+function listGeneralComment(id: string, createdAt: string): Record<string, unknown> {
+	return {
+		id,
+		discussion_id: `discussion-${id}`,
+		body: `Comment ${id}`,
+		created_at: createdAt,
+		updated_at: createdAt,
+		comment_type: 'pull_request_comment',
 		user: {
 			id: 'user-1',
 			login: 'alice',

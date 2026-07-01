@@ -6,11 +6,7 @@ import { mapLabels } from '../mappers/labelMapper';
 import { mapMilestones } from '../mappers/milestoneMapper';
 import { mapRepositoryDetail } from '../mappers/repositoryMapper';
 import { mapUsers } from '../mappers/userMapper';
-
-interface PageOptions {
-	perPage?: number;
-	page?: number;
-}
+import { PageOptions, pageQuery } from './pagination';
 
 interface ListBranchesOptions extends PageOptions {
 	search?: string;
@@ -34,8 +30,7 @@ export class RepositoryService {
 		const response = await this.client.get<any[]>(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/branches`,
 			{
-				per_page: options?.perPage,
-				page: options?.page,
+				...pageQuery(options),
 				search: options?.search,
 			},
 		);
@@ -81,10 +76,7 @@ export class RepositoryService {
 	async listLabels(repository: GitCodeRepository, options?: PageOptions): Promise<GitCodeLabel[]> {
 		const response = await this.client.get<any[]>(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/labels`,
-			{
-				per_page: options?.perPage,
-				page: options?.page,
-			},
+			pageQuery(options),
 		);
 
 		if (!Array.isArray(response)) {
@@ -101,8 +93,7 @@ export class RepositoryService {
 		const response = await this.client.get<any[]>(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/milestones`,
 			{
-				per_page: options?.perPage,
-				page: options?.page,
+				...pageQuery(options),
 				state: options?.state ?? 'open',
 			},
 		);
@@ -117,10 +108,7 @@ export class RepositoryService {
 	async listMembers(repository: GitCodeRepository, options?: PageOptions): Promise<GitCodeUser[]> {
 		const response = await this.client.get<any[]>(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/collaborators`,
-			{
-				per_page: options?.perPage,
-				page: options?.page,
-			},
+			pageQuery(options),
 		);
 
 		if (!Array.isArray(response)) {

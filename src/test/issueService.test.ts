@@ -80,6 +80,8 @@ suite('IssueService', () => {
 		await service.listIssues(repository, { state: 'open', assignee: 'alice' });
 		assert.strictEqual(requestPath, '/api/v5/repos/org/repo/issues');
 		assert.strictEqual(requestQuery?.assignee, 'alice');
+		assert.strictEqual(requestQuery?.per_page, 100);
+		assert.strictEqual(requestQuery?.page, 1);
 
 		// Created Issues: creator filter
 		await service.listIssues(repository, { state: 'open', creator: 'bob' });
@@ -89,6 +91,10 @@ suite('IssueService', () => {
 		await service.listIssues(repository, { state: 'open' });
 		assert.strictEqual(requestQuery?.assignee, undefined);
 		assert.strictEqual(requestQuery?.creator, undefined);
+
+		await service.listIssues(repository, { state: 'open', perPage: 50, page: 3 });
+		assert.strictEqual(requestQuery?.per_page, 50);
+		assert.strictEqual(requestQuery?.page, 3);
 	});
 
 	test('editIssue sends the documented endpoint and request body', async () => {

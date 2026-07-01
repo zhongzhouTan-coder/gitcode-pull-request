@@ -38,7 +38,7 @@ export const VIEW_ID_CREATE_PULL_REQUEST = 'gitcode:createPullRequestWebview';
 
 export const SECRET_STORAGE_KEY = 'gitcode.auth.session';
 
-export const DEFAULT_PAGE_SIZE = 20;
+export const DEFAULT_PAGE_SIZE = 100;
 
 export const PR_DIFF_SCHEME = 'gitcode-pr-diff';
 

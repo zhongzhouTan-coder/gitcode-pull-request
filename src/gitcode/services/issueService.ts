@@ -3,6 +3,7 @@ import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapEditIssueInput, mapIssue } from '../mappers/issueMapper';
 import { mapIssueDetail } from '../mappers/issueDetailMapper';
 import { mapIssueRelatedPullRequests } from '../mappers/issueRelatedPullRequestMapper';
+import { listPagedRecords, pageQuery } from './pagination';
 
 export interface IssueFilters {
 	state?: 'open' | 'closed' | 'all';
@@ -42,8 +43,7 @@ export class IssueService {
 				state: filters.state ?? 'open',
 				sort: filters.sort ?? 'updated',
 				direction: filters.direction ?? 'desc',
-				per_page: filters.perPage,
-				page: filters.page,
+				...pageQuery(filters),
 				assignee: filters.assignee,
 				creator: filters.creator,
 			},
@@ -77,13 +77,10 @@ export class IssueService {
 		repository: GitCodeRepository,
 		issueNumber: number,
 	): Promise<IssueRelatedPullRequest[]> {
-		const response = await this.client.get<any[]>(
+		const response = await listPagedRecords<any>(
+			this.client,
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/${issueNumber}/pull_requests`,
 		);
-
-		if (!Array.isArray(response)) {
-			return [];
-		}
 
 		return mapIssueRelatedPullRequests(response);
 	}

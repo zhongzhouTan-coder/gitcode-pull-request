@@ -5,6 +5,12 @@
 Display GitCode pull request operation logs in the existing pull request overview
 page.
 
+> Update 2026-07-01: the initial separate `Activity` section described below was
+> superseded by the combined pull request `Timeline` design in
+> [Pull Request Overview UX Updates](../pull-request-overview-ux/design.md).
+> Operation logs remain separate from `PullRequestCommentsStore`, but the
+> overview now interleaves comments and operation logs chronologically.
+
 The feature must:
 
 - call the operation logs API documented in [api.md](api.md)

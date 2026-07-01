@@ -9,7 +9,7 @@ import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestDiffController } from '../diff/pullRequestDiffController';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
-import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError, renderActivitySection, renderActivityLoading, renderActivityError } from './overviewHtml';
+import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithTimelineHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 import { PullRequestOperationLogsStore } from './pullRequestOperationLogsStore';
 import { buildDiffCommentContexts } from './diffCommentContext';
@@ -324,10 +324,9 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		// Render detail with loading comments, loading activity, and loading related issues
-		const activityLoadingHtml = renderActivityLoading();
+		// Render detail with loading timeline and related issues.
 		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading();
-		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, activityLoadingHtml);
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml);
 
 		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
 		const commentsPromise = this.commentsStore.getOrFetch(
@@ -359,7 +358,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		let operationLogsSnapshot: PullRequestOperationLogsSnapshot | undefined;
 		let commentsError: string | undefined;
 		let relatedIssuesError: string | undefined;
-		let activityHtml: string | undefined;
+		let activityError: string | undefined;
 
 		if (commentsResult.status === 'fulfilled') {
 			commentsSnapshot = commentsResult.value;
@@ -379,7 +378,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.logger.error(
 				`Failed to load operation logs for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
 			);
-			activityHtml = renderActivityError(error instanceof Error ? error.message : 'Unable to load activity.');
+			activityError = error instanceof Error ? error.message : 'Unable to load activity.';
 		}
 
 		if (relatedIssuesResult.status === 'fulfilled') {
@@ -410,14 +409,6 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 		}
 
-		// Build activity HTML
-		if (!activityHtml && operationLogsSnapshot) {
-			activityHtml = renderActivitySection(operationLogsSnapshot);
-		}
-		if (!activityHtml && !operationLogsSnapshot) {
-			activityHtml = ''; // No operation logs store available, skip activity section
-		}
-
 		// Build related issues HTML
 		let relatedIssuesHtml: string;
 		if (relatedIssuesSnapshot) {
@@ -443,10 +434,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 			}
 
-			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, activityHtml);
+			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError);
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, activityHtml);
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions);
 		}
 	}
 
