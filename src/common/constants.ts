@@ -26,6 +26,7 @@ export const COMMAND_ID = {
 	createPullRequest: 'gitcode.createPullRequest',
 	editPullRequest: 'gitcode.editPullRequest',
 	submitPullRequestDiffComment: 'gitcode.submitPullRequestDiffComment',
+	editPullRequestDiffComment: 'gitcode.editPullRequestDiffComment',
 	resolveDiffComment: 'gitcode.resolveDiffComment',
 	unresolveDiffComment: 'gitcode.unresolveDiffComment',
 };

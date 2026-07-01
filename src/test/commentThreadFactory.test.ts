@@ -40,6 +40,7 @@ suite('CommentThreadFactory', () => {
 			collapsibleState: undefined,
 			state: undefined,
 			canReply: true,
+			comments: [] as readonly vscode.Comment[],
 		};
 		const controller = {
 			createCommentThread(uri: vscode.Uri, range: vscode.Range, comments: readonly vscode.Comment[]) {
@@ -59,23 +60,20 @@ suite('CommentThreadFactory', () => {
 		assert.strictEqual(created.length, 1);
 		assert.strictEqual(thread.state, vscode.CommentThreadState.Resolved);
 		assert.strictEqual(thread.canReply, false);
-		assert.strictEqual(created[0].comments[0].contextValue, 'commentThread.resolved');
-		assert.strictEqual(created[0].comments[0].label, 'Resolved');
+		assert.strictEqual(thread.comments[0].contextValue, 'commentThread.resolved');
+		assert.strictEqual(thread.comments[0].label, 'Resolved');
 		assert.strictEqual(created[0].range.start.line, 23);
 	});
 
 	test('creates unresolved VS Code threads for open diff comments', () => {
-		const created: {
-			comments: readonly vscode.Comment[];
-		}[] = [];
 		const thread = {
 			collapsibleState: undefined,
 			state: undefined,
 			canReply: true,
+			comments: [] as readonly vscode.Comment[],
 		};
 		const controller = {
-			createCommentThread(_uri: vscode.Uri, _range: vscode.Range, comments: readonly vscode.Comment[]) {
-				created.push({ comments });
+			createCommentThread(_uri: vscode.Uri, _range: vscode.Range, _comments: readonly vscode.Comment[]) {
 				return thread as unknown as vscode.CommentThread;
 			},
 		} as unknown as vscode.CommentController;
@@ -88,22 +86,20 @@ suite('CommentThreadFactory', () => {
 		);
 
 		assert.strictEqual(thread.state, vscode.CommentThreadState.Unresolved);
-		assert.strictEqual(created[0].comments[0].contextValue, 'commentThread.unresolved');
-		assert.strictEqual(created[0].comments[0].label, 'Unresolved');
+		assert.strictEqual(thread.comments[0].contextValue, 'commentThread.unresolved');
+		assert.strictEqual(thread.comments[0].label, 'Unresolved');
 	});
 
 	test('preserves outdated labels when an outdated thread is projected directly', () => {
-		const created: {
-			comments: readonly vscode.Comment[];
-		}[] = [];
+		const thread = {
+			collapsibleState: undefined,
+			state: undefined,
+			canReply: true,
+			comments: [] as readonly vscode.Comment[],
+		};
 		const controller = {
-			createCommentThread(_uri: vscode.Uri, _range: vscode.Range, comments: readonly vscode.Comment[]) {
-				created.push({ comments });
-				return {
-					collapsibleState: undefined,
-					state: undefined,
-					canReply: true,
-				} as unknown as vscode.CommentThread;
+			createCommentThread(_uri: vscode.Uri, _range: vscode.Range, _comments: readonly vscode.Comment[]) {
+				return thread as unknown as vscode.CommentThread;
 			},
 		} as unknown as vscode.CommentController;
 
@@ -114,7 +110,7 @@ suite('CommentThreadFactory', () => {
 			'Thread body',
 		);
 
-		assert.strictEqual(created[0].comments[0].label, 'Outdated');
+		assert.strictEqual(thread.comments[0].label, 'Outdated');
 	});
 
 	test('skips outdated comments when selecting comments for a document', () => {

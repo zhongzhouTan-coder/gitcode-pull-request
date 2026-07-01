@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestCommentStatusOperation, RevisePullRequestCommentStatusInput } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestCommentEditOperation, PullRequestCommentStatusOperation, RevisePullRequestCommentStatusInput } from '../../common/models';
 import { CommentService } from '../../gitcode/services/commentService';
 
 export interface CommentChangeEvent {
@@ -22,6 +22,7 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<CommentsChangeEvent>();
 	private readonly snapshotPromises = new Map<CommentKey, Promise<PullRequestCommentsSnapshot>>();
 	private readonly pendingOperations = new Map<string, Promise<PullRequestCommentStatusOperation>>();
+	private readonly pendingEditOperations = new Map<string, Promise<PullRequestCommentEditOperation>>();
 
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -93,6 +94,37 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		);
 		await this.refresh(repository.fullName, pullRequestNumber);
 		return result;
+	}
+
+	/**
+	 * Edit an existing pull request comment body.
+	 *
+	 * Serializes concurrent edit operations per commentId so that duplicate
+	 * requests are ignored while one is already running.
+	 *
+	 * Returns the operation result for UI feedback. On success the store
+	 * is refreshed from the API; on failure the previous snapshot is kept
+	 * and the edit text is preserved.
+	 */
+	async editComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: EditPullRequestCommentInput,
+	): Promise<PullRequestCommentEditOperation> {
+		// Serialize concurrent edits per commentId
+		const existing = this.pendingEditOperations.get(input.commentId);
+		if (existing) {
+			return existing;
+		}
+
+		const operationPromise = this.executeEditComment(repository, pullRequestNumber, input);
+		this.pendingEditOperations.set(input.commentId, operationPromise);
+
+		try {
+			return await operationPromise;
+		} finally {
+			this.pendingEditOperations.delete(input.commentId);
+		}
 	}
 
 	/**
@@ -202,6 +234,57 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		};
 	}
 
+	private async executeEditComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: EditPullRequestCommentInput,
+	): Promise<PullRequestCommentEditOperation> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			return {
+				commentId: input.commentId,
+				body: input.body,
+				status: 'failed',
+				error: 'Sign in to GitCode first.',
+			};
+		}
+
+		// Validate body is not empty
+		if (!input.body.trim()) {
+			return {
+				commentId: input.commentId,
+				body: input.body,
+				status: 'failed',
+				error: 'Comment body is required.',
+			};
+		}
+
+		try {
+			await this.commentService.editPullRequestComment(repository, input);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to edit comment.';
+			return {
+				commentId: input.commentId,
+				body: input.body,
+				status: 'failed',
+				error: message,
+			};
+		}
+
+		// On success, refresh the store so consumers re-render from API state
+		try {
+			await this.refresh(repository.fullName, pullRequestNumber);
+		} catch {
+			// Comment edited but refresh failed — still report success to the caller
+		}
+
+		return {
+			commentId: input.commentId,
+			body: input.body,
+			status: 'pending',
+		};
+	}
+
 	/**
 	 * Invalidate without emitting a change event (used when clearing all state).
 	 */
@@ -221,6 +304,7 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 	dispose(): void {
 		this.snapshotPromises.clear();
 		this.pendingOperations.clear();
+		this.pendingEditOperations.clear();
 		this.onDidChangeEmitter.dispose();
 	}
 

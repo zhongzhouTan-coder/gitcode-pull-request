@@ -603,3 +603,15 @@ export type GitCodeLabel = PullRequestLabel;
 
 // Reuse IssueMilestone for GitCodeMilestone
 export type GitCodeMilestone = IssueMilestone;
+
+export interface EditPullRequestCommentInput {
+	commentId: string;
+	body: string;
+}
+
+export interface PullRequestCommentEditOperation {
+	commentId: string;
+	body: string;
+	status: 'pending' | 'failed';
+	error?: string;
+}

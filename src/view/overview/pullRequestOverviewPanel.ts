@@ -194,6 +194,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		this.panel.webview.onDidReceiveMessage(async (message: {
 			command?: string;
 			body?: string;
+			commentId?: string;
 			url?: string;
 			repository?: string;
 			issue?: number | string;
@@ -217,6 +218,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'submitPullRequestComment' && typeof message.body === 'string') {
 				await this.handleSubmitPullRequestComment(message.body);
+				return;
+			}
+
+			if (message.command === 'editPullRequestComment' && typeof message.commentId === 'string' && typeof message.body === 'string') {
+				await this.handleEditPullRequestComment(message.commentId, message.body);
 				return;
 			}
 
@@ -570,6 +576,45 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				message: errorMessage,
 			});
 		}
+	}
+
+	private async handleEditPullRequestComment(commentId: string, body: string): Promise<void> {
+		if (!commentId) {
+			this.panel.webview.postMessage({
+				command: 'editPullRequestCommentError',
+				commentId,
+				message: 'Comment ID is required.',
+			});
+			return;
+		}
+
+		if (!body.trim()) {
+			this.panel.webview.postMessage({
+				command: 'editPullRequestCommentError',
+				commentId,
+				message: 'Comment body is required.',
+			});
+			return;
+		}
+
+		const result = await this.commentsStore.editComment(
+			this.context.repository,
+			this.context.pullRequestNumber,
+			{ commentId, body },
+		);
+
+		if (result.status === 'failed') {
+			this.panel.webview.postMessage({
+				command: 'editPullRequestCommentError',
+				commentId,
+				message: result.error ?? 'Failed to edit comment.',
+			});
+			return;
+		}
+
+		// On success the store refreshes; reload to show updated comments
+		this.commentsSnapshot = undefined;
+		await this.load(true);
 	}
 
 	private async handleRevisePullRequestCommentStatus(discussionId: string, resolved: boolean): Promise<void> {

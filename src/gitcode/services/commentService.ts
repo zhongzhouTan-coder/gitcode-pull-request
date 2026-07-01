@@ -1,4 +1,4 @@
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail, RevisePullRequestCommentStatusInput } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail, RevisePullRequestCommentStatusInput } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapCreatePullRequestCommentInput, mapCreatePullRequestCommentResult, mapListComment, mapCommentDetail, mergeCommentDetail } from '../mappers/commentMapper';
 import { Logger } from '../../common/logger';
@@ -193,5 +193,33 @@ export class CommentService {
 			path,
 			body,
 		);
+	}
+
+	/**
+	 * Edit an existing pull request comment body.
+	 *
+	 * PATCH /api/v5/repos/:owner/:repo/pulls/comments/:comment_id
+	 * Body: { "body": "Updated comment content" }
+	 *
+	 * The API returns 200 OK. Treat a successful response as confirmation
+	 * and refresh the comments store afterward.
+	 */
+	async editPullRequestComment(
+		repository: GitCodeRepository,
+		input: EditPullRequestCommentInput,
+	): Promise<void> {
+		const trimmedBody = input.body.trim();
+		if (!trimmedBody) {
+			throw new Error('Comment body is required.');
+		}
+
+		if (!input.commentId) {
+			throw new Error('commentId is required.');
+		}
+
+		const path = `/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/comments/${encodeURIComponent(input.commentId)}`;
+		const body = { body: input.body };
+
+		await this.client.patch<unknown>(path, body);
 	}
 }

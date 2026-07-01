@@ -205,6 +205,79 @@ suite('CommentService', () => {
 		}]);
 	});
 
+	test('edits a pull request comment via PATCH with comment ID and body', async () => {
+		const calls: Array<{ path: string; body: unknown }> = [];
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(path: string, body?: unknown): Promise<T> => {
+				calls.push({ path, body });
+				return {} as T;
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		await service.editPullRequestComment(repository, {
+			commentId: 'comment-42',
+			body: 'Updated comment body.',
+		});
+
+		assert.deepStrictEqual(calls, [{
+			path: '/api/v5/repos/org/repo/pulls/comments/comment-42',
+			body: { body: 'Updated comment body.' },
+		}]);
+	});
+
+	test('editPullRequestComment rejects empty body', async () => {
+		let called = false;
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				called = true;
+				return {} as T;
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		await assert.rejects(
+			() => service.editPullRequestComment(repository, { commentId: 'c-1', body: '   ' }),
+			/Comment body is required\./,
+		);
+		assert.strictEqual(called, false);
+	});
+
+	test('editPullRequestComment rejects empty commentId', async () => {
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		await assert.rejects(
+			() => service.editPullRequestComment(repository, { commentId: '', body: 'body' }),
+			/commentId is required\./,
+		);
+	});
+
 	test('rejects empty bodies before calling the API', async () => {
 		let called = false;
 		const client: GitCodeWriteClient = {

@@ -187,21 +187,21 @@ suite('PullRequestCommentsStore — reviseCommentStatus', () => {
 			resolved: true,
 		});
 
-		// Second call with same discussionId should return the same promise
+		// Second call with same discussionId should reuse the pending operation
 		const secondOp = store.reviseCommentStatus(repository, 1, {
 			discussionId: 'disc-2',
 			resolved: true,
 		});
 
-		// Both should be the same pending promise
-		assert.strictEqual(firstOp, secondOp);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.strictEqual(callCount, 1);
 
 		// Resolve the blocking promise
 		resolvePromise();
 
-		await firstOp;
-		await secondOp;
+		const [firstResult, secondResult] = await Promise.all([firstOp, secondOp]);
 		assert.strictEqual(callCount, 1);
+		assert.deepStrictEqual(firstResult, secondResult);
 	});
 
 	test('refreshes comments after a successful mutation', async () => {

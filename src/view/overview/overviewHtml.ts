@@ -293,16 +293,34 @@ function renderConversationComment(comment: PullRequestComment, diffContexts?: R
 	return renderDiffCommentCard(comment, diffContexts?.get(comment.id));
 }
 
+function renderCommentEditIcon(commentId: string): string {
+	return `<button class="edit-icon-btn edit-comment-btn" data-comment-id="${escapeAttr(commentId)}" title="Edit comment" aria-label="Edit comment">${PENCIL_ICON}</button>`;
+}
+
+function renderCommentEditArea(commentId: string, body: string): string {
+	return `<div class="comment-edit-area" data-comment-edit="${escapeAttr(commentId)}" style="display:none">
+		<textarea data-comment-input="${escapeAttr(commentId)}" class="comment-edit-input" rows="4">${escapeHtml(body)}</textarea>
+		<div class="comment-edit-actions">
+			<button class="btn-primary btn-save-comment-edit" data-comment-id="${escapeAttr(commentId)}">Save</button>
+			<button class="btn-secondary btn-cancel-comment-edit" data-comment-id="${escapeAttr(commentId)}">Cancel</button>
+			<span class="comment-edit-saving" style="display:none">Saving...</span>
+		</div>
+		<div class="comment-edit-error" style="display:none" data-comment-edit-error="${escapeAttr(commentId)}"></div>
+	</div>`;
+}
+
 function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
 	return `
-		<div class="comment-card">
+		<div class="comment-card" data-comment-id="${escapeAttr(comment.id)}">
 			<div class="comment-header">
 				${renderCommentAvatar(comment.author)}
 				<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
 				<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
 				${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
+				${renderCommentEditIcon(comment.id)}
 			</div>
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
+			${renderCommentEditArea(comment.id, comment.body)}
 			${renderConversationReplies(comment.replies)}
 		</div>
 	`;
@@ -332,13 +350,14 @@ function renderDiffContext(context: DiffCommentContext | undefined): string {
 function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: DiffCommentContext): string {
 	const badges = renderDiffCommentBadges(comment);
 	return `
-		<div class="comment-card comment-card-diff">
+		<div class="comment-card comment-card-diff" data-comment-id="${escapeAttr(comment.id)}">
 			<div class="comment-top-row">
 				<div class="comment-header">
 					${renderCommentAvatar(comment.author)}
 					<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
 					<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
 					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
+					${renderCommentEditIcon(comment.id)}
 				</div>
 				${renderDiffCommentReviewStatus(comment)}
 			</div>
@@ -348,6 +367,7 @@ function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: Di
 			</div>
 			${renderDiffContext(diffContext)}
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
+			${renderCommentEditArea(comment.id, comment.body)}
 			${renderConversationReplies(comment.replies)}
 		</div>
 	`;
@@ -988,6 +1008,54 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			white-space: pre;
 			color: var(--vscode-editor-foreground, var(--vscode-foreground));
 			background: transparent;
+		}
+		/* ---- Inline Comment Editing ---- */
+		.edit-comment-btn {
+			opacity: 0;
+			transition: opacity 0.15s, background 0.15s;
+			margin-left: auto;
+		}
+		.comment-card:hover .edit-comment-btn,
+		.comment-card:focus-within .edit-comment-btn,
+		.edit-comment-btn:focus-visible {
+			opacity: 1;
+		}
+		.comment-edit-area {
+			margin-top: 12px;
+			padding-top: 12px;
+			border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+		}
+		.comment-edit-input {
+			width: 100%;
+			box-sizing: border-box;
+			min-height: 88px;
+			resize: vertical;
+			font: inherit;
+			color: inherit;
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border, var(--border));
+			border-radius: 8px;
+			padding: 10px 12px;
+		}
+		.comment-edit-input:focus {
+			outline: 1px solid var(--vscode-focusBorder);
+			outline-offset: 1px;
+		}
+		.comment-edit-actions {
+			display: flex;
+			gap: 8px;
+			margin-top: 10px;
+			align-items: center;
+		}
+		.comment-edit-saving {
+			color: var(--muted);
+			font-size: 13px;
+			font-style: italic;
+		}
+		.comment-edit-error {
+			color: var(--vscode-errorForeground);
+			font-size: 13px;
+			margin-top: 8px;
 		}
 		.comment-review-status {
 			display: inline-flex;
@@ -1974,6 +2042,118 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			errorEl.textContent = message || 'Failed to revise comment status.';
 		}
 
+		// ---- Comment Inline Editing ----
+
+		var editingCommentId = null;
+
+		function startCommentEdit(commentId) {
+			if (editingCommentId && editingCommentId !== commentId) {
+				cancelCommentEdit(editingCommentId);
+			}
+
+			var editArea = document.querySelector('[data-comment-edit="' + CSS.escape(commentId) + '"]');
+			var bodyEl = editArea ? editArea.previousElementSibling : null;
+			var errorEl = document.querySelector('[data-comment-edit-error="' + CSS.escape(commentId) + '"]');
+
+			if (bodyEl && bodyEl.classList.contains('comment-body')) {
+				bodyEl.style.display = 'none';
+			}
+			if (editArea) {
+				editArea.style.display = 'block';
+			}
+			if (errorEl) {
+				errorEl.style.display = 'none';
+				errorEl.textContent = '';
+			}
+
+			editingCommentId = commentId;
+
+			// Focus the textarea
+			var input = document.querySelector('[data-comment-input="' + CSS.escape(commentId) + '"]');
+			if (input) {
+				input.focus();
+			}
+		}
+
+		function cancelCommentEdit(commentId) {
+			var editArea = document.querySelector('[data-comment-edit="' + CSS.escape(commentId) + '"]');
+			var bodyEl = editArea ? editArea.previousElementSibling : null;
+			var input = document.querySelector('[data-comment-input="' + CSS.escape(commentId) + '"]');
+
+			if (input) {
+				input.value = input.defaultValue;
+			}
+
+			if (bodyEl && bodyEl.classList.contains('comment-body')) {
+				bodyEl.style.display = '';
+			}
+			if (editArea) {
+				editArea.style.display = 'none';
+			}
+
+			if (editingCommentId === commentId) {
+				editingCommentId = null;
+			}
+
+			var errorEl = document.querySelector('[data-comment-edit-error="' + CSS.escape(commentId) + '"]');
+			if (errorEl) {
+				errorEl.style.display = 'none';
+				errorEl.textContent = '';
+			}
+		}
+
+		function setCommentEditSaving(commentId, saving) {
+			var editArea = document.querySelector('[data-comment-edit="' + CSS.escape(commentId) + '"]');
+			if (!editArea) {
+				return;
+			}
+			var saveBtn = editArea.querySelector('.btn-save-comment-edit');
+			var cancelBtn = editArea.querySelector('.btn-cancel-comment-edit');
+			var savingEl = editArea.querySelector('.comment-edit-saving');
+			var input = editArea.querySelector('.comment-edit-input');
+			if (saveBtn) {
+				saveBtn.disabled = saving;
+			}
+			if (cancelBtn) {
+				cancelBtn.disabled = saving;
+			}
+			if (savingEl) {
+				savingEl.style.display = saving ? '' : 'none';
+			}
+			if (input) {
+				input.disabled = saving;
+			}
+		}
+
+		function showCommentEditError(commentId, message) {
+			var errorEl = document.querySelector('[data-comment-edit-error="' + CSS.escape(commentId) + '"]');
+			if (errorEl) {
+				errorEl.textContent = message || '';
+				errorEl.style.display = '';
+			}
+		}
+
+		function saveCommentEdit(commentId) {
+			var input = document.querySelector('[data-comment-input="' + CSS.escape(commentId) + '"]');
+			if (!input) {
+				return;
+			}
+
+			var body = input.value;
+			if (!body.trim()) {
+				showCommentEditError(commentId, 'Comment body is required.');
+				return;
+			}
+
+			setCommentEditSaving(commentId, true);
+			showCommentEditError(commentId, '');
+			vscode.postMessage({
+				command: 'editPullRequestComment',
+				commentId: commentId,
+				body: body,
+			});
+		}
+
 		function buildInput(section) {
 			var title = document.querySelector('[data-section-input="title"]');
 			var currentTitleValue = title ? title.value.trim() : currentTitle;
@@ -2148,6 +2328,46 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			});
 		});
 
+		// Comment edit button handlers
+		document.querySelectorAll('.edit-comment-btn').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				startCommentEdit(btn.dataset.commentId);
+			});
+		});
+
+		// Comment save button handlers
+		document.querySelectorAll('.btn-save-comment-edit').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				saveCommentEdit(btn.dataset.commentId);
+			});
+		});
+
+		// Comment cancel button handlers
+		document.querySelectorAll('.btn-cancel-comment-edit').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				cancelCommentEdit(btn.dataset.commentId);
+			});
+		});
+
+		// Handle Ctrl+Enter in comment edit textareas
+		document.querySelectorAll('[data-comment-input]').forEach(function(el) {
+			el.addEventListener('keydown', function(e) {
+				if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+					e.preventDefault();
+					var commentId = el.getAttribute('data-comment-input');
+					if (commentId) {
+						saveCommentEdit(commentId);
+					}
+				}
+				if (e.key === 'Escape') {
+					var commentId = el.getAttribute('data-comment-input');
+					if (commentId) {
+						cancelCommentEdit(commentId);
+					}
+				}
+			});
+		});
+
 		// Handle Enter key in text inputs and Ctrl+Enter in textareas
 		document.querySelectorAll('[data-section-input]').forEach(function(el) {
 			el.addEventListener('keydown', function(e) {
@@ -2202,6 +2422,10 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 					updateCommentToggleStatus(toggle, toggle.checked);
 					showCommentToggleError(toggle, msg.error || 'Failed to revise comment status.');
 				}
+			}
+			if (msg.command === 'editPullRequestCommentError' && msg.commentId) {
+				setCommentEditSaving(msg.commentId, false);
+				showCommentEditError(msg.commentId, msg.message || 'Failed to edit comment.');
 			}
 		});
 

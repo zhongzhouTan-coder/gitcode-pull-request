@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { CreatePullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
+import { CreatePullRequestCommentInput, EditPullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { applyCommentThread, createCommentThread, selectCommentsForDocument } from './commentThreadFactory';
 import { parsePrUri } from '../diff/prUriHelpers';
@@ -141,6 +141,7 @@ export class DiffCommentController implements vscode.Disposable {
 		repository: GitCodeRepository;
 		pullRequestNumber: number;
 		discussionId: string;
+		commentId: string;
 	}>();
 	private readonly trackedDocs = new Set<string>();
 
@@ -169,6 +170,9 @@ export class DiffCommentController implements vscode.Disposable {
 					return;
 				}
 				await this.handleCommentReply(reply);
+			}),
+			vscode.commands.registerCommand(COMMAND_ID.editPullRequestDiffComment, async (thread?: vscode.CommentThread) => {
+				await this.handleEditComment(thread);
 			}),
 			vscode.commands.registerCommand(COMMAND_ID.resolveDiffComment, async (thread?: vscode.CommentThread) => {
 				await this.handleResolveThread(thread);
@@ -323,6 +327,59 @@ export class DiffCommentController implements vscode.Disposable {
 		}
 	}
 
+	private async handleEditComment(thread?: vscode.CommentThread): Promise<void> {
+		if (!thread) {
+			await vscode.window.showWarningMessage('No comment thread is active.');
+			return;
+		}
+
+		const metadata = this.threadMetadata.get(thread);
+		if (!metadata) {
+			await vscode.window.showWarningMessage('Unable to identify the pull request comment thread.');
+			return;
+		}
+
+		// Use the existing comment body as the initial value
+		const commentBody = thread.comments.length > 0 ? thread.comments[0].body : '';
+		const currentBody = typeof commentBody === 'string' ? commentBody : (commentBody as vscode.MarkdownString).value ?? '';
+		const newBody = await vscode.window.showInputBox({
+			title: 'Edit Comment',
+			value: currentBody,
+			prompt: 'Edit your comment body',
+			placeHolder: 'Enter the updated comment text',
+			validateInput: (value: string) => {
+				if (!value.trim()) {
+					return 'Comment body is required.';
+				}
+				return undefined;
+			},
+		});
+
+		if (newBody === undefined) {
+			// User cancelled
+			return;
+		}
+
+		if (newBody === currentBody) {
+			// No change
+			return;
+		}
+
+		const result = await this.commentsStore.editComment(
+			metadata.repository,
+			metadata.pullRequestNumber,
+			{ commentId: metadata.commentId, body: newBody },
+		);
+
+		if (result.status === 'failed') {
+			await vscode.window.showErrorMessage(result.error ?? 'Failed to edit comment.');
+			return;
+		}
+
+		// On success the store refreshes via editComment
+		await this.updateThreads();
+	}
+
 	private async getCurrentHeadSha(
 		repository: GitCodeRepository,
 		pullRequestNumber: number,
@@ -446,6 +503,11 @@ export class DiffCommentController implements vscode.Disposable {
 					if (existing) {
 						applyCommentThread(existing, comment, comment.body);
 						newActive.set(strKey, existing);
+						// Update metadata with commentId
+						const existingMeta = this.threadMetadata.get(existing);
+						if (existingMeta) {
+							existingMeta.commentId = comment.id;
+						}
 					} else {
 						const thread = createCommentThread(this.controller, comment, uri, comment.body);
 						if (thread) {
@@ -454,6 +516,7 @@ export class DiffCommentController implements vscode.Disposable {
 								repository: { remoteName: '', owner, name: repo, fullName: repoKey, webUrl: '' },
 								pullRequestNumber: key.pullRequestNumber,
 								discussionId: key.discussionId,
+								commentId: comment.id,
 							});
 						}
 					}
