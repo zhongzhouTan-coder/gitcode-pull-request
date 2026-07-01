@@ -96,6 +96,7 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /<strong>markdown<\/strong>/);
 		assert.match(html, /changed title from \*\*old\*\* to \*\*new\*\*/);
 		assert.doesNotMatch(html, /changed title from <strong>old<\/strong>/);
+		assert.match(html, /<div class="comment-card timeline-item timeline-comment">/);
 	});
 
 	test('escapes author names in comments and log content', () => {
@@ -249,6 +250,9 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /"milestones":\[\{"number":7,"title":"Sprint 7","state":"open"\}\]/);
 		assert.match(html, /Select labels from the repository label list\./);
 		assert.match(html, /data-state-action="close"/);
+		assert.match(html, /id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh issue">/);
+		assert.match(html, /id="open-web-button" class="secondary"/);
+		assert.match(html, /id="state-action-button" class="danger" data-state-action="close"[^>]*>Close issue<\/button>/);
 		assert.match(html, />Close issue</);
 
 		const styleCloseIndex = html.indexOf('</style>');
@@ -259,6 +263,16 @@ suite('IssueOverviewHtml', () => {
 		assert.ok(titleEditIndex > styleCloseIndex);
 		assert.ok(titleEditIndex < layoutIndex);
 		assert.doesNotMatch(html, /<main>\s*<section class="editable-section" data-section-container="title">/);
+	});
+
+	test('renders reopen issue action with the same button classes as pull requests', () => {
+		const html = getIssueOverviewHtml({
+			detail: { ...detail, state: 'closed' },
+			nonce: 'test-nonce',
+			includeScripts: false,
+		});
+
+		assert.match(html, /id="state-action-button" class="primary" data-state-action="reopen"[^>]*>Reopen issue<\/button>/);
 	});
 
 	test('escapes inline script JSON for issue edit metadata', () => {

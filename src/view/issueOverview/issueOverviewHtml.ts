@@ -385,7 +385,7 @@ function renderIssueCommentTimelineItem(comment: IssueComment): string {
 		? `<span class="comment-edited" title="Edited ${escapeHtml(formatActivityDate(comment.updatedAt))}">· Edited</span>`
 		: '';
 
-	return `<div class="comment timeline-item timeline-comment">
+	return `<div class="comment-card timeline-item timeline-comment">
 	<div class="comment-header">
 		${renderCommentAvatar(comment.author)}
 		${renderCommentAuthor(comment.author)}
@@ -617,6 +617,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 	const openOnWebDisabled = detail.url ? '' : 'disabled';
 	const stateAction = detail.state === 'open' ? 'close' : 'reopen';
 	const stateActionLabel = detail.state === 'open' ? 'Close issue' : 'Reopen issue';
+	const stateActionClass = detail.state === 'open' ? 'danger' : 'primary';
 	const editOptionsJson = editOptions
 		? serializeForInlineScript({
 			assignees: editOptions.assignees.map((user) => ({ login: user.login, name: user.name })),
@@ -706,6 +707,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.badge-state { background: var(--badge-state); }
 		.badge-type { background: var(--badge-type); }
 		.actions { margin-top: 16px; display: flex; gap: 12px; }
+		.action-error { margin-top: 8px; color: var(--vscode-errorForeground); font-size: 13px; min-height: 18px; }
 		button {
 			display: inline-flex;
 			align-items: center;
@@ -723,6 +725,24 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		button.secondary {
 			background: transparent;
 			color: var(--vscode-foreground);
+		}
+		button.icon-button {
+			width: 32px;
+			height: 32px;
+			justify-content: center;
+			gap: 0;
+			padding: 0;
+			background: transparent;
+			color: var(--vscode-foreground);
+		}
+		button.danger {
+			border-color: color-mix(in srgb, var(--danger) 65%, var(--border));
+			background: color-mix(in srgb, var(--danger) 18%, var(--vscode-button-background));
+			color: var(--vscode-button-foreground);
+		}
+		button.danger:hover:not(:disabled),
+		button.danger:focus-visible:not(:disabled) {
+			background: color-mix(in srgb, var(--danger) 30%, var(--vscode-button-background));
 		}
 		button:disabled { opacity: 0.5; cursor: default; }
 		section, aside .card {
@@ -1125,8 +1145,17 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.timeline-status {
 			padding: 8px 0;
 		}
-		.comment {
-			padding: 12px 0;
+		.comment-card {
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			padding: 16px;
+			background: var(--card);
+		}
+		.timeline-comment {
+			border-top: 1px solid var(--border);
+		}
+		.timeline-comment:first-of-type {
+			border-top: 1px solid var(--border);
 		}
 		.comment-avatar {
 			width: 28px;
@@ -1163,6 +1192,35 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		}
 		.comment-body {
 			padding: 0;
+			overflow-wrap: anywhere;
+		}
+		.comment-body pre {
+			overflow-x: auto;
+			padding: 10px;
+			border-radius: 8px;
+			background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.12));
+		}
+		.comment-body code {
+			font-family: var(--vscode-editor-font-family);
+			font-size: 0.95em;
+		}
+		.comment-body table {
+			width: 100%;
+			border-collapse: collapse;
+			display: block;
+			overflow-x: auto;
+		}
+		.comment-body th,
+		.comment-body td {
+			border: 1px solid var(--border);
+			padding: 6px 8px;
+			text-align: left;
+			vertical-align: top;
+		}
+		.comment-body img {
+			max-width: 100%;
+			height: auto;
+			border-radius: 8px;
 		}
 		.comment-composer {
 			margin-top: 16px;
@@ -1225,10 +1283,10 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			${detail.updatedAt && detail.updatedAt !== detail.createdAt ? `<span>· Updated ${escapeHtml(formatDate(detail.updatedAt))}</span>` : ''}
 		</div>
 			<div class="actions">
-				<button id="refresh-button" class="secondary">${REFRESH_ICON} Refresh</button>
+				<button id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh issue">${REFRESH_ICON}</button>
 				<button id="create-branch-button" class="secondary">${BRANCH_ICON} Create Branch</button>
-				<button id="open-web-button" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
-				<button id="state-action-button" data-state-action="${stateAction}">${stateActionLabel}</button>
+				<button id="open-web-button" class="secondary" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
+				<button id="state-action-button" class="${stateActionClass}" data-state-action="${stateAction}">${stateActionLabel}</button>
 			</div>
 			<div class="action-error" id="state-action-error"></div>
 		</div>

@@ -6,4 +6,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+- Align issue overview header actions with the pull request overview button styles and render issue comments with the same bordered card treatment.
 - Initial release
