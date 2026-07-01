@@ -32,12 +32,16 @@ export class IssueTreeDataProvider implements vscode.TreeDataProvider<BaseNode> 
 		try {
 			const repositories = await this.store.getRepositories();
 			if (!repositories.length) {
+				if (this.store.isWaitingForRepository()) {
+					return [new EmptyStateNode('Loading Git repository')];
+				}
+
 				return [new EmptyStateNode('No GitCode remote found', 'Set gitcode.repository to override the workspace repository.')];
 			}
 
 			return repositories.map((repository) => new IssueRepositoryNode(this.store, repository));
 		} catch (error) {
-			this.logger.error(`Failed to load issue tree root: ${error instanceof Error ? error.message : String(error)}`);
+			this.logRootLoadError(error);
 			return [this.toRootErrorNode(error)];
 		}
 	}
@@ -79,5 +83,14 @@ export class IssueTreeDataProvider implements vscode.TreeDataProvider<BaseNode> 
 		}
 
 		return new EmptyStateNode('Unable to load issues');
+	}
+
+	private logRootLoadError(error: unknown): void {
+		const message = error instanceof Error ? error.message : String(error);
+		if (error instanceof RepositoryNotOnGitCodeError || error instanceof RepositoryResolutionError) {
+			return;
+		}
+
+		this.logger.error(`Failed to load issue tree root: ${message}`);
 	}
 }

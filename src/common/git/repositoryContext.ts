@@ -50,7 +50,7 @@ export class RepositoryContextService {
 	 * @param timeoutMs Maximum time to wait in milliseconds (default: 15000)
 	 * @returns A repository with remotes, or undefined if the timeout is reached.
 	 */
-	async waitForRepository(timeoutMs: number = 15000): Promise<GitRepository | undefined> {
+	async waitForRepository(timeoutMs: number = 15000, options: { logTimeout?: boolean } = {}): Promise<GitRepository | undefined> {
 		const gitApi = await this.getGitApi();
 		if (!gitApi) {
 			return undefined;
@@ -78,11 +78,15 @@ export class RepositoryContextService {
 				resolve(repo);
 			};
 
-			const timeout = setTimeout(() => {
-				this.logger.debug('Timed out waiting for Git repository with remotes.');
-				done(undefined);
-			}, timeoutMs);
-			disposables.push(new vscode.Disposable(() => clearTimeout(timeout)));
+			if (timeoutMs > 0) {
+				const timeout = setTimeout(() => {
+					if (options.logTimeout ?? true) {
+						this.logger.debug('Timed out waiting for Git repository with remotes.');
+					}
+					done(undefined);
+				}, timeoutMs);
+				disposables.push(new vscode.Disposable(() => clearTimeout(timeout)));
+			}
 
 			// Listen for new repositories being opened
 			disposables.push(

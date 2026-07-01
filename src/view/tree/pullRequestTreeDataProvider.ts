@@ -33,12 +33,16 @@ export class PullRequestTreeDataProvider implements vscode.TreeDataProvider<Base
 		try {
 			const repositories = await this.store.getRepositories();
 			if (!repositories.length) {
+				if (this.store.isWaitingForRepository()) {
+					return [this.nodeFactory.createEmptyStateNode('Loading Git repository')];
+				}
+
 				return [this.nodeFactory.createEmptyStateNode('No GitCode remote found', 'Set gitcode.repository to override the workspace repository.')];
 			}
 
 			return repositories.map((repository) => this.nodeFactory.createRepositoryNode(repository));
 		} catch (error) {
-			this.logger.error(`Failed to load pull request tree root: ${error instanceof Error ? error.message : String(error)}`);
+			this.logRootLoadError(error);
 			return [this.toRootErrorNode(error)];
 		}
 	}
@@ -80,5 +84,14 @@ export class PullRequestTreeDataProvider implements vscode.TreeDataProvider<Base
 		}
 
 		return new EmptyStateNode('Unable to load pull requests');
+	}
+
+	private logRootLoadError(error: unknown): void {
+		const message = error instanceof Error ? error.message : String(error);
+		if (error instanceof RepositoryNotOnGitCodeError || error instanceof RepositoryResolutionError) {
+			return;
+		}
+
+		this.logger.error(`Failed to load pull request tree root: ${message}`);
 	}
 }

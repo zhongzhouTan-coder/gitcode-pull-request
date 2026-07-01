@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { ExtensionConfiguration } from '../../common/configuration';
-import { NotSignedInError } from '../../common/errors';
+import { NotSignedInError, RepositoryNotOnGitCodeError, RepositoryResolutionError } from '../../common/errors';
+import { RepositoryContextService } from '../../common/git/repositoryContext';
 import { GitCodeRepository, PullRequestFileChange, PullRequestSummary } from '../../common/models';
 import { GitCodeRepositoryResolver } from '../../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
@@ -20,8 +21,14 @@ export type TreeRefreshTarget =
 	| { type: 'pullRequestFiles'; repositoryKey: string; pullRequestNumber: number };
 
 export class PullRequestTreeStore {
+	private static readonly repositoryWaitTimeoutMs = 120000;
+	private static readonly repositoryInitialLoadingTimeoutMs = 5000;
+	private static readonly repositoryRetryDelayMs = 500;
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<TreeRefreshTarget | void>();
 	private repositoriesPromise?: Promise<GitCodeRepository[]>;
+	private repositoryReadinessPromise?: Promise<void>;
+	private repositoryReadinessCompleted = false;
+	private repositoryRetryTimer?: ReturnType<typeof setTimeout>;
 	private readonly pullRequestListPromises = new Map<string, Promise<PullRequestSummary[]>>();
 	private readonly pullRequestFilesPromises = new Map<string, Promise<PullRequestFileChange[]>>();
 
@@ -29,6 +36,7 @@ export class PullRequestTreeStore {
 
 	constructor(
 		private readonly authService: AuthService,
+		private readonly repositoryContext: RepositoryContextService,
 		private readonly repositoryResolver: GitCodeRepositoryResolver,
 		private readonly pullRequestService: PullRequestService,
 		private readonly configuration: ExtensionConfiguration,
@@ -36,10 +44,17 @@ export class PullRequestTreeStore {
 
 	async getRepositories(): Promise<GitCodeRepository[]> {
 		if (!this.repositoriesPromise) {
-			this.repositoriesPromise = this.repositoryResolver.resolveAll();
+			this.repositoriesPromise = this.resolveRepositoriesWithStartupRetry().catch((error) => {
+				this.repositoriesPromise = undefined;
+				throw error;
+			});
 		}
 
 		return this.repositoriesPromise;
+	}
+
+	isWaitingForRepository(): boolean {
+		return Boolean(this.repositoryReadinessPromise) && !this.repositoryReadinessCompleted;
 	}
 
 	getCategories(repository: GitCodeRepository): PullRequestCategoryState[] {
@@ -85,6 +100,9 @@ export class PullRequestTreeStore {
 		this.repositoriesPromise = undefined;
 		this.pullRequestListPromises.clear();
 		this.pullRequestFilesPromises.clear();
+		if (!this.configuration.getRepositoryOverride()) {
+			this.repositoryReadinessCompleted = false;
+		}
 		this.onDidChangeEmitter.fire({ type: 'all' });
 	}
 
@@ -134,6 +152,78 @@ export class PullRequestTreeStore {
 		const filesKey = `${repositoryKey}#${pullRequestNumber}:files`;
 		this.pullRequestFilesPromises.delete(filesKey);
 		this.onDidChangeEmitter.fire({ type: 'pullRequestFiles', repositoryKey, pullRequestNumber });
+	}
+
+	private startRepositoryReadinessWait(): void {
+		if (!this.repositoryReadinessPromise) {
+			this.repositoryReadinessPromise = this.repositoryContext
+				.waitForRepository(PullRequestTreeStore.repositoryWaitTimeoutMs, { logTimeout: false })
+				.then(() => {
+					this.markRepositoryReady();
+					this.onDidChangeEmitter.fire({ type: 'all' });
+				})
+				.catch(() => {
+					this.markRepositoryReady();
+					this.onDidChangeEmitter.fire({ type: 'all' });
+				});
+		}
+	}
+
+	private async resolveRepositoriesWithStartupRetry(): Promise<GitCodeRepository[]> {
+		if (this.configuration.getRepositoryOverride()) {
+			return this.repositoryResolver.resolveAll();
+		}
+
+		const deadline = Date.now() + PullRequestTreeStore.repositoryInitialLoadingTimeoutMs;
+		while (true) {
+			try {
+				const repositories = await this.repositoryResolver.resolveAll();
+				this.markRepositoryReady();
+				return repositories;
+			} catch (error) {
+				if (!this.isRepositoryReadinessError(error)) {
+					throw error;
+				}
+
+				this.startRepositoryReadinessWait();
+				const remainingMs = deadline - Date.now();
+				if (remainingMs <= 0) {
+					this.repositoriesPromise = undefined;
+					this.scheduleRepositoryRetry();
+					return [];
+				}
+
+				await this.delay(Math.min(PullRequestTreeStore.repositoryRetryDelayMs, remainingMs));
+			}
+		}
+	}
+
+	private scheduleRepositoryRetry(): void {
+		if (this.repositoryRetryTimer) {
+			return;
+		}
+
+		this.repositoryRetryTimer = setTimeout(() => {
+			this.repositoryRetryTimer = undefined;
+			this.onDidChangeEmitter.fire({ type: 'all' });
+		}, PullRequestTreeStore.repositoryRetryDelayMs);
+	}
+
+	private markRepositoryReady(): void {
+		this.repositoryReadinessCompleted = true;
+		this.repositoryReadinessPromise = undefined;
+		if (this.repositoryRetryTimer) {
+			clearTimeout(this.repositoryRetryTimer);
+			this.repositoryRetryTimer = undefined;
+		}
+	}
+
+	private isRepositoryReadinessError(error: unknown): boolean {
+		return error instanceof RepositoryResolutionError || error instanceof RepositoryNotOnGitCodeError;
+	}
+
+	private async delay(milliseconds: number): Promise<void> {
+		await new Promise((resolve) => setTimeout(resolve, milliseconds));
 	}
 
 	private getPullRequestFilesKey(repository: GitCodeRepository, pullRequestNumber: number): string {

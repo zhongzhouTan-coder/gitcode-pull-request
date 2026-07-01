@@ -81,19 +81,49 @@ export class ViewController implements vscode.Disposable {
 	private readonly layoutSupplier: () => 'tree' | 'flat';
 
 	constructor(private readonly options: ViewControllerOptions) {
-		this.store = new PullRequestTreeStore(
-			options.authService,
-			options.repositoryResolver,
-			options.pullRequestService,
-			options.configuration,
-		);
-
 		// Core client used by multiple services
 		const gitCodeClient = new GitCodeClientImpl(
 			options.configuration,
 			options.sessionStore,
 			options.logger,
 		);
+
+		const issueService = new IssueService(gitCodeClient);
+
+		this.store = new PullRequestTreeStore(
+			options.authService,
+			options.repositoryContext,
+			options.repositoryResolver,
+			options.pullRequestService,
+			options.configuration,
+		);
+
+		this.issueStore = new IssueTreeStore(
+			options.authService,
+			options.repositoryContext,
+			options.repositoryResolver,
+			issueService,
+			options.configuration,
+		);
+
+		this.layoutSupplier = () => options.configuration.getPullRequestFileListLayout();
+		this.treeDataProvider = new PullRequestTreeDataProvider(
+			this.store,
+			new NodeFactory(this.store, this.layoutSupplier),
+			options.logger,
+		);
+		this.issueTreeDataProvider = new IssueTreeDataProvider(
+			this.issueStore,
+			options.logger,
+		);
+		this.treeView = vscode.window.createTreeView(options.viewId, {
+			treeDataProvider: this.treeDataProvider,
+			showCollapseAll: true,
+		});
+		this.issueTreeView = vscode.window.createTreeView('issues:gitcode', {
+			treeDataProvider: this.issueTreeDataProvider,
+			showCollapseAll: true,
+		});
 
 		// Repository service needed by overview store for edit options
 		const repositoryService = new RepositoryService(gitCodeClient);
@@ -157,7 +187,6 @@ export class ViewController implements vscode.Disposable {
 		);
 
 		// Issue components
-		const issueService = new IssueService(gitCodeClient);
 		const issueCommentService = new IssueCommentService(gitCodeClient);
 		this.issueOverviewStore = new IssueOverviewStore(
 			options.authService,
@@ -171,12 +200,6 @@ export class ViewController implements vscode.Disposable {
 		this.issueRelatedPrsStore = new IssueRelatedPullRequestsStore(
 			options.authService,
 			issueService,
-		);
-		this.issueStore = new IssueTreeStore(
-			options.authService,
-			options.repositoryResolver,
-			issueService,
-			options.configuration,
 		);
 		IssueOverviewPanel.setEditDependencies(this.issueStore);
 		this.createIssueHelper = new CreateIssueHelper(
@@ -192,13 +215,8 @@ export class ViewController implements vscode.Disposable {
 			this.commentsStore,
 			options.logger,
 		);
-		this.issueTreeDataProvider = new IssueTreeDataProvider(
-			this.issueStore,
-			options.logger,
-		);
 
 		this.patchContentProvider = new PullRequestPatchContentProvider();
-		this.layoutSupplier = () => options.configuration.getPullRequestFileListLayout();
 
 		// Diff view components
 		this.fileSystemProvider = new GitCodePullRequestFileSystemProvider(
@@ -211,21 +229,6 @@ export class ViewController implements vscode.Disposable {
 			options.logger,
 		);
 		PullRequestOverviewPanel.setDiffDependencies(this.diffController);
-
-		this.treeDataProvider = new PullRequestTreeDataProvider(
-			this.store,
-			new NodeFactory(this.store, this.layoutSupplier),
-			options.logger,
-		);
-		this.treeView = vscode.window.createTreeView(options.viewId, {
-			treeDataProvider: this.treeDataProvider,
-			showCollapseAll: true,
-		});
-
-		this.issueTreeView = vscode.window.createTreeView('issues:gitcode', {
-			treeDataProvider: this.issueTreeDataProvider,
-			showCollapseAll: true,
-		});
 
 		this.disposables.push(
 			this.treeView,
@@ -329,12 +332,6 @@ export class ViewController implements vscode.Disposable {
 			);
 		}
 
-		// An override can be resolved without a local Git repository. Otherwise,
-		// wait for the active repository's remotes to finish loading before the
-		// initial refresh.
-		if (!this.options.configuration.getRepositoryOverride()) {
-			await this.options.repositoryContext.waitForRepository();
-		}
 		await this.store.refreshAll();
 		await this.issueStore.refreshAll();
 	}
