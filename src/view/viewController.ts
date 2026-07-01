@@ -25,9 +25,11 @@ import { IssueTreeStore } from './state/issueTreeStore';
 import { IssueTreeDataProvider } from './tree/issueTreeDataProvider';
 import { IssueService } from '../gitcode/services/issueService';
 import { IssueCommentService } from '../gitcode/services/issueCommentService';
+import { IssueOperationLogService } from '../gitcode/services/issueOperationLogService';
 import { IssueOverviewPanel } from './issueOverview/issueOverviewPanel';
 import { IssueOverviewStore } from './issueOverview/issueOverviewStore';
 import { IssueCommentsStore } from './issueOverview/issueCommentsStore';
+import { IssueOperationLogsStore } from './issueOverview/issueOperationLogsStore';
 import { IssueRelatedPullRequestsStore } from './issueOverview/issueRelatedPullRequestsStore';
 import { registerIssueCommands } from './commands/registerIssueCommands';
 import { CopilotPullRequestContextStore } from './copilot/copilotPullRequestContextStore';
@@ -63,6 +65,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly overviewStore: PullRequestOverviewStore;
 	private readonly issueOverviewStore: IssueOverviewStore;
 	private readonly issueCommentsStore: IssueCommentsStore;
+	private readonly issueOperationLogsStore: IssueOperationLogsStore;
 	private readonly issueRelatedPrsStore: IssueRelatedPullRequestsStore;
 	private readonly commentsStore: PullRequestCommentsStore;
 	private readonly treeDataProvider: PullRequestTreeDataProvider;
@@ -196,6 +199,7 @@ export class ViewController implements vscode.Disposable {
 
 		// Issue components
 		const issueCommentService = new IssueCommentService(gitCodeClient);
+		const issueOperationLogService = new IssueOperationLogService(gitCodeClient);
 		this.issueOverviewStore = new IssueOverviewStore(
 			options.authService,
 			issueService,
@@ -204,6 +208,10 @@ export class ViewController implements vscode.Disposable {
 		this.issueCommentsStore = new IssueCommentsStore(
 			options.authService,
 			issueCommentService,
+		);
+		this.issueOperationLogsStore = new IssueOperationLogsStore(
+			options.authService,
+			issueOperationLogService,
 		);
 		this.issueRelatedPrsStore = new IssueRelatedPullRequestsStore(
 			options.authService,
@@ -218,6 +226,7 @@ export class ViewController implements vscode.Disposable {
 			this.issueStore,
 			this.issueOverviewStore,
 			this.issueCommentsStore,
+			this.issueOperationLogsStore,
 			this.issueRelatedPrsStore,
 			this.overviewStore,
 			this.commentsStore,
@@ -245,6 +254,7 @@ export class ViewController implements vscode.Disposable {
 			this.fileSystemProvider,
 			this.diffCommentController,
 			operationLogsStore,
+			this.issueOperationLogsStore,
 			vscode.window.registerWebviewViewProvider(VIEW_ID_CREATE_PULL_REQUEST, createPullRequestProvider),
 			vscode.workspace.registerTextDocumentContentProvider('gitcode-pr-diff', this.patchContentProvider),
 			vscode.workspace.registerFileSystemProvider(GITCODE_PR_SCHEME, this.fileSystemProvider, {
@@ -266,6 +276,7 @@ export class ViewController implements vscode.Disposable {
 				store: this.issueStore,
 				issueOverviewStore: this.issueOverviewStore,
 				issueCommentsStore: this.issueCommentsStore,
+				issueOperationLogsStore: this.issueOperationLogsStore,
 				issueRelatedPrsStore: this.issueRelatedPrsStore,
 				prOverviewStore: this.overviewStore,
 				prCommentsStore: this.commentsStore,
@@ -290,6 +301,7 @@ export class ViewController implements vscode.Disposable {
 				this.commentsStore.clear();
 				operationLogsStore.clear();
 				this.issueCommentsStore.clear();
+				this.issueOperationLogsStore.clear();
 				this.issueRelatedPrsStore.clear();
 				this.copilotContextStore.clear();
 				this.copilotIssueContextStore.clear();

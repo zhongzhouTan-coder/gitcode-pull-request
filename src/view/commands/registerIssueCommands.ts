@@ -7,6 +7,7 @@ import { LocalGitService, issueBranchSlug } from '../../common/git/localGitServi
 import { IssueTreeStore } from '../state/issueTreeStore';
 import { IssueOverviewStore } from '../issueOverview/issueOverviewStore';
 import { IssueCommentsStore } from '../issueOverview/issueCommentsStore';
+import { IssueOperationLogsStore } from '../issueOverview/issueOperationLogsStore';
 import { IssueRelatedPullRequestsStore } from '../issueOverview/issueRelatedPullRequestsStore';
 import { IssueOverviewPanel } from '../issueOverview/issueOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
@@ -22,6 +23,7 @@ interface RegisterIssueCommandsOptions {
 	store: IssueTreeStore;
 	issueOverviewStore: IssueOverviewStore;
 	issueCommentsStore: IssueCommentsStore;
+	issueOperationLogsStore: IssueOperationLogsStore;
 	issueRelatedPrsStore: IssueRelatedPullRequestsStore;
 	prOverviewStore: PullRequestOverviewStore;
 	prCommentsStore: PullRequestCommentsStore;
@@ -220,7 +222,7 @@ async function pickIssueBranchBase(
 }
 
 export function registerIssueCommands(options: RegisterIssueCommandsOptions): vscode.Disposable {
-	const { authService, store, issueOverviewStore, issueCommentsStore, issueRelatedPrsStore, prOverviewStore, prCommentsStore, copilotIssueContextStore, repositoryContext, createIssueHelper, logger } = options;
+	const { authService, store, issueOverviewStore, issueCommentsStore, issueOperationLogsStore, issueRelatedPrsStore, prOverviewStore, prCommentsStore, copilotIssueContextStore, repositoryContext, createIssueHelper, logger } = options;
 
 	const gitService = new LocalGitService();
 
@@ -246,6 +248,7 @@ export function registerIssueCommands(options: RegisterIssueCommandsOptions): vs
 				},
 				issueOverviewStore,
 				issueCommentsStore,
+				issueOperationLogsStore,
 				issueRelatedPrsStore,
 				prOverviewStore,
 				prCommentsStore,

@@ -7,6 +7,7 @@ import { RawContentService } from '../../gitcode/services/rawContentService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { IssueOverviewPanel } from '../issueOverview/issueOverviewPanel';
 import { IssueCommentsStore } from '../issueOverview/issueCommentsStore';
+import { IssueOperationLogsStore } from '../issueOverview/issueOperationLogsStore';
 import { IssueOverviewStore } from '../issueOverview/issueOverviewStore';
 import { IssueRelatedPullRequestsStore } from '../issueOverview/issueRelatedPullRequestsStore';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
@@ -23,6 +24,7 @@ export class CreateIssueHelper {
 		private readonly issueStore: IssueTreeStore,
 		private readonly issueOverviewStore: IssueOverviewStore,
 		private readonly issueCommentsStore: IssueCommentsStore,
+		private readonly issueOperationLogsStore: IssueOperationLogsStore,
 		private readonly issueRelatedPrsStore: IssueRelatedPullRequestsStore,
 		private readonly prOverviewStore: PullRequestOverviewStore,
 		private readonly prCommentsStore: PullRequestCommentsStore,
@@ -91,6 +93,7 @@ export class CreateIssueHelper {
 				},
 				this.issueOverviewStore,
 				this.issueCommentsStore,
+				this.issueOperationLogsStore,
 				this.issueRelatedPrsStore,
 				this.prOverviewStore,
 				this.prCommentsStore,

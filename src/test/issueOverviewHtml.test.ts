@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { EditIssueOptions, IssueComment, IssueCommentsSnapshot, IssueDetail } from '../common/models';
+import { EditIssueOptions, IssueComment, IssueCommentsSnapshot, IssueDetail, IssueOperationLog, IssueOperationLogsSnapshot } from '../common/models';
 import { getIssueOverviewHtml } from '../view/issueOverview/issueOverviewHtml';
 
 suite('IssueOverviewHtml', () => {
@@ -37,6 +37,25 @@ suite('IssueOverviewHtml', () => {
 		},
 	];
 
+	const operationLogs: IssueOperationLog[] = [
+		{
+			id: '177847342',
+			content: 'add label bug',
+			actionType: 'label',
+			actor: { login: 'tangxuanya', name: 'Tang Xuanya', htmlUrl: 'https://gitcode.com/tangxuanya' },
+			createdAt: '2026-06-30T16:24:29+08:00',
+			updatedAt: '2026-06-30T16:24:29+08:00',
+		},
+		{
+			id: '177875197',
+			content: 'changed title from **old** to **new**',
+			actionType: 'title',
+			actor: { login: 'tangxuanya', htmlUrl: 'not-a-url' },
+			createdAt: 'invalid',
+			updatedAt: '2026-06-30T17:58:21+08:00',
+		},
+	];
+
 	const commentsSnapshot: IssueCommentsSnapshot = {
 		repositoryKey: 'Ascend/MindStudio-ModelSlim',
 		issueNumber: 309,
@@ -44,95 +63,146 @@ suite('IssueOverviewHtml', () => {
 		loadedAt: Date.now(),
 	};
 
-	test('renders a Conversation section with comment count', () => {
+	const operationLogsSnapshot: IssueOperationLogsSnapshot = {
+		repositoryKey: 'Ascend/MindStudio-ModelSlim',
+		issueNumber: 309,
+		logs: operationLogs,
+		loadedAt: Date.now(),
+	};
+
+	test('renders an interleaved Timeline section with combined count', () => {
 		const html = getIssueOverviewHtml({
 			detail,
 			comments: commentsSnapshot,
+			operationLogs: operationLogsSnapshot,
 			nonce: 'test-nonce',
 			includeScripts: false,
 		});
 
-		assert.match(html, /Conversation \(2\)/);
+		assert.match(html, /Timeline \(4\)/);
+		assert.ok(html.indexOf('👋 Hello!') < html.indexOf('This is <strong>markdown<\/strong> content.'));
+		assert.ok(html.indexOf('This is <strong>markdown<\/strong> content.') < html.indexOf('add label bug'));
 	});
 
-	test('renders comment bodies through markdown', () => {
+	test('renders comment bodies through markdown and keeps operation logs plain text', () => {
 		const html = getIssueOverviewHtml({
 			detail,
 			comments: commentsSnapshot,
+			operationLogs: operationLogsSnapshot,
 			nonce: 'test-nonce',
 			includeScripts: false,
 		});
 
-		// The second comment has markdown bold
 		assert.match(html, /<strong>markdown<\/strong>/);
+		assert.match(html, /changed title from \*\*old\*\* to \*\*new\*\*/);
+		assert.doesNotMatch(html, /changed title from <strong>old<\/strong>/);
 	});
 
-	test('escapes author names in comments', () => {
-		const maliciousSnapshot: IssueCommentsSnapshot = {
-			repositoryKey: 'org/repo',
-			issueNumber: 1,
-			comments: [{
-				id: '1',
-				body: 'test',
-				author: { login: '<script>alert("xss")</script>' },
-				createdAt: '2026-06-20T10:00:00+08:00',
-				updatedAt: '2026-06-20T10:00:00+08:00',
-			}],
-			loadedAt: Date.now(),
-		};
-
+	test('escapes author names in comments and log content', () => {
 		const html = getIssueOverviewHtml({
 			detail: { ...detail, body: '' },
-			comments: maliciousSnapshot,
+			comments: {
+				repositoryKey: 'org/repo',
+				issueNumber: 1,
+				comments: [{
+					id: '1',
+					body: 'test',
+					author: { login: '<script>alert("xss")</script>' },
+					createdAt: '2026-06-20T10:00:00+08:00',
+					updatedAt: '2026-06-20T10:00:00+08:00',
+				}],
+				loadedAt: Date.now(),
+			},
+			operationLogs: {
+				repositoryKey: 'org/repo',
+				issueNumber: 1,
+				logs: [{
+					id: '2',
+					content: '<img src=x onerror=alert(1)>',
+					actionType: 'label',
+					actor: { login: 'user' },
+					createdAt: '2026-06-20T10:01:00+08:00',
+					updatedAt: '2026-06-20T10:01:00+08:00',
+				}],
+				loadedAt: Date.now(),
+			},
 			nonce: 'test-nonce',
 			includeScripts: false,
 		});
 
-		// The raw script tag should not appear
 		assert.doesNotMatch(html, /<script>alert/);
 		assert.match(html, /&lt;script&gt;alert/);
+		assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
 	});
 
-	test('renders empty comments state', () => {
-		const emptySnapshot: IssueCommentsSnapshot = {
-			repositoryKey: 'org/repo',
-			issueNumber: 1,
-			comments: [],
-			loadedAt: Date.now(),
-		};
-
-		const html = getIssueOverviewHtml({
-			detail: { ...detail, body: '' },
-			comments: emptySnapshot,
+	test('renders loading and empty timeline states', () => {
+		const loadingHtml = getIssueOverviewHtml({
+			detail,
+			comments: commentsSnapshot,
 			nonce: 'test-nonce',
 			includeScripts: false,
 		});
 
-		assert.match(html, /No comments yet/);
+		assert.match(loadingHtml, /Timeline/);
+		assert.match(loadingHtml, /Loading activity/);
+
+		const emptyHtml = getIssueOverviewHtml({
+			detail,
+			comments: { repositoryKey: 'org/repo', issueNumber: 1, comments: [], loadedAt: Date.now() },
+			operationLogs: { repositoryKey: 'org/repo', issueNumber: 1, logs: [], loadedAt: Date.now() },
+			nonce: 'test-nonce',
+			includeScripts: false,
+		});
+
+		assert.match(emptyHtml, /No activity yet\./);
 	});
 
-	test('renders comments error state', () => {
-		const html = getIssueOverviewHtml({
+	test('renders comments and activity errors without hiding the other timeline entries', () => {
+		const commentsErrorHtml = getIssueOverviewHtml({
 			detail: { ...detail, body: '' },
 			commentsError: new Error('Network failure'),
+			operationLogs: operationLogsSnapshot,
 			nonce: 'test-nonce',
 			includeScripts: false,
 		});
 
-		assert.match(html, /Unable to load comments/);
+		assert.match(commentsErrorHtml, /Unable to load comments: Network failure/);
+		assert.match(commentsErrorHtml, /add label bug/);
+
+		const activityErrorHtml = getIssueOverviewHtml({
+			detail: { ...detail, body: '' },
+			comments: commentsSnapshot,
+			operationLogsError: new Error('API down'),
+			nonce: 'test-nonce',
+			includeScripts: false,
+		});
+
+		assert.match(activityErrorHtml, /Unable to load activity: API down/);
+		assert.match(activityErrorHtml, /This is <strong>markdown<\/strong> content\./);
 	});
 
-	test('renders issue detail when comments are missing', () => {
+	test('renders actor display and invalid dates safely', () => {
+		const html = getIssueOverviewHtml({
+			detail,
+			operationLogs: operationLogsSnapshot,
+			nonce: 'test-nonce',
+			includeScripts: false,
+		});
+
+		assert.match(html, /Tang Xuanya <span class="muted">@tangxuanya<\/span>/);
+		assert.match(html, /Unknown time/);
+		assert.doesNotMatch(html, /data-url="not-a-url"/);
+	});
+
+	test('renders issue detail when timeline data is still loading', () => {
 		const html = getIssueOverviewHtml({
 			detail,
 			nonce: 'test-nonce',
 			includeScripts: false,
 		});
 
-		// Issue body should be rendered
 		assert.match(html, /This is the issue body/);
-		// No conversation section should appear
-		assert.doesNotMatch(html, /Conversation/);
+		assert.match(html, /Timeline/);
 	});
 
 	test('renders comment body with escaped content', () => {
@@ -154,7 +224,6 @@ suite('IssueOverviewHtml', () => {
 			includeScripts: false,
 		});
 
-		// The markdown renderer should handle the & properly
 		assert.match(html, /Hello &amp; welcome/);
 	});
 

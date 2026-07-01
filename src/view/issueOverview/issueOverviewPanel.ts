@@ -3,10 +3,11 @@ import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../common/constants';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
-import { EditIssueInput, EditIssueOptions, EditIssueSection, GitCodeRepository, IssueCommentsSnapshot, IssueDetail, IssueRelatedPullRequestsSnapshot } from '../../common/models';
+import { EditIssueInput, EditIssueOptions, EditIssueSection, GitCodeRepository, IssueCommentsSnapshot, IssueDetail, IssueOperationLogsSnapshot, IssueRelatedPullRequestsSnapshot } from '../../common/models';
 import { getIssueErrorHtml, getIssueLoadingHtml, getIssueOverviewHtml } from './issueOverviewHtml';
 import { IssueOverviewStore } from './issueOverviewStore';
 import { IssueCommentsStore } from './issueCommentsStore';
+import { IssueOperationLogsStore } from './issueOperationLogsStore';
 import { IssueRelatedPullRequestsStore } from './issueRelatedPullRequestsStore';
 import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
@@ -191,6 +192,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		context: IssueOverviewContext,
 		store: IssueOverviewStore,
 		commentsStore: IssueCommentsStore,
+		operationLogsStore: IssueOperationLogsStore,
 		relatedPrsStore: IssueRelatedPullRequestsStore,
 		prOverviewStore: PullRequestOverviewStore,
 		prCommentsStore: PullRequestCommentsStore,
@@ -214,7 +216,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			},
 		);
 
-		panel = new IssueOverviewPanel(webviewPanel, store, commentsStore, relatedPrsStore, prOverviewStore, prCommentsStore, logger, context);
+		panel = new IssueOverviewPanel(webviewPanel, store, commentsStore, operationLogsStore, relatedPrsStore, prOverviewStore, prCommentsStore, logger, context);
 		this.panels.set(key, panel);
 		await panel.show(context);
 	}
@@ -240,6 +242,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private detail?: IssueDetail;
 	private commentsSnapshot?: IssueCommentsSnapshot;
 	private commentsError?: Error;
+	private operationLogsSnapshot?: IssueOperationLogsSnapshot;
+	private operationLogsError?: Error;
 	private relatedPullRequestsSnapshot?: IssueRelatedPullRequestsSnapshot;
 	private relatedPullRequestsError?: Error;
 	private editOptions?: EditIssueOptions;
@@ -248,6 +252,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		private readonly panel: vscode.WebviewPanel,
 		private readonly store: IssueOverviewStore,
 		private readonly commentsStore: IssueCommentsStore,
+		private readonly operationLogsStore: IssueOperationLogsStore,
 		private readonly relatedPrsStore: IssueRelatedPullRequestsStore,
 		private readonly prOverviewStore: PullRequestOverviewStore,
 		private readonly prCommentsStore: PullRequestCommentsStore,
@@ -336,6 +341,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private async refresh(): Promise<void> {
 		await this.store.refresh(this.context.repository, this.context.issueNumber);
 		await this.commentsStore.refresh(this.context.repository, this.context.issueNumber);
+		await this.operationLogsStore.refresh(this.context.repository, this.context.issueNumber);
 		await this.relatedPrsStore.refresh(this.context.repository, this.context.issueNumber);
 		await this.load(true);
 	}
@@ -345,6 +351,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.detail = undefined;
 			this.commentsSnapshot = undefined;
 			this.commentsError = undefined;
+			this.operationLogsSnapshot = undefined;
+			this.operationLogsError = undefined;
 			this.relatedPullRequestsSnapshot = undefined;
 			this.relatedPullRequestsError = undefined;
 			this.editOptions = undefined;
@@ -377,16 +385,24 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			detail: this.detail,
 			comments: this.commentsSnapshot,
 			commentsError: this.commentsError,
+			operationLogs: this.operationLogsSnapshot,
+			operationLogsError: this.operationLogsError,
 			relatedPullRequests: this.relatedPullRequestsSnapshot,
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
 			nonce: createNonce(),
 		});
 
-		const [commentsResult, relatedPullRequestsResult, editOptionsResult] = await Promise.allSettled([
-			this.commentsStore.getComments(this.context.repository, this.context.issueNumber),
-			this.relatedPrsStore.getPullRequests(this.context.repository, this.context.issueNumber),
-			this.store.getEditOptions(this.context.repository),
+		const commentsPromise = this.commentsStore.getComments(this.context.repository, this.context.issueNumber);
+		const operationLogsPromise = this.operationLogsStore.getOrFetch(this.context.repository, this.context.issueNumber);
+		const relatedPullRequestsPromise = this.relatedPrsStore.getPullRequests(this.context.repository, this.context.issueNumber);
+		const editOptionsPromise = this.store.getEditOptions(this.context.repository);
+
+		const [commentsResult, operationLogsResult, relatedPullRequestsResult, editOptionsResult] = await Promise.allSettled([
+			commentsPromise,
+			operationLogsPromise,
+			relatedPullRequestsPromise,
+			editOptionsPromise,
 		]);
 
 		if (commentsResult.status === 'fulfilled') {
@@ -398,6 +414,17 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			);
 			this.commentsError = commentsResult.reason instanceof Error ? commentsResult.reason : new Error(String(commentsResult.reason));
 			this.commentsSnapshot = undefined;
+		}
+
+		if (operationLogsResult.status === 'fulfilled') {
+			this.operationLogsSnapshot = operationLogsResult.value;
+			this.operationLogsError = undefined;
+		} else {
+			this.logger.error(
+				`Failed to load activity for issue #${this.context.issueNumber}: ${operationLogsResult.reason instanceof Error ? operationLogsResult.reason.message : String(operationLogsResult.reason)}`,
+			);
+			this.operationLogsError = operationLogsResult.reason instanceof Error ? operationLogsResult.reason : new Error(String(operationLogsResult.reason));
+			this.operationLogsSnapshot = undefined;
 		}
 
 		if (relatedPullRequestsResult.status === 'fulfilled') {
@@ -424,6 +451,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			detail: this.detail,
 			comments: this.commentsSnapshot,
 			commentsError: this.commentsError,
+			operationLogs: this.operationLogsSnapshot,
+			operationLogsError: this.operationLogsError,
 			relatedPullRequests: this.relatedPullRequestsSnapshot,
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
@@ -455,6 +484,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			vscode.window.showInformationMessage(`GitCode issue #${this.context.issueNumber} updated`);
 
 			await this.commentsStore.refresh(this.context.repository, this.context.issueNumber);
+			await this.operationLogsStore.refresh(this.context.repository, this.context.issueNumber);
 			await this.relatedPrsStore.refresh(this.context.repository, this.context.issueNumber);
 			const treeStore = IssueOverviewPanel.treeStore;
 			if (treeStore) {
@@ -465,6 +495,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			this.commentsSnapshot = undefined;
 			this.commentsError = undefined;
+			this.operationLogsSnapshot = undefined;
+			this.operationLogsError = undefined;
 			this.relatedPullRequestsSnapshot = undefined;
 			this.relatedPullRequestsError = undefined;
 			this.editOptions = undefined;
@@ -555,6 +587,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			);
 
 			await this.commentsStore.refresh(this.context.repository, this.context.issueNumber);
+			await this.operationLogsStore.refresh(this.context.repository, this.context.issueNumber);
 			await this.relatedPrsStore.refresh(this.context.repository, this.context.issueNumber);
 			const treeStore = IssueOverviewPanel.treeStore;
 			if (treeStore) {
@@ -565,6 +598,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			this.commentsSnapshot = undefined;
 			this.commentsError = undefined;
+			this.operationLogsSnapshot = undefined;
+			this.operationLogsError = undefined;
 			this.relatedPullRequestsSnapshot = undefined;
 			this.relatedPullRequestsError = undefined;
 			this.editOptions = undefined;

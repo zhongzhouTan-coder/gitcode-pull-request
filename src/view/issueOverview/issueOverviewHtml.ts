@@ -4,6 +4,8 @@ import {
 	IssueCommentsSnapshot,
 	IssueDetail,
 	IssueLabel,
+	IssueOperationLog,
+	IssueOperationLogsSnapshot,
 	IssueRelatedPullRequest,
 	IssueRelatedPullRequestsSnapshot,
 	IssueUser,
@@ -39,6 +41,28 @@ function formatDate(value: string | undefined): string {
 
 	const date = new Date(value);
 	return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatActivityDate(value: string | undefined): string {
+	if (!value) {
+		return 'Unknown time';
+	}
+
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? 'Unknown time' : date.toLocaleString();
+}
+
+function isSafeHttpUrl(value: string | undefined): boolean {
+	if (!value) {
+		return false;
+	}
+
+	try {
+		const url = new URL(value);
+		return url.protocol === 'http:' || url.protocol === 'https:';
+	} catch {
+		return false;
+	}
 }
 
 function labelColor(color: string | undefined): string {
@@ -301,6 +325,8 @@ export interface IssueOverviewHtmlOptions {
 	detail: IssueDetail;
 	comments?: IssueCommentsSnapshot;
 	commentsError?: Error;
+	operationLogs?: IssueOperationLogsSnapshot;
+	operationLogsError?: Error;
 	relatedPullRequests?: IssueRelatedPullRequestsSnapshot;
 	relatedPullRequestsError?: Error;
 	editOptions?: EditIssueOptions;
@@ -327,30 +353,117 @@ function renderCommentAuthor(author: IssueComment['author']): string {
 	const display = author.name && author.name !== author.login
 		? `${escapeHtml(author.name)} (@${escapeHtml(author.login)})`
 		: `@${escapeHtml(author.login)}`;
-	if (author.htmlUrl) {
-		return `<button class="participant-btn" data-action="openUrl" data-url="${escapeHtml(author.htmlUrl)}" title="${escapeHtml(author.login)}">${display}</button>`;
+	if (isSafeHttpUrl(author.htmlUrl)) {
+		return `<button class="participant-btn" data-action="openUrl" data-url="${escapeHtml(author.htmlUrl ?? '')}" title="${escapeHtml(author.login)}">${display}</button>`;
 	}
 	return `<span>${display}</span>`;
 }
 
-function renderIssueComment(comment: IssueComment): string {
+function renderActorDisplay(actor: IssueOperationLog['actor']): string {
+	if (actor.name && actor.name !== actor.login) {
+		return `${escapeHtml(actor.name)} <span class="muted">@${escapeHtml(actor.login)}</span>`;
+	}
+
+	return `@${escapeHtml(actor.login)}`;
+}
+
+function renderTimelineActor(actor: IssueOperationLog['actor']): string {
+	const display = renderActorDisplay(actor);
+	if (isSafeHttpUrl(actor.htmlUrl)) {
+		return `<button class="participant-btn timeline-actor" data-action="openUrl" data-url="${escapeHtml(actor.htmlUrl ?? '')}" title="${escapeHtml(actor.login)}">${display}</button>`;
+	}
+
+	return `<span class="timeline-actor">${display}</span>`;
+}
+
+function renderIssueCommentTimelineItem(comment: IssueComment): string {
 	const bodyHtml = comment.body
 		? renderMarkdown(comment.body)
 		: '<div class="empty">No comment body provided.</div>';
 
 	const updated = comment.updatedAt && comment.updatedAt !== comment.createdAt
-		? `<span class="comment-edited" title="Edited ${escapeHtml(formatDate(comment.updatedAt))}">· Edited</span>`
+		? `<span class="comment-edited" title="Edited ${escapeHtml(formatActivityDate(comment.updatedAt))}">· Edited</span>`
 		: '';
 
-	return `<div class="comment">
+	return `<div class="comment timeline-item timeline-comment">
 	<div class="comment-header">
 		${renderCommentAvatar(comment.author)}
 		${renderCommentAuthor(comment.author)}
-		<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
+		<span class="comment-time">${escapeHtml(formatActivityDate(comment.createdAt))}</span>
 		${updated}
 	</div>
 	<div class="comment-body description">${bodyHtml}</div>
 </div>`;
+}
+
+function renderIssueOperationLogAvatar(actor: IssueOperationLog['actor']): string {
+	const initial = (actor.name || actor.login)[0]?.toUpperCase() || '?';
+	return `<span class="avatar-initials timeline-avatar">${escapeHtml(initial)}</span>`;
+}
+
+function renderIssueOperationLogTimelineItem(log: IssueOperationLog): string {
+	return `<div class="timeline-item timeline-activity">
+		<div class="timeline-header">
+			${renderIssueOperationLogAvatar(log.actor)}
+			${renderTimelineActor(log.actor)}
+			<span class="comment-time">${escapeHtml(formatActivityDate(log.createdAt))}</span>
+		</div>
+		<div class="timeline-activity-body">
+			<span class="timeline-activity-content">${escapeHtml(log.content)}</span>
+			<span class="timeline-activity-badge">${escapeHtml(log.actionType || 'activity')}</span>
+		</div>
+	</div>`;
+}
+
+type IssueTimelineEntry =
+	| { kind: 'comment'; id: string; createdAt: string; comment: IssueComment }
+	| { kind: 'log'; id: string; createdAt: string; log: IssueOperationLog };
+
+function compareEntryIds(a: string, b: string): number {
+	const numberA = Number(a);
+	const numberB = Number(b);
+
+	if (!Number.isNaN(numberA) && !Number.isNaN(numberB) && numberA !== numberB) {
+		return numberA - numberB;
+	}
+
+	return 0;
+}
+
+function mergeIssueTimelineEntries(
+	comments: readonly IssueComment[] | undefined,
+	logs: readonly IssueOperationLog[] | undefined,
+): readonly IssueTimelineEntry[] {
+	const entries: IssueTimelineEntry[] = [
+		...(comments ?? []).map((comment) => ({
+			kind: 'comment' as const,
+			id: comment.id,
+			createdAt: comment.createdAt,
+			comment,
+		})),
+		...(logs ?? []).map((log) => ({
+			kind: 'log' as const,
+			id: log.id,
+			createdAt: log.createdAt,
+			log,
+		})),
+	];
+
+	return entries.sort((a, b) => {
+		const dateA = new Date(a.createdAt).getTime();
+		const dateB = new Date(b.createdAt).getTime();
+		const hasValidDates = !Number.isNaN(dateA) && !Number.isNaN(dateB);
+
+		if (hasValidDates && dateA !== dateB) {
+			return dateA - dateB;
+		}
+
+		if (a.kind !== b.kind) {
+			return a.kind === 'comment' ? -1 : 1;
+		}
+
+		return compareEntryIds(a.id, b.id);
+	});
 }
 
 function prStateLabel(state: 'open' | 'closed' | 'merged'): string {
@@ -440,48 +553,62 @@ function renderCommentComposer(): string {
 </form>`;
 }
 
-function renderConversation(
+function renderTimeline(
 	comments: readonly IssueComment[] | undefined,
+	operationLogs: readonly IssueOperationLog[] | undefined,
 	commentsError: Error | undefined,
+	operationLogsError: Error | undefined,
 ): string {
 	const composerHtml = renderCommentComposer();
+	const entries = mergeIssueTimelineEntries(comments, operationLogs);
+	const showCount = comments !== undefined && operationLogs !== undefined;
+	const heading = showCount ? `Timeline (${entries.length})` : 'Timeline';
+	const body: string[] = [];
+
+	if (entries.length > 0) {
+		body.push(entries.map((entry) => entry.kind === 'comment'
+			? renderIssueCommentTimelineItem(entry.comment)
+			: renderIssueOperationLogTimelineItem(entry.log)).join(''));
+	}
 
 	if (commentsError) {
-		return `<section>
-	<h2>Conversation</h2>
-	<div class="error">Unable to load comments</div>
-	${composerHtml}
-</section>`;
+		body.push(`<div class="error">Unable to load comments${commentsError.message ? `: ${escapeHtml(commentsError.message)}` : ''}</div>`);
 	}
 
-	if (!comments) {
-		return '';
+	if (operationLogsError) {
+		body.push(`<div class="error">Unable to load activity${operationLogsError.message ? `: ${escapeHtml(operationLogsError.message)}` : ''}</div>`);
 	}
 
-	if (comments.length === 0) {
-		return `<section>
-	<h2>Conversation</h2>
-	<div class="empty">No comments yet</div>
-	${composerHtml}
-</section>`;
+	if (!commentsError && !operationLogsError && entries.length === 0) {
+		if (comments === undefined || operationLogs === undefined) {
+			body.push('<div class="timeline-status muted">Loading activity...</div>');
+		} else {
+			body.push('<div class="empty">No activity yet.</div>');
+		}
+	} else if (!operationLogsError && operationLogs === undefined) {
+		body.push('<div class="timeline-status muted">Loading activity...</div>');
 	}
-
-	// Sort by createdAt ascending, oldest first
-	const sorted = [...comments].sort((a, b) => {
-		if (a.createdAt < b.createdAt) { return -1; }
-		if (a.createdAt > b.createdAt) { return 1; }
-		return 0;
-	});
 
 	return `<section>
-	<h2>Conversation (${sorted.length})</h2>
-	${sorted.map(renderIssueComment).join('')}
+	<h2>${heading}</h2>
+	${body.join('')}
 	${composerHtml}
 </section>`;
 }
 
 export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string {
-	const { detail, comments, commentsError, relatedPullRequests, relatedPullRequestsError, editOptions, nonce, includeScripts = true } = options;
+	const {
+		detail,
+		comments,
+		commentsError,
+		operationLogs,
+		operationLogsError,
+		relatedPullRequests,
+		relatedPullRequestsError,
+		editOptions,
+		nonce,
+		includeScripts = true,
+	} = options;
 
 	const descriptionHtml = detail.body
 		? renderMarkdown(detail.body)
@@ -516,9 +643,11 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		extraBadges.push(`<span class="badge badge-type">${escapeHtml(detail.issueType)}</span>`);
 	}
 
-	const conversationHtml = renderConversation(
+	const timelineHtml = renderTimeline(
 		comments?.comments,
+		operationLogs?.logs,
 		commentsError,
+		operationLogsError,
 	);
 
 	const relatedPrsHtml = renderRelatedPullRequests(
@@ -949,12 +1078,55 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.merge-ok { color: var(--badge-open); }
 		.merge-blocked { color: var(--badge-closed); }
 		.badge-merged { background: #8250df; }
-		.comment {
+		.timeline-item {
 			border-top: 1px solid var(--border);
 			padding: 12px 0;
 		}
-		.comment:first-of-type {
+		.timeline-item:first-of-type {
 			border-top: none;
+		}
+		.timeline-header {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 6px;
+			margin-bottom: 8px;
+			color: var(--muted);
+			font-size: 13px;
+		}
+		.timeline-avatar {
+			flex: 0 0 auto;
+		}
+		.timeline-actor {
+			padding: 0;
+		}
+		.timeline-activity-body {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			padding-left: 34px;
+		}
+		.timeline-activity-content {
+			flex: 1;
+			overflow-wrap: anywhere;
+		}
+		.timeline-activity-badge {
+			display: inline-flex;
+			align-items: center;
+			padding: 2px 8px;
+			border-radius: 999px;
+			border: 1px solid var(--border);
+			font-size: 11px;
+			text-transform: lowercase;
+			color: var(--muted);
+			white-space: nowrap;
+		}
+		.timeline-status {
+			padding: 8px 0;
+		}
+		.comment {
+			padding: 12px 0;
 		}
 		.comment-avatar {
 			width: 28px;
@@ -1075,7 +1247,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 					<div class="section-error" data-section-error="body"></div>
 				</section>
 				${relatedPrsHtml}
-				${conversationHtml}
+				${timelineHtml}
 			</main>
 			<aside>
 				${renderSidebar(detail, editOptions)}

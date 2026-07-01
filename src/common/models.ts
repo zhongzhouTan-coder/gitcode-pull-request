@@ -363,6 +363,30 @@ export interface IssueCommentsSnapshot {
 	loadedAt: number;
 }
 
+export interface IssueOperationLogActor {
+	id?: string;
+	login: string;
+	name?: string;
+	htmlUrl?: string;
+}
+
+export interface IssueOperationLog {
+	id: string;
+	content: string;
+	actionType: string;
+	issueId?: string;
+	actor: IssueOperationLogActor;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface IssueOperationLogsSnapshot {
+	repositoryKey: string;
+	issueNumber: number;
+	logs: readonly IssueOperationLog[];
+	loadedAt: number;
+}
+
 export interface CreateIssueCommentInput {
 	body: string;
 }
