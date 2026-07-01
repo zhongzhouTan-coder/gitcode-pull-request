@@ -7,9 +7,13 @@ import { mapCreatePullRequestInput, mapCreatedPullRequest, mapEditPullRequestInp
 import { mapPullRequestRelatedIssues } from '../mappers/pullRequestRelatedIssueMapper';
 
 export interface PullRequestFilters {
-	state?: 'open' | 'closed';
+	state?: 'open' | 'closed' | 'all';
 	perPage?: number;
+	page?: number;
 	base?: string;
+	sort?: 'created' | 'updated';
+	direction?: 'asc' | 'desc';
+	author?: string;
 }
 
 export class PullRequestService {
@@ -21,7 +25,11 @@ export class PullRequestService {
 			{
 				state: filters.state ?? 'open',
 				per_page: filters.perPage,
+				page: filters.page,
 				base: filters.base,
+				sort: filters.sort,
+				direction: filters.direction,
+				author: filters.author,
 			},
 		);
 

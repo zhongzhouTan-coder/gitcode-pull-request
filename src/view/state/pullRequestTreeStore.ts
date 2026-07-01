@@ -7,7 +7,7 @@ import { GitCodeRepository, PullRequestFileChange, PullRequestSummary } from '..
 import { GitCodeRepositoryResolver } from '../../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 
-export type PullRequestCategoryKey = 'allOpen';
+export type PullRequestCategoryKey = 'allOpen' | 'createdByMe';
 
 export interface PullRequestCategoryState {
 	key: PullRequestCategoryKey;
@@ -64,6 +64,11 @@ export class PullRequestTreeStore {
 				label: 'All Open',
 				repository,
 			},
+			{
+				key: 'createdByMe',
+				label: 'Created By Me',
+				repository,
+			},
 		];
 	}
 
@@ -76,17 +81,25 @@ export class PullRequestTreeStore {
 			throw new NotSignedInError('Sign in to GitCode first.');
 		}
 
-		const listKey = this.getPullRequestListKey(repository, category);
+		const listKey = this.getPullRequestListKey(repository, category, session.accountName);
 		const existingPromise = this.pullRequestListPromises.get(listKey);
 		if (existingPromise) {
 			return existingPromise;
 		}
 
+		const filters: Parameters<typeof this.pullRequestService.listPullRequests>[1] = {
+			state: 'open',
+			sort: 'updated',
+			direction: 'desc',
+			perPage: this.configuration.getPullRequestPageSize(),
+		};
+
+		if (category === 'createdByMe') {
+			filters.author = session.accountName;
+		}
+
 		const requestPromise = this.pullRequestService
-			.listPullRequests(repository, {
-				state: 'open',
-				perPage: this.configuration.getPullRequestPageSize(),
-			})
+			.listPullRequests(repository, filters)
 			.catch((error) => {
 				this.pullRequestListPromises.delete(listKey);
 				throw error;
@@ -230,7 +243,7 @@ export class PullRequestTreeStore {
 		return `${repository.fullName}#${pullRequestNumber}:files`;
 	}
 
-	private getPullRequestListKey(repository: GitCodeRepository, category: PullRequestCategoryKey): string {
-		return `${repository.fullName}:${category}`;
+	private getPullRequestListKey(repository: GitCodeRepository, category: PullRequestCategoryKey, accountName: string): string {
+		return `${repository.fullName}:${category}:${accountName}`;
 	}
 }

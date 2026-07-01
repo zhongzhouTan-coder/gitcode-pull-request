@@ -33,12 +33,30 @@ export class PullRequestCategoryNode extends BaseNode {
 		try {
 			const pullRequests = await this.store.getPullRequests(this.repository, this.categoryKey);
 			if (!pullRequests.length) {
-				return [new EmptyStateNode('No open pull requests', undefined, undefined, this)];
+				return [new EmptyStateNode(this.getEmptyLabel(), undefined, undefined, this)];
 			}
 
-			return pullRequests.map((pullRequest) => new PullRequestNode(this.repository, pullRequest, this.store, this.layoutSupplier, this));
+			return pullRequests.map(
+				(pullRequest) => new PullRequestNode(
+					this.repository,
+					this.categoryKey,
+					pullRequest,
+					this.store,
+					this.layoutSupplier,
+					this,
+				),
+			);
 		} catch (error) {
 			return [this.toErrorNode(error)];
+		}
+	}
+
+	private getEmptyLabel(): string {
+		switch (this.categoryKey) {
+			case 'createdByMe':
+				return 'No pull requests created by you';
+			default:
+				return 'No open pull requests';
 		}
 	}
 

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../../common/constants';
 import { GitCodeRepository, PullRequestSummary } from '../../../common/models';
-import { PullRequestTreeStore } from '../../state/pullRequestTreeStore';
+import { PullRequestCategoryKey, PullRequestTreeStore } from '../../state/pullRequestTreeStore';
 import { BaseNode } from './baseNode';
 import { PullRequestFilesNode } from './pullRequestFilesNode';
 
@@ -16,13 +16,14 @@ export class PullRequestNode extends BaseNode {
 
 	constructor(
 		repository: GitCodeRepository,
+		categoryKey: PullRequestCategoryKey,
 		private readonly pullRequest: PullRequestSummary,
 		private readonly store: PullRequestTreeStore,
 		private readonly layoutSupplier: () => 'tree' | 'flat',
 		parent?: BaseNode,
 	) {
 		super(parent);
-		this.id = `pullRequest:${repository.fullName}:${pullRequest.number}`;
+		this.id = `pullRequest:${repository.fullName}:${categoryKey}:${pullRequest.number}`;
 		this.context = { repository, pullRequest };
 	}
 
