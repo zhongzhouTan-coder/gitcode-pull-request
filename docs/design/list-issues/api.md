@@ -16,13 +16,14 @@ GET https://api.gitcode.com/api/v5/repos/:owner/:repo/issues
 
 ## Query Parameters
 - `access_token`: (Required) The access token for authentication.
-- `state`: (Optional) The state of the issues to return. Can be either `open`, `closed`, or `all`. Default is `open`.
+- `state`: (Optional) Issue state: open, closed, or all. Default is all.
 - `labels`: (Optional) A list of comma-separated label names. Example: `bug,enhancement`.
-- `sort`: (Optional) The property to sort the issues by. Can be either `created`, `updated`, or `comments`. Default is `created`.
-- `direction`: (Optional) The direction to sort the issues. Can be either `asc` or `desc`. Default is `desc`.
-- `since`: (Optional) Only issues updated at or after this time are returned. This is a timestamp in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`. Example: `2021-01-01T00:00:00Z`.
+- `sort`: (Optional) Sorting criterion: creation time (created), update time (updated). Default: created
+- `direction`: (Optional) Sort order: asc for ascending, desc for descending. Default: desc
 - `per_page`: (Optional) The number of issues to return per page. Default is 20. Maximum is 100.
 - `page`: (Optional) The page number of the results to return. Default is 1.
+- `assignee`: (Optional) Issue Assignee ID
+- `creator`: (Optional) The username of the user who creates the Issues
 
 ## Example Request
 

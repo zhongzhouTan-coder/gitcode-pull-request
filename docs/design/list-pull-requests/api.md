@@ -11,15 +11,23 @@ GET https://api.gitcode.com/api/v5/repos/:owner/:repo/pulls
 ```
 
 ## Path Variables
+
 - `owner`: Repository Owner Path (Organization or User Path).
 - `repo`: 	Repository Path(path).
 
 ## Query Parameters
+
 - `access_token`: (Required) The access token for authentication.
 - `state`: (Optional) Pull Request status: all, open, closed, locked, merged. Default: all.
 - `base`: (Optional) The name of the target branch for the Pull Request submission.
 - `page`: (Optional) Current Page Number，default:1, default:1.
 - `per_page`: (Optional) Items Per Page, Maximum 100,default:20,default:20.
+- `labels`: (Optional) A comma-separated list of labels. Such as: bug, performance.
+- `direction`: (Optional) Ascending or descending. Default: desc (asc or desc)
+- `sort`: (Optional) Sort field: created, updated Default: created
+- `assignee`: (Optional) Pull Request assignee.
+- `reviewer`: (Optional) Pull Request reviewer.
+- `author`: (Optional) Username of the PR creator
 
 ## Example Request
 

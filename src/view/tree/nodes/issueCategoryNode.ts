@@ -32,12 +32,23 @@ export class IssueCategoryNode extends BaseNode {
 		try {
 			const issues = await this.store.getIssues(this.repository, this.categoryKey);
 			if (!issues.length) {
-				return [new EmptyStateNode('No open issues', undefined, undefined, this)];
+				return [new EmptyStateNode(this.emptyLabel, undefined, undefined, this)];
 			}
 
 			return issues.map((issue) => new IssueNode(this.repository, issue, this));
 		} catch (error) {
 			return [this.toErrorNode(error)];
+		}
+	}
+
+	private get emptyLabel(): string {
+		switch (this.categoryKey) {
+			case 'myIssues':
+				return 'No issues assigned to you';
+			case 'createdIssues':
+				return 'No issues created by you';
+			case 'recentIssues':
+				return 'No recent open issues';
 		}
 	}
 

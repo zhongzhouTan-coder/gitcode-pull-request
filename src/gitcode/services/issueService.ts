@@ -10,6 +10,8 @@ export interface IssueFilters {
 	direction?: 'asc' | 'desc';
 	perPage?: number;
 	page?: number;
+	assignee?: string;
+	creator?: string;
 }
 
 export class IssueService {
@@ -42,6 +44,8 @@ export class IssueService {
 				direction: filters.direction ?? 'desc',
 				per_page: filters.perPage,
 				page: filters.page,
+				assignee: filters.assignee,
+				creator: filters.creator,
 			},
 		);
 

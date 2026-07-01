@@ -7,7 +7,7 @@ import { GitCodeRepository, IssueSummary } from '../../common/models';
 import { GitCodeRepositoryResolver } from '../../gitcode/resolver/gitcodeRepositoryResolver';
 import { IssueService } from '../../gitcode/services/issueService';
 
-export type IssueCategoryKey = 'allOpen';
+export type IssueCategoryKey = 'myIssues' | 'createdIssues' | 'recentIssues';
 
 export interface IssueCategoryState {
 	key: IssueCategoryKey;
@@ -58,8 +58,18 @@ export class IssueTreeStore {
 	getCategories(repository: GitCodeRepository): IssueCategoryState[] {
 		return [
 			{
-				key: 'allOpen',
-				label: 'All Open',
+				key: 'myIssues',
+				label: 'My Issues',
+				repository,
+			},
+			{
+				key: 'createdIssues',
+				label: 'Created Issues',
+				repository,
+			},
+			{
+				key: 'recentIssues',
+				label: 'Recent Issues',
 				repository,
 			},
 		];
@@ -74,19 +84,16 @@ export class IssueTreeStore {
 			throw new NotSignedInError('Sign in to GitCode first.');
 		}
 
-		const listKey = this.getIssueListKey(repository, category);
+		const listKey = this.getIssueListKey(repository, category, session.accountName);
 		const existingPromise = this.issueListPromises.get(listKey);
 		if (existingPromise) {
 			return existingPromise;
 		}
 
+		const filters = this.buildCategoryFilters(category, session.accountName);
+
 		const requestPromise = this.issueService
-			.listIssues(repository, {
-				state: 'open',
-				sort: 'updated',
-				direction: 'desc',
-				perPage: this.configuration.getIssuesPageSize(),
-			})
+			.listIssues(repository, filters)
 			.catch((error) => {
 				this.issueListPromises.delete(listKey);
 				throw error;
@@ -94,6 +101,34 @@ export class IssueTreeStore {
 
 		this.issueListPromises.set(listKey, requestPromise);
 		return requestPromise;
+	}
+
+	private buildCategoryFilters(
+		category: IssueCategoryKey,
+		accountName: string,
+	): {
+		state: 'open';
+		sort: 'updated';
+		direction: 'desc';
+		perPage: number;
+		assignee?: string;
+		creator?: string;
+	} {
+		const base = {
+			state: 'open' as const,
+			sort: 'updated' as const,
+			direction: 'desc' as const,
+			perPage: this.configuration.getIssuesPageSize(),
+		};
+
+		switch (category) {
+			case 'myIssues':
+				return { ...base, assignee: accountName };
+			case 'createdIssues':
+				return { ...base, creator: accountName };
+			case 'recentIssues':
+				return { ...base };
+		}
 	}
 
 	async refreshAll(): Promise<void> {
@@ -187,7 +222,7 @@ export class IssueTreeStore {
 		await new Promise((resolve) => setTimeout(resolve, milliseconds));
 	}
 
-	private getIssueListKey(repository: GitCodeRepository, category: IssueCategoryKey): string {
-		return `${repository.fullName}:${category}`;
+	private getIssueListKey(repository: GitCodeRepository, category: IssueCategoryKey, accountName: string): string {
+		return `${repository.fullName}:${category}:${accountName}`;
 	}
 }

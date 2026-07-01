@@ -63,6 +63,34 @@ suite('IssueService', () => {
 		assert.strictEqual(result.htmlUrl, 'https://gitcode.com/org/repo/issues/1');
 	});
 
+	test('listIssues passes assignee and creator filters as query parameters', async () => {
+		let requestPath = '';
+		let requestQuery: Record<string, unknown> | undefined;
+		const service = new IssueService({
+			get: async (path: string, query?: Record<string, unknown>) => {
+				requestPath = path;
+				requestQuery = query;
+				return [];
+			},
+			post: async () => undefined as never,
+			patch: async () => undefined as never,
+		} as any);
+
+		// My Issues: assignee filter
+		await service.listIssues(repository, { state: 'open', assignee: 'alice' });
+		assert.strictEqual(requestPath, '/api/v5/repos/org/repo/issues');
+		assert.strictEqual(requestQuery?.assignee, 'alice');
+
+		// Created Issues: creator filter
+		await service.listIssues(repository, { state: 'open', creator: 'bob' });
+		assert.strictEqual(requestQuery?.creator, 'bob');
+
+		// Recent Issues: no user filter
+		await service.listIssues(repository, { state: 'open' });
+		assert.strictEqual(requestQuery?.assignee, undefined);
+		assert.strictEqual(requestQuery?.creator, undefined);
+	});
+
 	test('editIssue sends the documented endpoint and request body', async () => {
 		let requestPath = '';
 		let requestBody: unknown;
