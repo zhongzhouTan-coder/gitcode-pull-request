@@ -244,13 +244,60 @@ suite('OverviewHtml', () => {
 
 		assert.match(html, /<div class="comment-review-status" aria-label="Review status: Resolved">[\s\S]*<span class="comment-toggle-label">Review status<\/span>[\s\S]*<input type="checkbox" class="comment-toggle-input" data-action="revisePullRequestCommentStatus" data-discussion-id="discussion-1" data-resolved="false" checked>[\s\S]*<span class="comment-toggle-state">Resolved<\/span>/);
 		assert.match(html, /<div class="comment-review-status" aria-label="Review status: Unresolved">[\s\S]*<span class="comment-toggle-label">Review status<\/span>[\s\S]*<input type="checkbox" class="comment-toggle-input" data-action="revisePullRequestCommentStatus" data-discussion-id="discussion-3" data-resolved="true" >[\s\S]*<span class="comment-toggle-state">Unresolved<\/span>/);
-		assert.match(html, /Code comment · <span class="comment-file">src\/example\.ts<\/span> · line 24/);
-		assert.match(html, /Code comment · <span class="comment-file">src\/example\.ts<\/span> · line 31/);
+		assert.match(html, /Code comment · <button class="comment-file comment-file-link" data-action="openDiffComment" data-path="src\/example\.ts" data-line="24" title="Open diff at line 24">src\/example\.ts<\/button> · line 24/);
+		assert.match(html, /Code comment · <button class="comment-file comment-file-link" data-action="openDiffComment" data-path="src\/example\.ts" data-line="31" title="Open diff at line 31">src\/example\.ts<\/button> · line 31/);
+		assert.match(html, /command: 'openDiffComment'/);
+		assert.match(html, /path: el\.dataset\.path/);
+		assert.match(html, /line: Number\(el\.dataset\.line\)/);
 		assert.match(html, /badge badge-outdated">Outdated<\/span>/);
 		assert.strictEqual(html.match(/comment-toggle-state">Resolved<\/span>/g)?.length, 1);
 		assert.strictEqual(html.match(/comment-toggle-state">Unresolved<\/span>/g)?.length, 1);
 		assert.strictEqual(html.match(/class="comment-toggle-input"/g)?.length, 2);
 		assert.strictEqual(html.match(/badge badge-resolved">Resolved<\/span>/g)?.length ?? 0, 0);
 		assert.strictEqual(html.match(/badge badge-unresolved">Unresolved<\/span>/g)?.length ?? 0, 0);
+	});
+
+	test('renders diff context for diff comments when provided', () => {
+		const snapshot: PullRequestCommentsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			loadedAt: Date.now(),
+			comments: [{
+				kind: 'diff',
+				id: 'comment-1',
+				discussionId: 'discussion-1',
+				body: 'Needs a null check.',
+				author: { id: '1', login: 'alice' },
+				createdAt: '2026-06-20T10:00:00+08:00',
+				updatedAt: '2026-06-20T10:00:00+08:00',
+				replies: [],
+				resolved: false,
+				isOutdated: false,
+				location: {
+					path: 'src/example.ts',
+					side: 'head',
+					startLine: 24,
+					endLine: 24,
+					positionType: 'text',
+				},
+			}],
+		};
+		const contexts = new Map([[
+			'comment-1',
+			{
+				commentId: 'comment-1',
+				lines: [
+					{ kind: 'delete' as const, oldLine: 23, content: 'return value;', isCommentLine: false },
+					{ kind: 'add' as const, newLine: 24, content: 'return value ?? fallback;', isCommentLine: true },
+				],
+			},
+		]]);
+
+		const html = getOverviewWithCommentsHtml(detail, snapshot, 'nonce', undefined, undefined, contexts);
+
+		assert.match(html, /class="comment-diff" aria-label="Diff context"/);
+		assert.match(html, /comment-diff-row-delete/);
+		assert.match(html, /comment-diff-row-add comment-diff-row-comment/);
+		assert.match(html, /return value \?\? fallback;/);
 	});
 });

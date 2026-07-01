@@ -6,10 +6,12 @@ import { Logger } from '../../common/logger';
 import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
+import { PullRequestDiffController } from '../diff/pullRequestDiffController';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
+import { buildDiffCommentContexts } from './diffCommentContext';
 
 interface PullRequestOverviewContext {
 	repository: GitCodeRepository;
@@ -90,6 +92,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private static repositoryService: RepositoryService | undefined;
 	private static pullRequestService: PullRequestService | undefined;
 	private static treeStore: PullRequestTreeStore | undefined;
+	private static diffController: PullRequestDiffController | undefined;
 
 	static setEditDependencies(
 		repositoryService: RepositoryService,
@@ -99,6 +102,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		this.repositoryService = repositoryService;
 		this.pullRequestService = pullRequestService;
 		this.treeStore = treeStore;
+	}
+
+	static setDiffDependencies(diffController: PullRequestDiffController): void {
+		this.diffController = diffController;
 	}
 
 	static async createOrShow(
@@ -195,6 +202,8 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			state?: string;
 			discussionId?: string;
 			resolved?: boolean;
+			path?: string;
+			line?: number | string;
 		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
@@ -213,6 +222,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'revisePullRequestCommentStatus' && typeof message.discussionId === 'string' && typeof message.resolved === 'boolean') {
 				await this.handleRevisePullRequestCommentStatus(message.discussionId, message.resolved);
+				return;
+			}
+
+			if (message.command === 'openDiffComment' && typeof message.path === 'string') {
+				await this.handleOpenDiffComment(message.path, Number(message.line));
 				return;
 			}
 
@@ -369,7 +383,20 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Build comments HTML
 		if (commentsSnapshot) {
-			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions);
+			let diffContexts;
+			const treeStore = PullRequestOverviewPanel.treeStore;
+			if (treeStore) {
+				try {
+					const files = await treeStore.getPullRequestFiles(this.context.repository, this.context.pullRequestNumber);
+					diffContexts = buildDiffCommentContexts(commentsSnapshot, files);
+				} catch (error) {
+					this.logger.debug(
+						`Failed to load diff context for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
+
+			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts);
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
 			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions);
@@ -564,5 +591,33 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		// On success, reload to show refreshed comments from the store
 		this.commentsSnapshot = undefined;
 		await this.load(true);
+	}
+
+	private async handleOpenDiffComment(path: string, line: number): Promise<void> {
+		const treeStore = PullRequestOverviewPanel.treeStore;
+		const diffController = PullRequestOverviewPanel.diffController;
+		if (!treeStore || !diffController) {
+			return;
+		}
+
+		try {
+			const files = await treeStore.getPullRequestFiles(this.context.repository, this.context.pullRequestNumber);
+			const file = files.find((candidate) => candidate.path === path || candidate.previousPath === path);
+			if (!file) {
+				await vscode.window.showWarningMessage(`Cannot find ${path} in pull request files.`);
+				return;
+			}
+
+			await diffController.openDiff(
+				this.context.repository,
+				this.context.pullRequestNumber,
+				file,
+				{ line: Number.isFinite(line) ? line : undefined },
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to open pull request diff.';
+			this.logger.error(`Failed to open diff comment location for PR #${this.context.pullRequestNumber}: ${message}`);
+			await vscode.window.showErrorMessage(message);
+		}
 	}
 }

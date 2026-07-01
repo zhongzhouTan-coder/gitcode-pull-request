@@ -12,6 +12,7 @@ import {
 	PullRequestRelatedIssue,
 	PullRequestRelatedIssuesSnapshot,
 } from '../../common/models';
+import { DiffCommentContext } from './diffCommentContext';
 import { renderMarkdown } from '../webview/markdown';
 
 function escapeHtml(value: string): string {
@@ -214,9 +215,9 @@ function hasEditedMarker(comment: { createdAt: string; updatedAt: string }): boo
 }
 
 function renderDiffCommentLocation(comment: PullRequestDiffComment): string {
-	const parts: string[] = [];
+	const parts: string[] = ['Code comment'];
 	if (comment.location.path) {
-		parts.push(`<span class="comment-file">${escapeHtml(comment.location.path)}</span>`);
+		parts.push(`<button class="comment-file comment-file-link" data-action="openDiffComment" data-path="${escapeAttr(comment.location.path)}" data-line="${comment.location.startLine}" title="Open diff at line ${comment.location.startLine}">${escapeHtml(comment.location.path)}</button>`);
 	}
 	parts.push(`line ${comment.location.startLine}`);
 	if (comment.location.endLine !== comment.location.startLine) {
@@ -285,11 +286,11 @@ function renderConversationReplies(replies: PullRequestCommentReply[]): string {
 	`).join('');
 }
 
-function renderConversationComment(comment: PullRequestComment): string {
+function renderConversationComment(comment: PullRequestComment, diffContexts?: ReadonlyMap<string, DiffCommentContext>): string {
 	if (comment.kind === 'pullRequest') {
 		return renderGeneralCommentCard(comment);
 	}
-	return renderDiffCommentCard(comment);
+	return renderDiffCommentCard(comment, diffContexts?.get(comment.id));
 }
 
 function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
@@ -307,7 +308,28 @@ function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
 	`;
 }
 
-function renderDiffCommentCard(comment: PullRequestDiffComment): string {
+function renderDiffContext(context: DiffCommentContext | undefined): string {
+	if (!context?.lines.length) {
+		return '';
+	}
+
+	return `<div class="comment-diff" aria-label="Diff context">
+		${context.lines.map((line) => {
+		const oldLine = line.oldLine === undefined ? '' : String(line.oldLine);
+		const newLine = line.newLine === undefined ? '' : String(line.newLine);
+		const marker = line.kind === 'add' ? '+' : line.kind === 'delete' ? '-' : ' ';
+		const highlightClass = line.isCommentLine ? ' comment-diff-row-comment' : '';
+		return `<div class="comment-diff-row comment-diff-row-${line.kind}${highlightClass}">
+			<span class="comment-diff-line">${escapeHtml(oldLine)}</span>
+			<span class="comment-diff-line">${escapeHtml(newLine)}</span>
+			<span class="comment-diff-marker">${escapeHtml(marker)}</span>
+			<code class="comment-diff-code">${escapeHtml(line.content)}</code>
+		</div>`;
+	}).join('')}
+	</div>`;
+}
+
+function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: DiffCommentContext): string {
 	const badges = renderDiffCommentBadges(comment);
 	return `
 		<div class="comment-card comment-card-diff">
@@ -324,6 +346,7 @@ function renderDiffCommentCard(comment: PullRequestDiffComment): string {
 				<span class="comment-location">${renderDiffCommentLocation(comment)}</span>
 				${badges}
 			</div>
+			${renderDiffContext(diffContext)}
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
 			${renderConversationReplies(comment.replies)}
 		</div>
@@ -343,7 +366,7 @@ function renderConversationComposer(): string {
 	`;
 }
 
-function renderConversationSection(snapshot: PullRequestCommentsSnapshot): string {
+function renderConversationSection(snapshot: PullRequestCommentsSnapshot, diffContexts?: ReadonlyMap<string, DiffCommentContext>): string {
 	const comments = [...snapshot.comments].sort((a, b) => {
 		return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 	});
@@ -358,7 +381,7 @@ function renderConversationSection(snapshot: PullRequestCommentsSnapshot): strin
 			<h2>Conversation (${countText})</h2>
 			${renderConversationComposer()}
 			<div class="conversation-list">
-				${comments.map((c) => renderConversationComment(c)).join('')}
+				${comments.map((c) => renderConversationComment(c, diffContexts)).join('')}
 			</div>
 		</section>
 	`;
@@ -912,7 +935,60 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			font-family: var(--vscode-editor-font-family);
 			font-size: 13px;
 		}
+		.comment-file-link {
+			display: inline;
+			border: 0;
+			border-radius: 3px;
+			padding: 0 2px;
+			background: transparent;
+			color: var(--vscode-textLink-foreground);
+			cursor: pointer;
+		}
+		.comment-file-link:hover {
+			text-decoration: underline;
+		}
 		.comment-location { color: var(--muted); }
+		.comment-diff {
+			margin: 8px 0 12px;
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			overflow: auto;
+			background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.10));
+			font-family: var(--vscode-editor-font-family);
+			font-size: 12px;
+		}
+		.comment-diff-row {
+			display: grid;
+			grid-template-columns: 48px 48px 18px minmax(0, 1fr);
+			min-width: max-content;
+		}
+		.comment-diff-row-add {
+			background: color-mix(in srgb, var(--success) 10%, transparent);
+		}
+		.comment-diff-row-delete {
+			background: color-mix(in srgb, var(--danger) 9%, transparent);
+		}
+		.comment-diff-row-comment {
+			box-shadow: inset 3px 0 var(--vscode-editorInfo-foreground, #3794ff);
+			background: color-mix(in srgb, var(--vscode-editorInfo-foreground, #3794ff) 14%, transparent);
+		}
+		.comment-diff-line,
+		.comment-diff-marker {
+			color: var(--muted);
+			user-select: none;
+			text-align: right;
+			padding: 2px 6px;
+			border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+		}
+		.comment-diff-marker {
+			text-align: center;
+		}
+		.comment-diff-code {
+			padding: 2px 8px;
+			white-space: pre;
+			color: var(--vscode-editor-foreground, var(--vscode-foreground));
+			background: transparent;
+		}
 		.comment-review-status {
 			display: inline-flex;
 			align-items: center;
@@ -2198,13 +2274,29 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				});
 			});
 		});
+		document.querySelectorAll('[data-action="openDiffComment"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				vscode.postMessage({
+					command: 'openDiffComment',
+					path: el.dataset.path,
+					line: Number(el.dataset.line),
+				});
+			});
+		});
 	</script>` : ''}
 </body>
 </html>`;
 }
 
-export function getOverviewWithCommentsHtml(detail: PullRequestDetail, snapshot: PullRequestCommentsSnapshot, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot), relatedIssuesHtml, editOptions);
+export function getOverviewWithCommentsHtml(
+	detail: PullRequestDetail,
+	snapshot: PullRequestCommentsSnapshot,
+	nonce: string,
+	relatedIssuesHtml?: string,
+	editOptions?: EditPullRequestOptions,
+	diffContexts?: ReadonlyMap<string, DiffCommentContext>,
+): string {
+	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot, diffContexts), relatedIssuesHtml, editOptions);
 }
 
 export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions): string {

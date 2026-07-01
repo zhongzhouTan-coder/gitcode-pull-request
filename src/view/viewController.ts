@@ -210,6 +210,7 @@ export class ViewController implements vscode.Disposable {
 			this.patchContentProvider,
 			options.logger,
 		);
+		PullRequestOverviewPanel.setDiffDependencies(this.diffController);
 
 		this.treeDataProvider = new PullRequestTreeDataProvider(
 			this.store,

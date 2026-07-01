@@ -25,6 +25,7 @@ export class PullRequestDiffController {
 		repository: GitCodeRepository,
 		pullRequestNumber: number,
 		file: PullRequestFileChange,
+		options: { line?: number } = {},
 	): Promise<void> {
 		// Reject unsupported files before loading any content
 		if (file.tooLarge) {
@@ -111,6 +112,9 @@ export class PullRequestDiffController {
 				title,
 				{ preview: true },
 			);
+			if (options.line && options.line > 0) {
+				this.revealLine(headUri, options.line);
+			}
 		} catch (error) {
 			this.logger.error(
 				`Failed to open diff for ${file.path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -118,6 +122,18 @@ export class PullRequestDiffController {
 			// Fall back to patch-based editor
 			await this.fallbackToPatch(repository, pullRequestNumber, file);
 		}
+	}
+
+	private revealLine(uri: vscode.Uri, oneBasedLine: number): void {
+		const targetLine = Math.max(0, oneBasedLine - 1);
+		const editor = vscode.window.visibleTextEditors.find((candidate) => candidate.document.uri.toString() === uri.toString());
+		if (!editor) {
+			return;
+		}
+
+		const range = new vscode.Range(targetLine, 0, targetLine, 0);
+		editor.selection = new vscode.Selection(range.start, range.end);
+		editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
 	}
 
 	private async fallbackToWeb(file: PullRequestFileChange, reason: string): Promise<void> {
