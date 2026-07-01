@@ -276,6 +276,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			section?: EditIssueSection;
 			input?: EditIssueInput;
 			state?: string;
+			body?: string;
 		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
@@ -313,6 +314,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'openRelatedPullRequest' && message.prNumber !== undefined) {
 				await this.openRelatedPullRequest(message.prNumber, message.prUrl, message.prTargetRepository);
+			}
+
+			if (message.command === 'submitIssueComment') {
+				await this.handleSubmitIssueComment(message.body);
 			}
 		});
 	}
@@ -470,6 +475,52 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.panel.webview.postMessage({
 				command: 'sectionSaveError',
 				section,
+				message: errorMessage,
+			});
+		}
+	}
+
+	private async handleSubmitIssueComment(body: string | undefined): Promise<void> {
+		if (!body || !body.trim()) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentSubmitError',
+				message: 'Comment body is required.',
+			});
+			return;
+		}
+
+		this.panel.webview.postMessage({
+			command: 'issueCommentSubmitting',
+		});
+
+		try {
+			const result = await this.commentsStore.submitComment(
+				this.context.repository,
+				this.context.issueNumber,
+				{ body },
+			);
+
+			this.commentsSnapshot = undefined;
+			this.commentsError = undefined;
+
+			// Reload the panel to show the new comment
+			await this.load(true);
+
+			if (!this.panel.webview.options) {
+				// Panel disposed during reload
+				return;
+			}
+
+			this.panel.webview.postMessage({
+				command: 'issueCommentSubmitted',
+			});
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to create comment.';
+			this.logger.error(
+				`Failed to submit comment on issue #${this.context.issueNumber}: ${errorMessage}`,
+			);
+			this.panel.webview.postMessage({
+				command: 'issueCommentSubmitError',
 				message: errorMessage,
 			});
 		}

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { GitCodeRepository, IssueCommentsSnapshot } from '../../common/models';
+import { CreateIssueCommentInput, CreateIssueCommentResult, GitCodeRepository, IssueCommentsSnapshot } from '../../common/models';
 import { IssueCommentService } from '../../gitcode/services/issueCommentService';
 
 export class IssueCommentsStore {
@@ -48,6 +48,21 @@ export class IssueCommentsStore {
 
 		this.commentPromises.set(key, requestPromise);
 		return requestPromise;
+	}
+
+	async submitComment(
+		repository: GitCodeRepository,
+		issueNumber: number,
+		input: CreateIssueCommentInput,
+	): Promise<CreateIssueCommentResult> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const result = await this.commentService.createIssueComment(repository, issueNumber, input);
+		await this.refresh(repository, issueNumber);
+		return result;
 	}
 
 	async refresh(repository: GitCodeRepository, issueNumber: number): Promise<void> {

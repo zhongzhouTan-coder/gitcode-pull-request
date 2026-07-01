@@ -1,12 +1,12 @@
-import { GitCodeRepository, IssueComment } from '../../common/models';
-import { GitCodeClient } from '../client/gitcodeClient';
-import { mapIssueComments } from '../mappers/issueCommentMapper';
+import { CreateIssueCommentInput, CreateIssueCommentResult, GitCodeRepository, IssueComment } from '../../common/models';
+import { GitCodeWriteClient } from '../client/gitcodeClient';
+import { mapCreateIssueCommentResult, mapIssueComments } from '../mappers/issueCommentMapper';
 
 /**
  * Fetches issue comments from the GitCode API.
  */
 export class IssueCommentService {
-	constructor(private readonly client: GitCodeClient) {}
+	constructor(private readonly client: GitCodeWriteClient) {}
 
 	/**
 	 * List all comments for an issue.
@@ -24,5 +24,21 @@ export class IssueCommentService {
 		}
 
 		return mapIssueComments(response as Record<string, unknown>[]);
+	}
+
+	/**
+	 * Create a comment on an issue.
+	 */
+	async createIssueComment(
+		repository: GitCodeRepository,
+		issueNumber: number,
+		input: CreateIssueCommentInput,
+	): Promise<CreateIssueCommentResult> {
+		const response = await this.client.post<Record<string, unknown>>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/${issueNumber}/comments`,
+			{ body: input.body },
+		);
+
+		return mapCreateIssueCommentResult(response);
 	}
 }

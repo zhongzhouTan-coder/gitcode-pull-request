@@ -1,4 +1,4 @@
-import { IssueComment, IssueCommentAuthor } from '../../common/models';
+import { CreateIssueCommentResult, IssueComment, IssueCommentAuthor } from '../../common/models';
 
 // ---- DTO shape from the list-issue-comments endpoint ----
 
@@ -24,6 +24,13 @@ interface IssueCommentDto {
 	body?: unknown;
 	user?: IssueCommentUserDto;
 	target?: IssueCommentTargetDto;
+	created_at?: unknown;
+	updated_at?: unknown;
+}
+
+interface CreateIssueCommentResponseDto {
+	id?: unknown;
+	body?: unknown;
 	created_at?: unknown;
 	updated_at?: unknown;
 }
@@ -75,4 +82,16 @@ export function mapIssueComment(dto: IssueCommentDto): IssueComment {
  */
 export function mapIssueComments(dtos: IssueCommentDto[]): IssueComment[] {
 	return dtos.map(mapIssueComment);
+}
+
+/**
+ * Maps a raw GitCode create issue comment response DTO to `CreateIssueCommentResult`.
+ */
+export function mapCreateIssueCommentResult(dto: CreateIssueCommentResponseDto): CreateIssueCommentResult {
+	return {
+		id: asString(dto.id),
+		body: typeof dto.body === 'string' ? dto.body : '',
+		createdAt: typeof dto.created_at === 'string' ? dto.created_at : undefined,
+		updatedAt: typeof dto.updated_at === 'string' ? dto.updated_at : undefined,
+	};
 }

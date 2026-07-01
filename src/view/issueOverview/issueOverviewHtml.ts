@@ -430,14 +430,27 @@ function renderRelatedPullRequests(
 </section>`;
 }
 
+function renderCommentComposer(): string {
+	return `<form class="comment-composer" data-action="submitIssueComment">
+	<textarea class="comment-input" name="body" placeholder="Write a comment..." rows="3"></textarea>
+	<div class="comment-composer-actions">
+		<span class="comment-submit-error" style="color:var(--danger);font-size:12px" hidden></span>
+		<button type="submit" class="btn-primary">Comment</button>
+	</div>
+</form>`;
+}
+
 function renderConversation(
 	comments: readonly IssueComment[] | undefined,
 	commentsError: Error | undefined,
 ): string {
+	const composerHtml = renderCommentComposer();
+
 	if (commentsError) {
 		return `<section>
 	<h2>Conversation</h2>
 	<div class="error">Unable to load comments</div>
+	${composerHtml}
 </section>`;
 	}
 
@@ -449,6 +462,7 @@ function renderConversation(
 		return `<section>
 	<h2>Conversation</h2>
 	<div class="empty">No comments yet</div>
+	${composerHtml}
 </section>`;
 	}
 
@@ -462,6 +476,7 @@ function renderConversation(
 	return `<section>
 	<h2>Conversation (${sorted.length})</h2>
 	${sorted.map(renderIssueComment).join('')}
+	${composerHtml}
 </section>`;
 }
 
@@ -977,6 +992,37 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.comment-body {
 			padding: 0;
 		}
+		.comment-composer {
+			margin-top: 16px;
+			padding-top: 16px;
+			border-top: 1px solid var(--border);
+		}
+		.comment-input {
+			width: 100%;
+			box-sizing: border-box;
+			padding: 8px 10px;
+			border-radius: 6px;
+			border: 1px solid var(--border);
+			background: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+			font: inherit;
+			resize: vertical;
+			min-height: 60px;
+		}
+		.comment-input:disabled {
+			opacity: 0.6;
+		}
+		.comment-composer-actions {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+			margin-top: 8px;
+		}
+		.comment-submit-error {
+			flex: 1;
+			min-width: 0;
+		}
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
 		}
@@ -1273,8 +1319,78 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				});
 			});
 		});
+
+		// Comment composer submit handling
+		document.querySelectorAll('.comment-composer').forEach(function(form) {
+			form.addEventListener('submit', function(event) {
+				event.preventDefault();
+				var textarea = form.querySelector('.comment-input');
+				var errorEl = form.querySelector('.comment-submit-error');
+				var submitBtn = form.querySelector('button[type="submit"]');
+				if (!textarea || !submitBtn) {
+					return;
+				}
+				var body = textarea.value;
+				if (!body.trim()) {
+					if (errorEl) {
+						errorEl.textContent = 'Comment body is required.';
+						errorEl.hidden = false;
+					}
+					return;
+				}
+				if (errorEl) {
+					errorEl.textContent = '';
+					errorEl.hidden = true;
+				}
+				textarea.disabled = true;
+				submitBtn.disabled = true;
+				vscode.postMessage({
+					command: 'submitIssueComment',
+					body: body,
+				});
+			});
+		});
+
 		window.addEventListener('message', (event) => {
 			var msg = event.data || {};
+			if (msg.command === 'issueCommentSubmitting') {
+				// Already disabled via submit handler
+			}
+			if (msg.command === 'issueCommentSubmitted') {
+				document.querySelectorAll('.comment-composer').forEach(function(form) {
+					var textarea = form.querySelector('.comment-input');
+					var submitBtn = form.querySelector('button[type="submit"]');
+					var errorEl = form.querySelector('.comment-submit-error');
+					if (textarea) {
+						textarea.value = '';
+						textarea.disabled = false;
+					}
+					if (submitBtn) {
+						submitBtn.disabled = false;
+					}
+					if (errorEl) {
+						errorEl.textContent = '';
+						errorEl.hidden = true;
+					}
+				});
+			}
+			if (msg.command === 'issueCommentSubmitError') {
+				document.querySelectorAll('.comment-composer').forEach(function(form) {
+					var textarea = form.querySelector('.comment-input');
+					var submitBtn = form.querySelector('button[type="submit"]');
+					var errorEl = form.querySelector('.comment-submit-error');
+					if (textarea) {
+						textarea.disabled = false;
+					}
+					if (submitBtn) {
+						submitBtn.disabled = false;
+					}
+					if (errorEl) {
+						errorEl.textContent = msg.message || 'Failed to create comment.';
+						errorEl.hidden = false;
+					}
+				});
+			}
 			if (msg.command === 'sectionSaveError') {
 				setSectionSaving(msg.section, false);
 				var errorEl = getSectionError(msg.section);

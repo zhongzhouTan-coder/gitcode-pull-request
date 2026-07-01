@@ -363,6 +363,17 @@ export interface IssueCommentsSnapshot {
 	loadedAt: number;
 }
 
+export interface CreateIssueCommentInput {
+	body: string;
+}
+
+export interface CreateIssueCommentResult {
+	id: string;
+	body: string;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
 // ---- Issue Related Pull Request Types ----
 
 export interface IssueRelatedPullRequestBranch {
