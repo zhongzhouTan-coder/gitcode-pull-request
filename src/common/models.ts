@@ -626,3 +626,34 @@ export interface PullRequestCommentEditOperation {
 	status: 'pending' | 'failed';
 	error?: string;
 }
+
+// ---- Pull Request Operation Log Types ----
+
+export interface PullRequestOperationLogActor {
+	id?: string;
+	login: string;
+	name?: string;
+	nickName?: string;
+	htmlUrl?: string;
+	state?: string;
+}
+
+export interface PullRequestOperationLog {
+	id: string;
+	content: string;
+	action: string;
+	actionType: string;
+	pullRequestId?: string;
+	discussionId?: string;
+	project?: string;
+	actor: PullRequestOperationLogActor;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface PullRequestOperationLogsSnapshot {
+	repositoryKey: string;
+	pullRequestNumber: number;
+	logs: readonly PullRequestOperationLog[];
+	loadedAt: number;
+}

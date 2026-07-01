@@ -1,8 +1,9 @@
-import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
+import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestOperationLog, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
 import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
 import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
+import { mapPullRequestOperationLogs } from '../mappers/pullRequestOperationLogMapper';
 import { mapCreatePullRequestInput, mapCreatedPullRequest, mapEditPullRequestInput, mapPullRequest } from '../mappers/pullRequestMapper';
 import { mapPullRequestRelatedIssues } from '../mappers/pullRequestRelatedIssueMapper';
 
@@ -91,5 +92,14 @@ export class PullRequestService {
 		);
 
 		return mapPullRequestRelatedIssues(response);
+	}
+
+	async listPullRequestOperationLogs(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestOperationLog[]> {
+		const response = await this.client.get<any[]>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/operate_logs`,
+			{ per_page: 100, page: 1 },
+		);
+
+		return mapPullRequestOperationLogs(response);
 	}
 }

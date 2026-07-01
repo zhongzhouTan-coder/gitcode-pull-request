@@ -8,6 +8,8 @@ import {
 	PullRequestDiffComment,
 	PullRequestGeneralComment,
 	PullRequestLabel,
+	PullRequestOperationLog,
+	PullRequestOperationLogsSnapshot,
 	PullRequestParticipant,
 	PullRequestRelatedIssue,
 	PullRequestRelatedIssuesSnapshot,
@@ -498,12 +500,92 @@ export function renderRelatedIssuesError(message: string): string {
 	return `<section><h2>Related Issues</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
 }
 
-export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, includeScripts: boolean = true): string {
+// ---- Activity / Operation Logs Rendering ----
+
+function renderActivityActor(actor: PullRequestOperationLog['actor']): string {
+	const displayName = actor.name && actor.name !== actor.login
+		? `${escapeHtml(actor.name)} <span class="muted">@${escapeHtml(actor.login)}</span>`
+		: `@${escapeHtml(actor.login)}`;
+
+	if (actor.htmlUrl) {
+		return `<button class="activity-actor-btn" data-action="openUrl" data-url="${escapeHtml(actor.htmlUrl)}" title="${escapeHtml(actor.login)}">
+			${renderSvgAvatar(actor.login, actor.name)}
+			<span class="activity-actor-name">${displayName}</span>
+		</button>`;
+	}
+
+	return `<span class="activity-actor-row">
+		${renderSvgAvatar(actor.login, actor.name)}
+		<span class="activity-actor-name">${displayName}</span>
+	</span>`;
+}
+
+function renderActivityBadge(actionType: string): string {
+	const label = escapeHtml(actionType);
+	return `<span class="activity-badge activity-badge-${escapeHtml(actionType.toLowerCase())}">${label}</span>`;
+}
+
+function renderActivityTime(createdAt: string): string {
+	if (!createdAt) {
+		return '<span class="activity-time">Unknown time</span>';
+	}
+
+	const date = new Date(createdAt);
+	if (Number.isNaN(date.getTime())) {
+		return `<span class="activity-time">${escapeHtml(createdAt)}</span>`;
+	}
+
+	return `<span class="activity-time">${escapeHtml(formatDate(createdAt))}</span>`;
+}
+
+function renderActivityItem(log: PullRequestOperationLog): string {
+	return `
+		<div class="activity-item">
+			<div class="activity-meta">
+				${renderActivityActor(log.actor)}
+				${renderActivityTime(log.createdAt)}
+			</div>
+			<div class="activity-content">
+				${renderActivityBadge(log.actionType)}
+				<span class="activity-text">${escapeHtml(log.content)}</span>
+			</div>
+		</div>
+	`;
+}
+
+export function renderActivitySection(snapshot: PullRequestOperationLogsSnapshot): string {
+	const logs = snapshot.logs;
+
+	if (!logs.length) {
+		return '<section><h2>Activity</h2><div class="empty">No activity yet.</div></section>';
+	}
+
+	const countText = `${logs.length}`;
+	return `
+		<section>
+			<h2>Activity (${countText})</h2>
+			<div class="activity-list">
+				${logs.map((log) => renderActivityItem(log)).join('')}
+			</div>
+		</section>
+	`;
+}
+
+export function renderActivityLoading(): string {
+	return '<section><h2>Activity</h2><div class="empty">Loading activity...</div></section>';
+}
+
+export function renderActivityError(message: string): string {
+	return `<section><h2>Activity</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
+}
+
+export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, includeScripts: boolean = true, activityHtml?: string): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
 	const openOnWebDisabled = detail.htmlUrl ? '' : 'disabled';
 	const conversationSection = conversationHtml ?? '';
 	const relatedIssuesSection = relatedIssuesHtml ?? '';
+	const activitySection = activityHtml ?? '';
 
 	const editOptionsJson = editOptions
 		? serializeForInlineScript({
@@ -864,6 +946,88 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			font-size: 12px;
 		}
 		.muted, .empty { color: var(--muted); }
+		/* ---- Activity / Operation Logs ---- */
+		.activity-list {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+		}
+		.activity-item {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			padding: 8px 0;
+			border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+		}
+		.activity-item:last-child {
+			border-bottom: none;
+		}
+		.activity-meta {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			flex-wrap: wrap;
+		}
+		.activity-actor-btn,
+		.activity-actor-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+		.activity-actor-btn {
+			border: none;
+			background: none;
+			color: inherit;
+			font: inherit;
+			cursor: pointer;
+			text-align: left;
+			border-radius: 4px;
+			padding: 2px 4px;
+			margin: -2px -4px;
+		}
+		.activity-actor-btn:hover {
+			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 12%, transparent);
+		}
+		.activity-actor-name {
+			font-weight: 600;
+			font-size: 13px;
+		}
+		.activity-time {
+			color: var(--muted);
+			font-size: 12px;
+		}
+		.activity-content {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-left: 32px;
+		}
+		.activity-badge {
+			display: inline-flex;
+			align-items: center;
+			border-radius: 999px;
+			padding: 2px 8px;
+			font-size: 11px;
+			font-weight: 600;
+			text-transform: lowercase;
+			background: color-mix(in srgb, var(--vscode-descriptionForeground, #8b949e) 14%, transparent);
+			color: var(--vscode-descriptionForeground, #8b949e);
+			flex-shrink: 0;
+		}
+		.activity-badge-opened,
+		.activity-badge-reopened {
+			background: color-mix(in srgb, var(--badge-open) 14%, transparent);
+			color: var(--badge-open);
+		}
+		.activity-badge-closed,
+		.activity-badge-merged {
+			background: color-mix(in srgb, var(--badge-closed) 14%, transparent);
+			color: var(--badge-closed);
+		}
+		.activity-text {
+			font-size: 13px;
+			overflow-wrap: anywhere;
+		}
 		/* ---- Conversation / Comments ---- */
 		.conversation-composer {
 			display: flex;
@@ -1490,8 +1654,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 					<div class="section-edit-error" style="display:none"></div>
 				</div>
 			</section>
-			${relatedIssuesSection}
 			${conversationSection}
+			${activitySection}
+			${relatedIssuesSection}
 		</main>
 		<aside>
 			<div class="card status-summary-card">
@@ -2513,16 +2678,17 @@ export function getOverviewWithCommentsHtml(
 	relatedIssuesHtml?: string,
 	editOptions?: EditPullRequestOptions,
 	diffContexts?: ReadonlyMap<string, DiffCommentContext>,
+	activityHtml?: string,
 ): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot, diffContexts), relatedIssuesHtml, editOptions);
+	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml);
 }
 
-export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions): string {
-	return getOverviewHtml(detail, nonce, renderConversationLoading(), relatedIssuesHtml, editOptions, false);
+export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationLoading(), relatedIssuesHtml, editOptions, false, activityHtml);
 }
 
-export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions): string {
-	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage), relatedIssuesHtml, editOptions);
+export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string): string {
+	return getOverviewHtml(detail, nonce, renderConversationError(errorMessage), relatedIssuesHtml, editOptions, true, activityHtml);
 }
 
 export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {

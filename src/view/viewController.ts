@@ -19,6 +19,7 @@ import { PullRequestPatchContentProvider } from './diff/pullRequestPatchContentP
 import { PullRequestOverviewStore } from './overview/pullRequestOverviewStore';
 import { PullRequestOverviewPanel } from './overview/pullRequestOverviewPanel';
 import { PullRequestCommentsStore } from './state/pullRequestCommentsStore';
+import { PullRequestOperationLogsStore } from './overview/pullRequestOperationLogsStore';
 import { PullRequestTreeStore } from './state/pullRequestTreeStore';
 import { IssueTreeStore } from './state/issueTreeStore';
 import { IssueTreeDataProvider } from './tree/issueTreeDataProvider';
@@ -158,6 +159,13 @@ export class ViewController implements vscode.Disposable {
 			this.store,
 		);
 
+		// Operation logs store
+		const operationLogsStore = new PullRequestOperationLogsStore(
+			options.authService,
+			options.pullRequestService,
+		);
+		PullRequestOverviewPanel.setOperationLogsStore(operationLogsStore);
+
 		const rawContentService = new RawContentService(
 			options.configuration,
 			options.sessionStore,
@@ -236,6 +244,7 @@ export class ViewController implements vscode.Disposable {
 			this.patchContentProvider,
 			this.fileSystemProvider,
 			this.diffCommentController,
+			operationLogsStore,
 			vscode.window.registerWebviewViewProvider(VIEW_ID_CREATE_PULL_REQUEST, createPullRequestProvider),
 			vscode.workspace.registerTextDocumentContentProvider('gitcode-pr-diff', this.patchContentProvider),
 			vscode.workspace.registerFileSystemProvider(GITCODE_PR_SCHEME, this.fileSystemProvider, {
@@ -279,6 +288,7 @@ export class ViewController implements vscode.Disposable {
 			),
 			options.authService.onDidChangeSession(() => {
 				this.commentsStore.clear();
+				operationLogsStore.clear();
 				this.issueCommentsStore.clear();
 				this.issueRelatedPrsStore.clear();
 				this.copilotContextStore.clear();

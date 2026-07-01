@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { EditPullRequestOptions, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../common/models';
-import { getOverviewHtml, getOverviewWithCommentsHtml, renderRelatedIssuesSection } from '../view/overview/overviewHtml';
+import { EditPullRequestOptions, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestRelatedIssuesSnapshot } from '../common/models';
+import { getOverviewHtml, getOverviewWithCommentsHtml, renderActivityError, renderActivityLoading, renderActivitySection, renderRelatedIssuesSection } from '../view/overview/overviewHtml';
 
 suite('OverviewHtml', () => {
 	const detail: PullRequestDetail = {
@@ -301,5 +301,156 @@ suite('OverviewHtml', () => {
 		assert.match(html, /comment-diff-row-delete/);
 		assert.match(html, /comment-diff-row-add comment-diff-row-comment/);
 		assert.match(html, /return value \?\? fallback;/);
+	});
+
+	// ---- Activity / Operation Logs Tests ----
+
+	test('renders activity loading state', () => {
+		const html = getOverviewHtml(detail, 'nonce', undefined, undefined, undefined, true, renderActivityLoading());
+
+		assert.match(html, /Loading activity/);
+	});
+
+	test('renders activity empty state', () => {
+		const snapshot: PullRequestOperationLogsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			logs: [],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderActivitySection(snapshot);
+
+		assert.match(html, /No activity yet/);
+	});
+
+	test('renders activity error state', () => {
+		const html = renderActivityError('Unable to load activity.');
+
+		assert.match(html, /Unable to load activity/);
+	});
+
+	test('renders activity items with escaped content', () => {
+		const snapshot: PullRequestOperationLogsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			logs: [{
+				id: '1',
+				content: '<script>alert("xss")</script>',
+				action: 'opened',
+				actionType: 'opened',
+				actor: { login: 'alice', name: 'Alice' },
+				createdAt: '2026-07-01T00:10:02+08:00',
+				updatedAt: '2026-07-01T00:10:02+08:00',
+			}],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderActivitySection(snapshot);
+
+		assert.doesNotMatch(html, /<script>alert/);
+		assert.match(html, /&lt;script&gt;alert/);
+		assert.match(html, /Alice/);
+		assert.match(html, /activity-badge-opened/);
+	});
+
+	test('renders actor display with and without URL', () => {
+		const snapshot: PullRequestOperationLogsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			logs: [
+				{
+					id: '1',
+					content: 'closed',
+					action: 'closed',
+					actionType: 'closed',
+					actor: { login: 'bob', name: 'Bob', htmlUrl: 'https://gitcode.com/bob' },
+					createdAt: '2026-07-01T00:10:02+08:00',
+					updatedAt: '2026-07-01T00:10:02+08:00',
+				},
+				{
+					id: '2',
+					content: 'opened',
+					action: 'opened',
+					actionType: 'opened',
+					actor: { login: 'carol' },
+					createdAt: '2026-07-01T00:10:02+08:00',
+					updatedAt: '2026-07-01T00:10:02+08:00',
+				},
+			],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderActivitySection(snapshot);
+
+		// Bob has a URL and should render as a button
+		assert.match(html, /activity-actor-btn.*data-url="https:\/\/gitcode.com\/bob"/);
+		// Carol has no URL and should render as a span
+		assert.match(html, /activity-actor-row/);
+		assert.match(html, /@carol/);
+	});
+
+	test('renders activity badge fallback from action', () => {
+		const snapshot: PullRequestOperationLogsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			logs: [{
+				id: '1',
+				content: 'changed title',
+				action: 'title',
+				actionType: 'title',
+				actor: { login: 'alice' },
+				createdAt: '2026-07-01T00:10:02+08:00',
+				updatedAt: '2026-07-01T00:10:02+08:00',
+			}],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderActivitySection(snapshot);
+
+		assert.match(html, /activity-badge-title/);
+	});
+
+	test('renders invalid date as Unknown time', () => {
+		const snapshot: PullRequestOperationLogsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			logs: [{
+				id: '1',
+				content: 'changed description',
+				action: 'description',
+				actionType: 'description',
+				actor: { login: 'alice' },
+				createdAt: '',
+				updatedAt: '',
+			}],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderActivitySection(snapshot);
+
+		assert.match(html, /Unknown time/);
+	});
+
+	test('renders activity section with count in heading', () => {
+		const snapshot: PullRequestOperationLogsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			logs: [
+				{
+					id: '1', content: 'first log', action: 'action', actionType: 'action',
+					actor: { login: 'alice' }, createdAt: '2026-07-01T00:10:02+08:00', updatedAt: '2026-07-01T00:10:02+08:00',
+				},
+				{
+					id: '2', content: 'second log', action: 'action', actionType: 'action',
+					actor: { login: 'bob' }, createdAt: '2026-07-01T00:10:02+08:00', updatedAt: '2026-07-01T00:10:02+08:00',
+				},
+			],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderActivitySection(snapshot);
+
+		assert.match(html, /Activity \(2\)/);
 	});
 });

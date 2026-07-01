@@ -3,14 +3,15 @@ import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestRelatedIssuesSnapshot } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestRelatedIssuesSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestDiffController } from '../diff/pullRequestDiffController';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
-import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError } from './overviewHtml';
+import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithCommentsHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError, renderActivitySection, renderActivityLoading, renderActivityError } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
+import { PullRequestOperationLogsStore } from './pullRequestOperationLogsStore';
 import { buildDiffCommentContexts } from './diffCommentContext';
 
 interface PullRequestOverviewContext {
@@ -93,6 +94,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private static pullRequestService: PullRequestService | undefined;
 	private static treeStore: PullRequestTreeStore | undefined;
 	private static diffController: PullRequestDiffController | undefined;
+	private static operationLogsStore: PullRequestOperationLogsStore | undefined;
 
 	static setEditDependencies(
 		repositoryService: RepositoryService,
@@ -106,6 +108,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 	static setDiffDependencies(diffController: PullRequestDiffController): void {
 		this.diffController = diffController;
+	}
+
+	static setOperationLogsStore(store: PullRequestOperationLogsStore): void {
+		this.operationLogsStore = store;
 	}
 
 	static async createOrShow(
@@ -169,6 +175,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private detail?: PullRequestDetail;
 	private commentsSnapshot?: PullRequestCommentsSnapshot;
 	private relatedIssuesSnapshot?: PullRequestRelatedIssuesSnapshot;
+	private operationLogsSnapshot?: PullRequestOperationLogsSnapshot;
 	private editOptions?: EditPullRequestOptions;
 
 	private constructor(
@@ -288,8 +295,12 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		await this.store.refresh(this.context.repository, this.context.pullRequestNumber);
 		// Also invalidate comments and notify inline diff consumers before reloading.
 		await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+		if (PullRequestOverviewPanel.operationLogsStore) {
+			await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+		}
 		this.commentsSnapshot = undefined;
 		this.relatedIssuesSnapshot = undefined;
+		this.operationLogsSnapshot = undefined;
 		await this.load(true);
 	}
 
@@ -298,6 +309,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.detail = undefined;
 			this.commentsSnapshot = undefined;
 			this.relatedIssuesSnapshot = undefined;
+			this.operationLogsSnapshot = undefined;
 			this.editOptions = undefined;
 		}
 
@@ -312,15 +324,23 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		// Render detail with loading comments and loading related issues
+		// Render detail with loading comments, loading activity, and loading related issues
+		const activityLoadingHtml = renderActivityLoading();
 		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading();
-		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml);
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, activityLoadingHtml);
 
-		// Phase 2: Load comments and related issues independently in parallel
+		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
 		const commentsPromise = this.commentsStore.getOrFetch(
 			this.context.repository,
 			this.context.pullRequestNumber,
 		);
+
+		const operationLogsPromise = PullRequestOverviewPanel.operationLogsStore
+			? PullRequestOverviewPanel.operationLogsStore.getOrFetch(
+				this.context.repository,
+				this.context.pullRequestNumber,
+			)
+			: Promise.resolve(undefined);
 
 		const editOptionsPromise = this.store.getEditOptions(
 			this.context.repository,
@@ -331,13 +351,15 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.context.pullRequestNumber,
 		);
 
-		// Wait for both and render
-		const [commentsResult, relatedIssuesResult, editOptionsResult] = await Promise.allSettled([commentsPromise, relatedIssuesPromise, editOptionsPromise]);
+		// Wait for all and render
+		const [commentsResult, operationLogsResult, relatedIssuesResult, editOptionsResult] = await Promise.allSettled([commentsPromise, operationLogsPromise, relatedIssuesPromise, editOptionsPromise]);
 
 		let commentsSnapshot: PullRequestCommentsSnapshot | undefined;
 		let relatedIssuesSnapshot: PullRequestRelatedIssuesSnapshot | undefined;
+		let operationLogsSnapshot: PullRequestOperationLogsSnapshot | undefined;
 		let commentsError: string | undefined;
 		let relatedIssuesError: string | undefined;
+		let activityHtml: string | undefined;
 
 		if (commentsResult.status === 'fulfilled') {
 			commentsSnapshot = commentsResult.value;
@@ -347,6 +369,17 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				`Failed to load comments for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			commentsError = error instanceof Error ? error.message : 'Unable to load comments.';
+		}
+
+		if (operationLogsResult.status === 'fulfilled' && operationLogsResult.value) {
+			this.operationLogsSnapshot = operationLogsResult.value;
+			operationLogsSnapshot = this.operationLogsSnapshot;
+		} else if (operationLogsResult.status === 'rejected') {
+			const error = operationLogsResult.reason;
+			this.logger.error(
+				`Failed to load operation logs for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			activityHtml = renderActivityError(error instanceof Error ? error.message : 'Unable to load activity.');
 		}
 
 		if (relatedIssuesResult.status === 'fulfilled') {
@@ -377,6 +410,14 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 		}
 
+		// Build activity HTML
+		if (!activityHtml && operationLogsSnapshot) {
+			activityHtml = renderActivitySection(operationLogsSnapshot);
+		}
+		if (!activityHtml && !operationLogsSnapshot) {
+			activityHtml = ''; // No operation logs store available, skip activity section
+		}
+
 		// Build related issues HTML
 		let relatedIssuesHtml: string;
 		if (relatedIssuesSnapshot) {
@@ -402,10 +443,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 			}
 
-			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts);
+			this.panel.webview.html = getOverviewWithCommentsHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, activityHtml);
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions);
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, activityHtml);
 		}
 	}
 
@@ -466,6 +507,9 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			// Invalidate comments and refresh the pull request tree
 			await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			if (PullRequestOverviewPanel.operationLogsStore) {
+				await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			}
 			treeStore.refreshRepository(this.context.repository.fullName).catch(() => {
 				treeStore.refreshAll();
 			});
@@ -473,6 +517,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			// Reload the overview with fresh data
 			this.commentsSnapshot = undefined;
 			this.relatedIssuesSnapshot = undefined;
+			this.operationLogsSnapshot = undefined;
 			this.editOptions = undefined;
 			await this.load(true);
 		} catch (error) {
@@ -517,6 +562,9 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			);
 
 			await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			if (PullRequestOverviewPanel.operationLogsStore) {
+				await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			}
 			const treeStore = PullRequestOverviewPanel.treeStore;
 			if (treeStore) {
 				treeStore.refreshRepository(this.context.repository.fullName).catch(() => {
@@ -526,6 +574,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			this.commentsSnapshot = undefined;
 			this.relatedIssuesSnapshot = undefined;
+			this.operationLogsSnapshot = undefined;
 			this.editOptions = undefined;
 			await this.load(true);
 		} catch (error) {
@@ -566,7 +615,12 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				},
 			);
 
+			if (PullRequestOverviewPanel.operationLogsStore) {
+				await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			}
+
 			this.commentsSnapshot = undefined;
+			this.operationLogsSnapshot = undefined;
 			await this.load(true);
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Failed to submit pull request comment.';
@@ -613,7 +667,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		// On success the store refreshes; reload to show updated comments
+		if (PullRequestOverviewPanel.operationLogsStore) {
+			await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+		}
 		this.commentsSnapshot = undefined;
+		this.operationLogsSnapshot = undefined;
 		await this.load(true);
 	}
 
@@ -634,7 +692,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		// On success, reload to show refreshed comments from the store
+		if (PullRequestOverviewPanel.operationLogsStore) {
+			await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+		}
 		this.commentsSnapshot = undefined;
+		this.operationLogsSnapshot = undefined;
 		await this.load(true);
 	}
 
