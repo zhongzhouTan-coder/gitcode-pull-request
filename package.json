@@ -2,7 +2,7 @@
   "name": "gitcode-pull-request",
   "displayName": "GitCode Pull Requests",
   "description": "GitCode pull request integration for Visual Studio Code",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "zhongzhoutan-coder",
   "license": "SEE LICENSE IN LICENSE",
   "preview": true,

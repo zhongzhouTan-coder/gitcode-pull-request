@@ -6,17 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-07-02
+
 ### Added
 
 - Added an MIT `LICENSE` file.
 - Added `THIRD_PARTY_NOTICES.md` with attribution guidance for the MIT-licensed `microsoft/vscode-pull-request-github` reference project.
 - Added a project-specific README with setup, commands, settings, development workflow, architecture links, and license notes.
+- Added pull request related issue linking from the pull request overview.
+- Added pull request related issue unlinking from the pull request overview.
+- Added shared Copilot context prompt budgeting for pull request and issue chat participants.
 
 ### Changed
 
 - Updated architecture documentation to describe the current authentication, service, view, tree, overview, diff comment, issue, create-flow, and Copilot context architecture.
 - Updated tree-view architecture documentation to reflect the implemented pull request and issue store/provider/node design.
 - Added package license metadata.
+- Optimized Copilot pull request and issue context generation to stay within prompt budgets.
 
 ## [0.0.1] - 2026-07-02
 
