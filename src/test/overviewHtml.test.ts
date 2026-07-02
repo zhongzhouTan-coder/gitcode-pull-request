@@ -199,6 +199,8 @@ suite('OverviewHtml', () => {
 		assert.match(html, /"labels":\[\{"id":5,"name":"bug","color":"ff0000"\}\]/);
 		assert.match(html, /"milestones":\[\{"number":7,"title":"Sprint 7","state":"open"\}\]/);
 		assert.match(html, /Select labels from the repository label list\./);
+		assert.match(html, /\.picker-options \{[\s\S]*max-height: 140px;[\s\S]*overflow: auto;/);
+		assert.match(html, /\.picker-selected \{[\s\S]*max-height: 112px;[\s\S]*overflow-y: auto;/);
 		assert.match(html, /<option value="">No milestone<\/option>/);
 	});
 
@@ -236,20 +238,40 @@ suite('OverviewHtml', () => {
 		assert.match(html, /resetSectionState\(section\);[\s\S]*if \(section === 'labels'\)/);
 	});
 
-	test('renders pull request state management as an action button', () => {
+	test('renders pull request refresh and state management actions', () => {
 		const openHtml = getOverviewHtml(detail, 'nonce');
 		const closedHtml = getOverviewHtml({ ...detail, state: 'closed' }, 'nonce');
 		const mergedHtml = getOverviewHtml({ ...detail, state: 'merged' }, 'nonce');
 
-		assert.match(openHtml, /id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh pull request">/);
+		assert.match(openHtml, /id="refresh-button" class="secondary" title="Refresh" aria-label="Refresh pull request">Refresh<\/button>/);
 		assert.match(openHtml, /id="open-web-button" class="secondary"/);
-		assert.match(openHtml, /id="state-action-button" class="danger" data-state-action="closed"[^>]*>Close pull request<\/button>/);
+		assert.match(openHtml, /id="state-action-button" class="primary" data-state-action="closed"[^>]*>Close pull request<\/button>/);
 		assert.match(closedHtml, /id="state-action-button" class="primary" data-state-action="open"[^>]*>Reopen pull request<\/button>/);
 		assert.match(mergedHtml, /id="state-action-button" class="primary" data-state-action="open" disabled>Reopen pull request<\/button>/);
+		assert.ok(openHtml.indexOf('id="state-action-button"') > openHtml.indexOf('<main>'));
+		assert.ok(openHtml.indexOf('id="state-action-button"') < openHtml.indexOf('</main>'));
+		assert.ok(openHtml.indexOf('id="state-action-button"') < openHtml.indexOf('<aside>'));
 		assert.doesNotMatch(openHtml, /data-section-input="state"/);
 		assert.doesNotMatch(openHtml, /data-section="state" title="Edit state"/);
 		assert.doesNotMatch(openHtml, /<h3>State<\/h3>/);
 		assert.doesNotMatch(openHtml, /section-view-state/);
+	});
+
+	test('renders draft and close related issue settings as checkbox actions', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+		const optionsCardStart = html.indexOf('<div class="card preference-card">');
+
+		assert.ok(optionsCardStart > -1);
+		assert.match(html, /<div class="card preference-card">[\s\S]*<h3>Pull Request Options<\/h3>[\s\S]*<input type="checkbox" data-section-input="draft"/);
+		assert.match(html, /<span class="preference-title">Mark as draft<\/span>/);
+		assert.doesNotMatch(html, /<button class="btn-primary btn-save-section" data-section="draft">Save<\/button>/);
+		assert.match(html, /<div class="card preference-card">[\s\S]*<input type="checkbox" data-section-input="closeRelatedIssue">/);
+		assert.match(html, /<span class="preference-title">Close related issues after merge<\/span>/);
+		assert.doesNotMatch(html, /<button class="btn-primary btn-save-section" data-section="closeRelatedIssue">Save<\/button>/);
+		assert.match(html, /document\.querySelectorAll\('\.preference-card \[data-section-input\]'\)\.forEach/);
+		assert.doesNotMatch(html, /data-section="draft" title="Edit draft"/);
+		assert.doesNotMatch(html, /section-view-closeRelatedIssue/);
+		assert.strictEqual(html.indexOf('<div class="card preference-card">', optionsCardStart + 1), -1);
 	});
 
 	test('posts pull request state change messages from the action button', () => {
@@ -258,6 +280,12 @@ suite('OverviewHtml', () => {
 		assert.match(html, /command: 'changePullRequestState'/);
 		assert.match(html, /state: pendingStateAction/);
 		assert.match(html, /pullRequestStateChangeError/);
+		assert.match(html, /button\.setAttribute\('data-confirming-close', 'true'\);/);
+		assert.match(html, /button\.classList\.remove\('danger'\);/);
+		assert.match(html, /button\.classList\.add\('primary'\);/);
+		assert.match(html, /button\.classList\.remove\('danger'\);/);
+		assert.match(html, /button\.textContent = 'Confirm close pull request';/);
+		assert.match(html, /Click again to confirm closing this pull request\./);
 		assert.match(html, /button\.textContent = pendingStateAction === 'closed' \? 'Close pull request' : 'Reopen pull request';/);
 	});
 

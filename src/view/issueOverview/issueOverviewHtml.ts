@@ -73,11 +73,6 @@ function labelColor(color: string | undefined): string {
 	return color.startsWith('#') ? color : `#${color}`;
 }
 
-/** Refresh circular-arrow icon (16×16). */
-const REFRESH_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-	<path d="M2 8a6 6 0 0 1 10.9-3.5L14 6V2.1h1.6v5.8H9.8V6.4h2.5A4.4 4.4 0 1 0 13.3 11l1.2 1A6 6 0 1 1 2 8Z" fill="currentColor"/>
-</svg>`;
-
 /** External-link icon (16×16). */
 const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
 	<path d="M3 2v11h11V8.5h1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5v1H3Zm5.5 0V1H15v6.5h-1V2.7L7.9 8.9l-.8-.8L13.3 2H8.5Z" fill="currentColor"/>
@@ -617,7 +612,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 	const openOnWebDisabled = detail.url ? '' : 'disabled';
 	const stateAction = detail.state === 'open' ? 'close' : 'reopen';
 	const stateActionLabel = detail.state === 'open' ? 'Close issue' : 'Reopen issue';
-	const stateActionClass = detail.state === 'open' ? 'danger' : 'primary';
+	const stateActionClass = 'primary';
 	const editOptionsJson = editOptions
 		? serializeForInlineScript({
 			assignees: editOptions.assignees.map((user) => ({ login: user.login, name: user.name })),
@@ -706,7 +701,19 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.badge-closed { background: var(--badge-closed); }
 		.badge-state { background: var(--badge-state); }
 		.badge-type { background: var(--badge-type); }
-		.actions { margin-top: 16px; display: flex; gap: 12px; }
+		.actions { margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; }
+		.main-state-actions {
+			display: flex;
+			justify-content: flex-end;
+			align-items: center;
+			gap: 10px;
+			margin-top: 16px;
+		}
+		.main-state-actions .action-error {
+			flex: 1;
+			margin-top: 0;
+			text-align: right;
+		}
 		.action-error { margin-top: 8px; color: var(--vscode-errorForeground); font-size: 13px; min-height: 18px; }
 		button {
 			display: inline-flex;
@@ -723,15 +730,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			flex-shrink: 0;
 		}
 		button.secondary {
-			background: transparent;
-			color: var(--vscode-foreground);
-		}
-		button.icon-button {
-			width: 32px;
-			height: 32px;
-			justify-content: center;
-			gap: 0;
-			padding: 0;
 			background: transparent;
 			color: var(--vscode-foreground);
 		}
@@ -869,6 +867,12 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			display: flex;
 			flex-direction: column;
 			gap: 8px;
+			max-height: 220px;
+			overflow-y: auto;
+			padding: 6px;
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			background: color-mix(in srgb, var(--card) 82%, var(--vscode-editor-background, transparent));
 		}
 		.option-row,
 		.checkbox-row {
@@ -1283,12 +1287,10 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			${detail.updatedAt && detail.updatedAt !== detail.createdAt ? `<span>· Updated ${escapeHtml(formatDate(detail.updatedAt))}</span>` : ''}
 		</div>
 			<div class="actions">
-				<button id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh issue">${REFRESH_ICON}</button>
+				<button id="refresh-button" class="secondary" title="Refresh" aria-label="Refresh issue">Refresh</button>
 				<button id="create-branch-button" class="secondary">${BRANCH_ICON} Create Branch</button>
 				<button id="open-web-button" class="secondary" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
-				<button id="state-action-button" class="${stateActionClass}" data-state-action="${stateAction}">${stateActionLabel}</button>
 			</div>
-			<div class="action-error" id="state-action-error"></div>
 		</div>
 		<div class="layout">
 			<main>
@@ -1306,6 +1308,10 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				</section>
 				${relatedPrsHtml}
 				${timelineHtml}
+				<div class="main-state-actions">
+					<div class="action-error" id="state-action-error"></div>
+					<button id="state-action-button" class="${stateActionClass}" data-state-action="${stateAction}">${stateActionLabel}</button>
+				</div>
 			</main>
 			<aside>
 				${renderSidebar(detail, editOptions)}
@@ -1411,6 +1417,10 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				if (focusEl) {
 					focusEl.focus();
 				}
+				var checkedEl = editEl.querySelector('input:checked');
+				if (checkedEl) {
+					checkedEl.scrollIntoView({ block: 'nearest' });
+				}
 			}
 
 			function hideSection(section, reset) {
@@ -1492,7 +1502,17 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				return;
 			}
 			setActionError('');
-			pendingStateAction = button.getAttribute('data-state-action');
+			var requestedState = button.getAttribute('data-state-action');
+			if (requestedState === 'close' && button.getAttribute('data-confirming-close') !== 'true') {
+				button.setAttribute('data-confirming-close', 'true');
+				button.classList.remove('danger');
+				button.classList.add('primary');
+				button.textContent = 'Confirm close issue';
+				setActionError('Click again to confirm closing this issue.');
+				return;
+			}
+			button.removeAttribute('data-confirming-close');
+			pendingStateAction = requestedState;
 			button.disabled = true;
 			button.textContent = pendingStateAction === 'close' ? 'Closing issue...' : 'Reopening issue...';
 			vscode.postMessage({
@@ -1633,6 +1653,8 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				var button = document.getElementById('state-action-button');
 				if (button) {
 					button.disabled = false;
+					button.classList.remove('danger');
+					button.classList.add('primary');
 					button.textContent = pendingStateAction === 'close' ? 'Close issue' : 'Reopen issue';
 				}
 				setActionError(msg.message || 'Unable to update issue state.');

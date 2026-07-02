@@ -249,11 +249,16 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /"labels":\[\{"id":5,"name":"bug","color":"ff0000"\}\]/);
 		assert.match(html, /"milestones":\[\{"number":7,"title":"Sprint 7","state":"open"\}\]/);
 		assert.match(html, /Select labels from the repository label list\./);
+		assert.match(html, /\.option-list \{[\s\S]*max-height: 220px;[\s\S]*overflow-y: auto;/);
+		assert.match(html, /checkedEl\.scrollIntoView\(\{ block: 'nearest' \}\);/);
 		assert.match(html, /data-state-action="close"/);
-		assert.match(html, /id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh issue">/);
+		assert.match(html, /id="refresh-button" class="secondary" title="Refresh" aria-label="Refresh issue">Refresh<\/button>/);
 		assert.match(html, /id="open-web-button" class="secondary"/);
-		assert.match(html, /id="state-action-button" class="danger" data-state-action="close"[^>]*>Close issue<\/button>/);
+		assert.match(html, /id="state-action-button" class="primary" data-state-action="close"[^>]*>Close issue<\/button>/);
 		assert.match(html, />Close issue</);
+		assert.ok(html.indexOf('id="state-action-button"') > html.indexOf('<main>'));
+		assert.ok(html.indexOf('id="state-action-button"') < html.indexOf('</main>'));
+		assert.ok(html.indexOf('id="state-action-button"') < html.indexOf('<aside>'));
 
 		const styleCloseIndex = html.indexOf('</style>');
 		const titleEditIndex = html.indexOf('data-section-container="title"');
@@ -308,6 +313,12 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /assignees: collectCheckedValues\('\[data-assignee-option\]'/);
 		assert.match(html, /labels: collectCheckedValues\('\[data-label-option\]'/);
 		assert.match(html, /milestoneNumber: null/);
+		assert.match(html, /button\.setAttribute\('data-confirming-close', 'true'\);/);
+		assert.match(html, /button\.classList\.remove\('danger'\);/);
+		assert.match(html, /button\.classList\.add\('primary'\);/);
+		assert.match(html, /button\.classList\.remove\('danger'\);/);
+		assert.match(html, /button\.textContent = 'Confirm close issue';/);
+		assert.match(html, /Click again to confirm closing this issue\./);
 		assert.match(html, /button\.textContent = pendingStateAction === 'close' \? 'Close issue' : 'Reopen issue';/);
 	});
 });

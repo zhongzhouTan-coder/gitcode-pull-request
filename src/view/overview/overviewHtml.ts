@@ -82,11 +82,6 @@ function renderSvgAvatar(login: string, name?: string, size: number = 24): strin
 	</svg>`;
 }
 
-/** Refresh circular-arrow icon (16×16). */
-const REFRESH_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-	<path d="M2 8a6 6 0 0 1 10.9-3.5L14 6V2.1h1.6v5.8H9.8V6.4h2.5A4.4 4.4 0 1 0 13.3 11l1.2 1A6 6 0 1 1 2 8Z" fill="currentColor"/>
-</svg>`;
-
 /** External-link icon (16×16). */
 const EXTERNAL_LINK_ICON = `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
 	<path d="M3 2v11h11V8.5h1V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5v1H3Zm5.5 0V1H15v6.5h-1V2.7L7.9 8.9l-.8-.8L13.3 2H8.5Z" fill="currentColor"/>
@@ -719,14 +714,13 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 	});
 	const currentTitleJson = serializeForInlineScript(detail.title);
 
-	const draftText = detail.isDraft ? 'Yes' : 'No';
 	const milestoneText = detail.milestone
 		? escapeHtml(detail.milestone.title)
 		: '<span class="muted">None</span>';
 	const stateAction = detail.state === 'open' ? 'closed' : 'open';
 	const stateActionLabel = detail.state === 'open' ? 'Close pull request' : 'Reopen pull request';
 	const stateActionDisabled = detail.state === 'merged' ? 'disabled' : '';
-	const stateActionClass = detail.state === 'open' ? 'danger' : 'primary';
+	const stateActionClass = 'primary';
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -768,6 +762,18 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		.badge-merged { background: var(--badge-merged); }
 		.badge-draft { background: var(--badge-draft); }
 		.actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+		.main-state-actions {
+			display: flex;
+			justify-content: flex-end;
+			align-items: center;
+			gap: 10px;
+			margin-top: 16px;
+		}
+		.main-state-actions .action-error {
+			flex: 1;
+			margin-top: 0;
+			text-align: right;
+		}
 		.action-error { margin-top: 8px; color: var(--vscode-errorForeground); font-size: 13px; min-height: 18px; }
 		button {
 			display: inline-flex;
@@ -784,15 +790,6 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			flex-shrink: 0;
 		}
 		button.secondary {
-			background: transparent;
-			color: var(--vscode-foreground);
-		}
-		button.icon-button {
-			width: 32px;
-			height: 32px;
-			justify-content: center;
-			gap: 0;
-			padding: 0;
 			background: transparent;
 			color: var(--vscode-foreground);
 		}
@@ -850,6 +847,40 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		}
 		.meta-group + .meta-group { margin-top: 16px; }
 		.meta-group h3 { margin: 0 0 8px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+		.preference-list {
+			display: flex;
+			flex-direction: column;
+			gap: 14px;
+		}
+		.preference-row {
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr);
+			gap: 8px;
+			align-items: start;
+			cursor: pointer;
+		}
+		.preference-row input {
+			margin: 3px 0 0;
+		}
+		.preference-copy {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			min-width: 0;
+		}
+		.preference-title {
+			font-weight: 600;
+			font-size: 13px;
+		}
+		.preference-description {
+			color: var(--muted);
+			font-size: 12px;
+			line-height: 1.4;
+		}
+		.preference-status {
+			min-height: 18px;
+			margin-left: 22px;
+		}
 		.meta-list { margin: 0; padding-left: 18px; }
 		.meta-list li { margin: 4px 0; }
 		.branch-flow {
@@ -1773,6 +1804,8 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			flex-wrap: wrap;
 			gap: 6px;
 			min-height: 32px;
+			max-height: 112px;
+			overflow-y: auto;
 			padding: 4px;
 			border: 1px solid var(--border);
 			border-radius: 6px;
@@ -1831,11 +1864,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			<span>Updated ${escapeHtml(formatDate(detail.updatedAt))}</span>
 		</div>
 		<div class="actions">
-			<button id="refresh-button" class="secondary icon-button" title="Refresh" aria-label="Refresh pull request">${REFRESH_ICON}</button>
+			<button id="refresh-button" class="secondary" title="Refresh" aria-label="Refresh pull request">Refresh</button>
 			<button id="open-web-button" class="secondary" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
-			<button id="state-action-button" class="${stateActionClass}" data-state-action="${stateAction}" ${stateActionDisabled}>${stateActionLabel}</button>
 		</div>
-		<div class="action-error" id="state-action-error"></div>
 	</div>
 	<div class="layout">
 		<main>
@@ -1858,6 +1889,10 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			${conversationSection}
 			${activitySection}
 			${relatedIssuesSection}
+			<div class="main-state-actions">
+				<div class="action-error" id="state-action-error"></div>
+				<button id="state-action-button" class="${stateActionClass}" data-state-action="${stateAction}" ${stateActionDisabled}>${stateActionLabel}</button>
+			</div>
 		</main>
 		<aside>
 			<div class="card status-summary-card">
@@ -1917,42 +1952,37 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 					<div class="section-edit-error" style="display:none"></div>
 				</div>
 			</div>
-			<div class="card edit-section-wrapper">
-				<div class="edit-section-header">
-					<h3>Draft</h3>
-					<button class="edit-icon-btn" data-section="draft" title="Edit draft" aria-label="Edit draft">${PENCIL_ICON}</button>
-				</div>
-				<div class="section-view-draft">${draftText}</div>
-				<div class="section-edit-area" data-section-edit="draft" style="display:none">
-					<label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-						<input type="checkbox" data-section-input="draft" ${detail.isDraft ? 'checked' : ''}>
-						<span>Mark as draft</span>
-					</label>
-					<div class="section-edit-actions">
-						<button class="btn-primary btn-save-section" data-section="draft">Save</button>
-						<button class="btn-secondary btn-cancel-section" data-section="draft">Cancel</button>
-						<span class="section-edit-saving" style="display:none">Saving...</span>
+			<div class="card preference-card">
+				<div class="meta-group">
+					<h3>Pull Request Options</h3>
+					<div class="preference-list">
+						<div class="preference-item" data-section-edit="draft">
+							<label class="preference-row">
+								<input type="checkbox" data-section-input="draft" ${detail.isDraft ? 'checked' : ''}>
+								<span class="preference-copy">
+									<span class="preference-title">Mark as draft</span>
+									<span class="preference-description">Draft pull requests stay visible but are not ready for review.</span>
+								</span>
+							</label>
+							<div class="preference-status">
+								<span class="section-edit-saving" style="display:none">Saving...</span>
+								<div class="section-edit-error" style="display:none"></div>
+							</div>
+						</div>
+						<div class="preference-item" data-section-edit="closeRelatedIssue">
+							<label class="preference-row">
+								<input type="checkbox" data-section-input="closeRelatedIssue">
+								<span class="preference-copy">
+									<span class="preference-title">Close related issues after merge</span>
+									<span class="preference-description">When enabled, linked issues are closed after this pull request is merged.</span>
+								</span>
+							</label>
+							<div class="preference-status">
+								<span class="section-edit-saving" style="display:none">Saving...</span>
+								<div class="section-edit-error" style="display:none"></div>
+							</div>
+						</div>
 					</div>
-					<div class="section-edit-error" style="display:none"></div>
-				</div>
-			</div>
-			<div class="card edit-section-wrapper">
-				<div class="edit-section-header">
-					<h3>Close Related Issues</h3>
-					<button class="edit-icon-btn" data-section="closeRelatedIssue" title="Edit close related issues" aria-label="Edit close related issues">${PENCIL_ICON}</button>
-				</div>
-				<div class="section-view-closeRelatedIssue"><span class="muted">Default</span></div>
-				<div class="section-edit-area" data-section-edit="closeRelatedIssue" style="display:none">
-					<label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-						<input type="checkbox" data-section-input="closeRelatedIssue">
-						<span>Close related issues after merge</span>
-					</label>
-					<div class="section-edit-actions">
-						<button class="btn-primary btn-save-section" data-section="closeRelatedIssue">Save</button>
-						<button class="btn-secondary btn-cancel-section" data-section="closeRelatedIssue">Cancel</button>
-						<span class="section-edit-saving" style="display:none">Saving...</span>
-					</div>
-					<div class="section-edit-error" style="display:none"></div>
 				</div>
 			</div>
 			<div class="card">
@@ -2311,8 +2341,11 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			const saveBtn = getSectionSaveBtn(section);
 			const cancelBtn = getSectionCancelBtn(section);
 			const savingEl = getSectionSaving(section);
+			const edit = getSectionEdit(section);
+			const preferenceInput = edit && edit.closest('.preference-card') ? edit.querySelector('[data-section-input]') : null;
 			if (saveBtn) saveBtn.disabled = saving;
 			if (cancelBtn) cancelBtn.disabled = saving;
+			if (preferenceInput) preferenceInput.disabled = saving;
 			if (savingEl) savingEl.style.display = saving ? '' : 'none';
 		}
 
@@ -2778,6 +2811,15 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			});
 		});
 
+		document.querySelectorAll('.preference-card [data-section-input]').forEach(function(input) {
+			input.addEventListener('change', function() {
+				var section = input.getAttribute('data-section-input');
+				if (section) {
+					saveSection(section);
+				}
+			});
+		});
+
 		// Comment edit button handlers
 		document.querySelectorAll('.edit-comment-btn').forEach(function(btn) {
 			btn.addEventListener('click', function() {
@@ -2852,6 +2894,8 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				var button = document.getElementById('state-action-button');
 				if (button) {
 					button.disabled = false;
+					button.classList.remove('danger');
+					button.classList.add('primary');
 					button.textContent = pendingStateAction === 'closed' ? 'Close pull request' : 'Reopen pull request';
 				}
 				var errorEl = document.getElementById('state-action-error');
@@ -2929,7 +2973,19 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			if (errorEl) {
 				errorEl.textContent = '';
 			}
-			pendingStateAction = button.getAttribute('data-state-action');
+			var requestedState = button.getAttribute('data-state-action');
+			if (requestedState === 'closed' && button.getAttribute('data-confirming-close') !== 'true') {
+				button.setAttribute('data-confirming-close', 'true');
+				button.classList.remove('danger');
+				button.classList.add('primary');
+				button.textContent = 'Confirm close pull request';
+				if (errorEl) {
+					errorEl.textContent = 'Click again to confirm closing this pull request.';
+				}
+				return;
+			}
+			button.removeAttribute('data-confirming-close');
+			pendingStateAction = requestedState;
 			button.disabled = true;
 			button.textContent = pendingStateAction === 'closed' ? 'Closing pull request...' : 'Reopening pull request...';
 			vscode.postMessage({
