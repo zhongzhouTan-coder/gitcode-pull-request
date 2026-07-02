@@ -70,10 +70,21 @@ export async function listPagedRecords<T>(
 function getRecordKey(record: unknown): string {
 	if (record && typeof record === 'object') {
 		const fields = record as Record<string, unknown>;
-		for (const field of ['id', 'number', 'sha', 'path', 'note_id', 'discussion_id', 'login', 'name']) {
+		for (const field of ['id', 'number', 'path', 'filename', 'note_id', 'discussion_id', 'login', 'name', 'sha']) {
 			const value = fields[field];
 			if (typeof value === 'string' || typeof value === 'number') {
 				return `${field}:${value}`;
+			}
+		}
+
+		const patch = fields.patch;
+		if (patch && typeof patch === 'object') {
+			const patchFields = patch as Record<string, unknown>;
+			for (const field of ['new_path', 'old_path']) {
+				const value = patchFields[field];
+				if (typeof value === 'string' || typeof value === 'number') {
+					return `patch.${field}:${value}`;
+				}
 			}
 		}
 	}

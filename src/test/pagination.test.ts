@@ -26,4 +26,26 @@ suite('pagination helpers', () => {
 			{ state: 'open', per_page: 100, page: 2 },
 		]);
 	});
+
+	test('listPagedRecords keeps pull request files that share the same sha', async () => {
+		const client = {
+			get: async <T>(_path: string, query?: Record<string, unknown>): Promise<T> => {
+				if (query?.page === 1) {
+					return [
+						{ sha: 'same-head', filename: 'config/config.ini' },
+						{ sha: 'same-head', filename: 'src/loader.py' },
+					] as T;
+				}
+
+				return [] as T;
+			},
+		};
+
+		const records = await listPagedRecords<{ sha: string; filename: string }>(client, '/files');
+
+		assert.deepStrictEqual(records.map((record) => record.filename), [
+			'config/config.ini',
+			'src/loader.py',
+		]);
+	});
 });
