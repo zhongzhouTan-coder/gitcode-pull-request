@@ -108,6 +108,21 @@ export interface PullRequestDiffRefs {
 export interface PullRequestDiffSnapshot {
 	refs: PullRequestDiffRefs;
 	fileTypes: ReadonlyMap<string, string>;
+	files: readonly PullRequestDiffFileContext[];
+}
+
+export interface PullRequestDiffFileContext {
+	path: string;
+	previousPath?: string;
+	type?: string;
+	lines: readonly PullRequestDiffFileContextLine[];
+}
+
+export interface PullRequestDiffFileContextLine {
+	kind: 'context' | 'add' | 'delete';
+	oldLine?: number;
+	newLine?: number;
+	content: string;
 }
 
 /** @internal for use by the snapshot service and mapper */
@@ -127,6 +142,16 @@ export interface PullRequestFileJsonDto {
 		old_path?: string;
 		new_path?: string;
 	};
+	content?: {
+		text?: PullRequestFileJsonLineDto[];
+	};
+}
+
+export interface PullRequestFileJsonLineDto {
+	line_content?: unknown;
+	type?: unknown;
+	old_line?: unknown;
+	new_line?: unknown;
 }
 
 export type DiffSide = 'base' | 'head' | 'empty';

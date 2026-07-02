@@ -12,7 +12,7 @@ import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithTimelineHtml, getOverviewWithCommentsLoadingHtml, getOverviewWithCommentsErrorHtml, renderRelatedIssuesSection, renderRelatedIssuesLoading, renderRelatedIssuesError } from './overviewHtml';
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 import { PullRequestOperationLogsStore } from './pullRequestOperationLogsStore';
-import { buildDiffCommentContexts } from './diffCommentContext';
+import { buildDiffCommentContexts, DiffCommentContext } from './diffCommentContext';
 
 interface PullRequestOverviewContext {
 	repository: GitCodeRepository;
@@ -426,7 +426,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Build comments HTML
 		if (commentsSnapshot) {
-			let diffContexts;
+			let diffContexts: ReadonlyMap<string, DiffCommentContext> | undefined;
 			const treeStore = PullRequestOverviewPanel.treeStore;
 			if (treeStore) {
 				try {
@@ -435,6 +435,22 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				} catch (error) {
 					this.logger.debug(
 						`Failed to load diff context for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
+			if (this.hasMissingDiffContexts(commentsSnapshot, diffContexts) && PullRequestOverviewPanel.pullRequestService) {
+				try {
+					const diffSnapshot = await PullRequestOverviewPanel.pullRequestService.getPullRequestDiffSnapshot(
+						this.context.repository,
+						this.context.pullRequestNumber,
+					);
+					diffContexts = this.mergeDiffContexts(
+						diffContexts,
+						buildDiffCommentContexts(commentsSnapshot, diffSnapshot.files),
+					);
+				} catch (error) {
+					this.logger.debug(
+						`Failed to load structured diff context for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
 					);
 				}
 			}
@@ -480,6 +496,32 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		return getOverviewErrorHtml('Unable to load pull request', 'An unknown error occurred.', createNonce());
+	}
+
+	private hasMissingDiffContexts(
+		commentsSnapshot: PullRequestCommentsSnapshot,
+		diffContexts: ReadonlyMap<string, DiffCommentContext> | undefined,
+	): boolean {
+		return commentsSnapshot.comments.some((comment) => comment.kind === 'diff'
+			&& Boolean(comment.location.path)
+			&& !diffContexts?.has(comment.id));
+	}
+
+	private mergeDiffContexts(
+		primary: ReadonlyMap<string, DiffCommentContext> | undefined,
+		fallback: ReadonlyMap<string, DiffCommentContext>,
+	): ReadonlyMap<string, DiffCommentContext> {
+		if (!primary?.size) {
+			return fallback;
+		}
+
+		const merged = new Map(primary);
+		for (const [commentId, context] of fallback) {
+			if (!merged.has(commentId)) {
+				merged.set(commentId, context);
+			}
+		}
+		return merged;
 	}
 
 	// ---- Section-Level Editing ----

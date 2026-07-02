@@ -1,5 +1,6 @@
 import {
 	PullRequestCommentsSnapshot,
+	PullRequestDiffFileContext,
 	PullRequestDiffComment,
 	PullRequestFileChange,
 } from '../../common/models';
@@ -24,14 +25,17 @@ interface ParsedPatchLine {
 	content: string;
 }
 
+type DiffContextSource = Pick<PullRequestFileChange, 'path' | 'previousPath' | 'patch'>
+	| Pick<PullRequestDiffFileContext, 'path' | 'previousPath' | 'lines'>;
+
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 const DEFAULT_CONTEXT_RADIUS = 3;
 
 export function buildDiffCommentContexts(
 	snapshot: PullRequestCommentsSnapshot,
-	files: readonly PullRequestFileChange[],
+	files: readonly DiffContextSource[],
 ): ReadonlyMap<string, DiffCommentContext> {
-	const filesByPath = new Map<string, PullRequestFileChange>();
+	const filesByPath = new Map<string, DiffContextSource>();
 	for (const file of files) {
 		filesByPath.set(file.path, file);
 		if (file.previousPath) {
@@ -46,11 +50,11 @@ export function buildDiffCommentContexts(
 		}
 
 		const file = filesByPath.get(comment.location.path);
-		if (!file?.patch) {
+		if (!file) {
 			continue;
 		}
 
-		const lines = extractDiffContext(file.patch, comment);
+		const lines = extractDiffContextFromSource(file, comment);
 		if (lines.length) {
 			contexts.set(comment.id, {
 				commentId: comment.id,
@@ -60,6 +64,21 @@ export function buildDiffCommentContexts(
 	}
 
 	return contexts;
+}
+
+function extractDiffContextFromSource(
+	file: DiffContextSource,
+	comment: PullRequestDiffComment,
+): DiffCommentContextLine[] {
+	if ('patch' in file && file.patch) {
+		return extractDiffContext(file.patch, comment);
+	}
+
+	if ('lines' in file && file.lines.length) {
+		return extractStructuredDiffContext(file.lines, comment);
+	}
+
+	return [];
 }
 
 export function extractDiffContext(
@@ -80,6 +99,27 @@ export function extractDiffContext(
 	const start = Math.max(0, anchorIndex - contextRadius);
 	const end = Math.min(hunk.length, anchorIndex + contextRadius + 1);
 	return hunk.slice(start, end).map((line) => ({
+		...line,
+		isCommentLine: line.kind !== 'delete'
+			&& line.newLine !== undefined
+			&& line.newLine >= comment.location.startLine
+			&& line.newLine <= comment.location.endLine,
+	}));
+}
+
+export function extractStructuredDiffContext(
+	lines: readonly ParsedPatchLine[],
+	comment: PullRequestDiffComment,
+	contextRadius = DEFAULT_CONTEXT_RADIUS,
+): DiffCommentContextLine[] {
+	const anchorIndex = lines.findIndex((line) => line.newLine === comment.location.startLine && line.kind !== 'delete');
+	if (anchorIndex < 0) {
+		return [];
+	}
+
+	const start = Math.max(0, anchorIndex - contextRadius);
+	const end = Math.min(lines.length, anchorIndex + contextRadius + 1);
+	return lines.slice(start, end).map((line) => ({
 		...line,
 		isCommentLine: line.kind !== 'delete'
 			&& line.newLine !== undefined

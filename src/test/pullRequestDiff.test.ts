@@ -37,6 +37,57 @@ suite('PullRequestDiff', () => {
 		assert.strictEqual(snapshot.fileTypes.get('assets/logo.png'), 'image_type');
 	});
 
+	test('maps structured diff rows from files.json for overview context', () => {
+		const snapshot = mapDiffSnapshot({
+			diff_refs: {
+				base_sha: '0844e66715835ea9dfcfa8ffff88fa5e03a46291',
+				head_sha: '169338a869599b5e7abf82f2fdf9399ee4c4bdab',
+			},
+			diffs: [{
+				statistic: {
+					type: 'text_type',
+					path: 'src/new.ts',
+					old_path: 'src/old.ts',
+					new_path: 'src/new.ts',
+				},
+				content: {
+					text: [
+						{ line_content: '@@ -9,3 +9,3 @@', old_line: '...', new_line: '...', type: 'match' },
+						{
+							line_content: ' unchanged();',
+							old_line: { line_num: 9 },
+							new_line: { line_num: 9 },
+						},
+						{
+							line_content: 'removed();',
+							old_line: { line_num: 10 },
+							new_line: { line_num: '' },
+							type: 'old',
+						},
+						{
+							line_content: 'added();',
+							old_line: { line_num: '' },
+							new_line: { line_num: 10 },
+							type: 'new',
+						},
+					],
+				},
+			}],
+		});
+
+		assert.strictEqual(snapshot.files.length, 1);
+		assert.strictEqual(snapshot.files[0].path, 'src/new.ts');
+		assert.strictEqual(snapshot.files[0].previousPath, 'src/old.ts');
+		assert.deepStrictEqual(
+			snapshot.files[0].lines.map((line) => [line.kind, line.oldLine, line.newLine, line.content]),
+			[
+				['context', 9, 9, 'unchanged();'],
+				['delete', 10, undefined, 'removed();'],
+				['add', undefined, 10, 'added();'],
+			],
+		);
+	});
+
 	test('stat does not download remote content', () => {
 		let reads = 0;
 		const rawContentService = {
