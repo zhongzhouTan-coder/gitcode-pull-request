@@ -6,6 +6,8 @@ import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
 import { mapPullRequestOperationLogs } from '../mappers/pullRequestOperationLogMapper';
 import { mapCreatePullRequestInput, mapCreatedPullRequest, mapEditPullRequestInput, mapPullRequest } from '../mappers/pullRequestMapper';
 import { mapPullRequestRelatedIssues } from '../mappers/pullRequestRelatedIssueMapper';
+import { mapAddedPullRequestRelatedIssues } from '../mappers/addedPullRequestRelatedIssueMapper';
+import { AddedPullRequestRelatedIssue } from '../../common/models';
 import { listPagedRecords, pageQuery } from './pagination';
 
 export interface PullRequestFilters {
@@ -103,5 +105,22 @@ export class PullRequestService {
 		);
 
 		return mapPullRequestOperationLogs(response);
+	}
+
+	async addRelatedIssues(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		issueNumbers: readonly number[],
+	): Promise<AddedPullRequestRelatedIssue[]> {
+		if (!issueNumbers.length) {
+			throw new Error('At least one issue number is required.');
+		}
+
+		const response = await this.client.post<any[]>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/issues`,
+			issueNumbers,
+		);
+
+		return mapAddedPullRequestRelatedIssues(response);
 	}
 }

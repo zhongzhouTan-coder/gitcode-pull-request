@@ -136,6 +136,7 @@ export class ViewController implements vscode.Disposable {
 			options.authService,
 			options.pullRequestService,
 			repositoryService,
+			issueService,
 		);
 
 		// Comment components

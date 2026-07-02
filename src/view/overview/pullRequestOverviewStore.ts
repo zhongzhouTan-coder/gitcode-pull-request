@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, PullRequestDetail, PullRequestRelatedIssue } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, PullRequestDetail, PullRequestRelatedIssue, AddedPullRequestRelatedIssue, IssueSummary } from '../../common/models';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
+import { IssueService } from '../../gitcode/services/issueService';
 
 export class PullRequestOverviewStore {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
@@ -17,6 +18,7 @@ export class PullRequestOverviewStore {
 		private readonly authService: AuthService,
 		private readonly pullRequestService: PullRequestService,
 		private readonly repositoryService?: RepositoryService,
+		private readonly issueService?: IssueService,
 	) {}
 
 	async getDetail(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestDetail> {
@@ -114,6 +116,44 @@ export class PullRequestOverviewStore {
 		this.detailPromises.delete(key);
 		this.relatedIssuesPromises.delete(key);
 		this.onDidChangeEmitter.fire();
+	}
+
+	async addRelatedIssues(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		issueNumbers: readonly number[],
+	): Promise<AddedPullRequestRelatedIssue[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const result = await this.pullRequestService.addRelatedIssues(repository, pullRequestNumber, issueNumbers);
+
+		// Invalidate the related issue cache so the overview reloads fresh data
+		const key = this.getKey(repository, pullRequestNumber);
+		this.relatedIssuesPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+
+		return result;
+	}
+
+	async listLinkableIssues(repository: GitCodeRepository): Promise<IssueSummary[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		if (!this.issueService) {
+			return [];
+		}
+
+		return this.issueService.listIssues(repository, {
+			state: 'open',
+			sort: 'updated',
+			direction: 'desc',
+			perPage: 100,
+		});
 	}
 
 	private getKey(repository: GitCodeRepository, pullRequestNumber: number): string {

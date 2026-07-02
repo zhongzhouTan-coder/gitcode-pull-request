@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { AuthService } from '../authentication/authService';
-import { GitCodeRepository, PullRequestDetail } from '../common/models';
+import { GitCodeRepository, IssueSummary, PullRequestDetail } from '../common/models';
+import { IssueService } from '../gitcode/services/issueService';
 import { PullRequestService } from '../gitcode/services/pullRequestService';
 import { PullRequestOverviewStore } from '../view/overview/pullRequestOverviewStore';
 
@@ -35,6 +36,19 @@ suite('PullRequestOverviewStore', () => {
 			reasons: [],
 		},
 	};
+
+	const issue = (number: number): IssueSummary => ({
+		id: number,
+		number,
+		title: `Issue ${number}`,
+		state: 'open',
+		author: { login: 'alice' },
+		assignees: [],
+		labels: [],
+		comments: 0,
+		createdAt: '2026-06-20T10:00:00+08:00',
+		updatedAt: '2026-06-20T10:00:00+08:00',
+	});
 
 	test('reuses in-flight requests for the same pull request', async () => {
 		let calls = 0;
@@ -123,5 +137,141 @@ suite('PullRequestOverviewStore', () => {
 		assert.strictEqual(editCalls, 1);
 		assert.strictEqual(getCalls, 2);
 		assert.strictEqual(refreshed.title, 'After edit');
+	});
+
+	// ---- Add Related Issues ----
+
+	test('addRelatedIssues requires authentication', async () => {
+		const authService = {
+			getSession: async () => null,
+		} as unknown as AuthService;
+		const pullRequestService = {} as PullRequestService;
+
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+
+		await assert.rejects(
+			() => store.addRelatedIssues(repository, 2, [339]),
+			/Sign in to GitCode/,
+		);
+	});
+
+	test('addRelatedIssues calls the service and invalidates related issues cache', async () => {
+		let addCalls = 0;
+		let getRelatedIssuesCalls = 0;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {
+			addRelatedIssues: async () => {
+				addCalls += 1;
+				return [{ id: 1, number: 339, title: 'Issue 339' }];
+			},
+			listPullRequestRelatedIssues: async () => {
+				getRelatedIssuesCalls += 1;
+				return [{
+					id: 1, number: 339, title: 'Issue 339', state: 'open' as const,
+					author: { login: 'alice' }, labels: [], createdAt: '', updatedAt: '',
+				}];
+			},
+		} as unknown as PullRequestService;
+
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+
+		// First get related issues to populate cache
+		await store.getRelatedIssues(repository, 2);
+		assert.strictEqual(getRelatedIssuesCalls, 1);
+
+		// Add related issue
+		const result = await store.addRelatedIssues(repository, 2, [339]);
+		assert.strictEqual(addCalls, 1);
+		assert.strictEqual(result.length, 1);
+		assert.strictEqual(result[0].number, 339);
+
+		// Subsequent getRelatedIssues should be a fresh call (cache invalidated)
+		await store.getRelatedIssues(repository, 2);
+		assert.strictEqual(getRelatedIssuesCalls, 2);
+	});
+
+	test('addRelatedIssues allows retry after failure', async () => {
+		let addCalls = 0;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {
+			addRelatedIssues: async () => {
+				addCalls += 1;
+				if (addCalls === 1) {
+					throw new Error('Network error');
+				}
+				return [{ id: 1, number: 339, title: 'Issue 339' }];
+			},
+		} as unknown as PullRequestService;
+
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+
+		// First call fails
+		await assert.rejects(
+			() => store.addRelatedIssues(repository, 2, [339]),
+			/Network error/,
+		);
+
+		// Second call succeeds
+		const result = await store.addRelatedIssues(repository, 2, [339]);
+		assert.strictEqual(addCalls, 2);
+		assert.strictEqual(result[0].number, 339);
+	});
+
+	test('listLinkableIssues calls the issue list API with recent open filters', async () => {
+		let calls = 0;
+		let receivedFilters: unknown;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {} as PullRequestService;
+		const issueService = {
+			listIssues: async (_repository: GitCodeRepository, filters: unknown) => {
+				calls += 1;
+				receivedFilters = filters;
+				return [issue(339)];
+			},
+		} as unknown as IssueService;
+
+		const store = new PullRequestOverviewStore(authService, pullRequestService, undefined, issueService);
+		const issues = await store.listLinkableIssues(repository);
+
+		assert.strictEqual(calls, 1);
+		assert.deepStrictEqual(issues.map((item) => item.number), [339]);
+		assert.deepStrictEqual(receivedFilters, {
+			state: 'open',
+			sort: 'updated',
+			direction: 'desc',
+			perPage: 100,
+		});
+	});
+
+	test('listLinkableIssues returns an empty list when issue service is not wired', async () => {
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {} as PullRequestService;
+
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+		assert.deepStrictEqual(await store.listLinkableIssues(repository), []);
 	});
 });

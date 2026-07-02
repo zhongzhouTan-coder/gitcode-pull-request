@@ -559,4 +559,93 @@ suite('OverviewHtml', () => {
 
 		assert.match(html, /Activity \(2\)/);
 	});
+
+	// ---- Add Related Issue Button Rendering ----
+
+	test('renders the add button in the related issues section heading when enabled', () => {
+		const snapshot: PullRequestRelatedIssuesSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			issues: [{ id: 1, number: 339, title: 'Test', state: 'open', author: { login: 'alice' }, labels: [], createdAt: '', updatedAt: '' }],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderRelatedIssuesSection(snapshot, { canAddRelatedIssue: true });
+
+		assert.match(html, /class="icon-button add-related-issue-btn"/);
+		assert.match(html, /data-action="addRelatedIssue"/);
+		assert.match(html, /aria-label="Add related issue"/);
+	});
+
+	test('does not render the add button when canAddRelatedIssue is false', () => {
+		const snapshot: PullRequestRelatedIssuesSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			issues: [],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderRelatedIssuesSection(snapshot, { canAddRelatedIssue: false });
+
+		assert.doesNotMatch(html, /data-action="addRelatedIssue"/);
+	});
+
+	test('does not render the add button when options are omitted', () => {
+		const snapshot: PullRequestRelatedIssuesSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			issues: [],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderRelatedIssuesSection(snapshot);
+
+		assert.doesNotMatch(html, /data-action="addRelatedIssue"/);
+	});
+
+	test('disables the add button when addRelatedIssueInProgress is true', () => {
+		const snapshot: PullRequestRelatedIssuesSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			issues: [],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderRelatedIssuesSection(snapshot, { canAddRelatedIssue: true, addRelatedIssueInProgress: true });
+
+		assert.match(html, /disabled/);
+		assert.match(html, /class="spinner"/);
+	});
+
+	test('renders the add button for empty related issues when enabled', () => {
+		const snapshot: PullRequestRelatedIssuesSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			issues: [],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderRelatedIssuesSection(snapshot, { canAddRelatedIssue: true });
+
+		assert.match(html, /data-action="addRelatedIssue"/);
+		assert.match(html, /No related issues/);
+	});
+
+	test('related issue rows are still escaped with the add button present', () => {
+		const snapshot: PullRequestRelatedIssuesSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			issues: [{
+				id: 1, number: 339, title: '<script>alert("xss")</script>', state: 'open',
+				author: { login: 'alice' }, labels: [], createdAt: '', updatedAt: '',
+			}],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderRelatedIssuesSection(snapshot, { canAddRelatedIssue: true });
+
+		assert.doesNotMatch(html, /<script>alert\("xss"\)<\/script>/);
+		assert.match(html, /&lt;script&gt;alert/);
+		assert.match(html, /data-action="addRelatedIssue"/);
+	});
 });

@@ -530,6 +530,11 @@ function renderIssueLabels(labels: IssueLabel[]): string {
 	)).join('')}</div>`;
 }
 
+export interface RelatedIssuesSectionOptions {
+	canAddRelatedIssue: boolean;
+	addRelatedIssueInProgress?: boolean;
+}
+
 function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
 	const stateClass = issue.state === 'closed' ? 'closed' : 'open';
 	const repositoryName = issue.repository?.fullName ?? '';
@@ -575,17 +580,21 @@ function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
 	`;
 }
 
-export function renderRelatedIssuesSection(snapshot: PullRequestRelatedIssuesSnapshot): string {
+export function renderRelatedIssuesSection(snapshot: PullRequestRelatedIssuesSnapshot, options?: RelatedIssuesSectionOptions): string {
 	const issues = snapshot.issues;
+	const addButtonHtml = renderAddRelatedIssueButton(options);
 
 	if (!issues.length) {
-		return '<section><h2>Related Issues</h2><div class="empty">No related issues.</div></section>';
+		return `<section><div class="section-heading-row"><h2>Related Issues</h2>${addButtonHtml}</div><div class="empty">No related issues.</div></section>`;
 	}
 
 	const countText = `${issues.length}`;
 	return `
 		<section>
-			<h2>Related Issues (${countText})</h2>
+			<div class="section-heading-row">
+				<h2>Related Issues (${countText})</h2>
+				${addButtonHtml}
+			</div>
 			<div class="related-issues-list">
 				${issues.map((issue) => renderRelatedIssueRow(issue)).join('')}
 			</div>
@@ -593,12 +602,33 @@ export function renderRelatedIssuesSection(snapshot: PullRequestRelatedIssuesSna
 	`;
 }
 
-export function renderRelatedIssuesLoading(): string {
-	return '<section><h2>Related Issues</h2><div class="empty">Loading related issues...</div></section>';
+function renderAddRelatedIssueButton(options?: RelatedIssuesSectionOptions): string {
+	if (!options?.canAddRelatedIssue) {
+		return '';
+	}
+
+	const disabled = options.addRelatedIssueInProgress ? 'disabled' : '';
+	const loadingIndicator = options.addRelatedIssueInProgress
+		? '<span class="spinner" aria-hidden="true"></span>'
+		: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 0 0-3.882 9.394l-.707.707A6.5 6.5 0 1 1 8 14.5v-1a5.5 5.5 0 0 0 0-11ZM8 5.5v5h1v-5H8Z"/></svg>';
+
+	return `<button
+		class="icon-button add-related-issue-btn"
+		data-action="addRelatedIssue"
+		aria-label="Add related issue"
+		title="Add related issue"
+		${disabled}
+	>${loadingIndicator}</button>`;
 }
 
-export function renderRelatedIssuesError(message: string): string {
-	return `<section><h2>Related Issues</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
+export function renderRelatedIssuesLoading(options?: RelatedIssuesSectionOptions): string {
+	const addButtonHtml = renderAddRelatedIssueButton(options);
+	return `<section><div class="section-heading-row"><h2>Related Issues</h2>${addButtonHtml}</div><div class="empty">Loading related issues...</div></section>`;
+}
+
+export function renderRelatedIssuesError(message: string, options?: RelatedIssuesSectionOptions): string {
+	const addButtonHtml = renderAddRelatedIssueButton(options);
+	return `<section><div class="section-heading-row"><h2>Related Issues</h2>${addButtonHtml}</div><div class="comment-error">${escapeHtml(message)}</div></section>`;
 }
 
 // ---- Activity / Operation Logs Rendering ----
@@ -1576,6 +1606,46 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		}
 		.comment-error { color: var(--vscode-errorForeground); padding: 8px 0; }
 		/* ---- Related Issues ---- */
+		.section-heading-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+		.section-heading-row h2 {
+			flex: 1;
+		}
+		.icon-button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			border: 1px solid var(--border);
+			background: transparent;
+			color: var(--muted);
+			padding: 4px;
+			border-radius: 6px;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+		.icon-button:hover:not(:disabled) {
+			color: var(--vscode-foreground);
+			background: color-mix(in srgb, var(--vscode-textLink-foreground, #58a6ff) 10%, transparent);
+		}
+		.icon-button:disabled {
+			opacity: 0.5;
+			cursor: default;
+		}
+		.spinner {
+			display: inline-block;
+			width: 14px;
+			height: 14px;
+			border: 2px solid color-mix(in srgb, var(--muted) 30%, transparent);
+			border-top-color: var(--muted);
+			border-radius: 50%;
+			animation: spin 0.6s linear infinite;
+		}
+		@keyframes spin {
+			to { transform: rotate(360deg); }
+		}
 		.related-issues-list {
 			display: flex;
 			flex-direction: column;
@@ -3006,6 +3076,11 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 					repository: el.dataset.repository,
 					url: el.dataset.url,
 				});
+			});
+		});
+		document.querySelectorAll('[data-action="addRelatedIssue"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				vscode.postMessage({ command: 'addRelatedIssue' });
 			});
 		});
 		document.querySelectorAll('[data-action="openDiffComment"]').forEach((el) => {

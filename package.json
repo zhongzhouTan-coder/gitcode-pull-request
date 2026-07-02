@@ -177,6 +177,10 @@
       {
         "command": "gitcode.unresolveDiffComment",
         "title": "Mark as Unresolved"
+      },
+      {
+        "command": "gitcode.pullRequest.addRelatedIssue",
+        "title": "GitCode: Add Related Issue to Pull Request"
       }
     ],
     "menus": {

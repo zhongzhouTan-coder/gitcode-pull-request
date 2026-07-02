@@ -481,6 +481,16 @@ export interface PullRequestRelatedIssuesSnapshot {
 	loadedAt: number;
 }
 
+export interface AddPullRequestRelatedIssuesInput {
+	issueNumbers: readonly number[];
+}
+
+export interface AddedPullRequestRelatedIssue {
+	id: number;
+	number: number;
+	title: string;
+}
+
 // ---- Create Pull Request Types ----
 
 export interface CreatePullRequestInput {

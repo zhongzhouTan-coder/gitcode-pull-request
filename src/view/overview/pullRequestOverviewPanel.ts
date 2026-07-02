@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestRelatedIssuesSnapshot } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, IssueSummary, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestRelatedIssuesSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestDiffController } from '../diff/pullRequestDiffController';
@@ -18,6 +18,11 @@ interface PullRequestOverviewContext {
 	repository: GitCodeRepository;
 	pullRequestNumber: number;
 	url?: string;
+}
+
+export interface RelatedIssueQuickPickItem extends vscode.QuickPickItem {
+	issueNumber?: number;
+	manual?: boolean;
 }
 
 function createNonce(): string {
@@ -177,6 +182,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private relatedIssuesSnapshot?: PullRequestRelatedIssuesSnapshot;
 	private operationLogsSnapshot?: PullRequestOperationLogsSnapshot;
 	private editOptions?: EditPullRequestOptions;
+	private addRelatedIssueInProgress: boolean = false;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -240,6 +246,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'replyPullRequestComment' && typeof message.discussionId === 'string' && typeof message.body === 'string') {
 				await this.handleReplyPullRequestComment(message.discussionId, message.body);
+				return;
+			}
+
+			if (message.command === 'addRelatedIssue') {
+				await this.handleAddRelatedIssue();
 				return;
 			}
 
@@ -330,7 +341,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		// Render detail with loading timeline and related issues.
-		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading();
+		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading({ canAddRelatedIssue: true, addRelatedIssueInProgress: this.addRelatedIssueInProgress });
 		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml);
 
 		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
@@ -415,11 +426,12 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		// Build related issues HTML
+		const relatedIssuesOptions = { canAddRelatedIssue: true, addRelatedIssueInProgress: this.addRelatedIssueInProgress };
 		let relatedIssuesHtml: string;
 		if (relatedIssuesSnapshot) {
-			relatedIssuesHtml = renderRelatedIssuesSection(relatedIssuesSnapshot);
+			relatedIssuesHtml = renderRelatedIssuesSection(relatedIssuesSnapshot, relatedIssuesOptions);
 		} else if (relatedIssuesError) {
-			relatedIssuesHtml = renderRelatedIssuesError(relatedIssuesError);
+			relatedIssuesHtml = renderRelatedIssuesError(relatedIssuesError, relatedIssuesOptions);
 		} else {
 			relatedIssuesHtml = '';
 		}
@@ -808,4 +820,234 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			await vscode.window.showErrorMessage(message);
 		}
 	}
+
+	// ---- Add Related Issue ----
+
+	static async addRelatedIssueToCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before adding a related issue.');
+			return false;
+		}
+
+		await activePanel.handleAddRelatedIssue();
+		return true;
+	}
+
+	private async handleAddRelatedIssue(): Promise<void> {
+		if (this.addRelatedIssueInProgress) {
+			return;
+		}
+
+		const linkedNumbers = (this.relatedIssuesSnapshot?.issues ?? []).map((issue) => issue.number);
+		const filteredNumbers = await this.promptRelatedIssueNumbers(linkedNumbers);
+		if (!filteredNumbers.length) {
+			return; // User cancelled
+		}
+
+		this.addRelatedIssueInProgress = true;
+		await this.reloadOverviewHtml();
+
+		try {
+			await this.store.addRelatedIssues(
+				this.context.repository,
+				this.context.pullRequestNumber,
+				filteredNumbers,
+			);
+
+			const message = filteredNumbers.length === 1
+				? `Related issue added to pull request #${this.context.pullRequestNumber}`
+				: `Related issues added to pull request #${this.context.pullRequestNumber}`;
+			await vscode.window.showInformationMessage(message);
+
+			// Refresh related issues and operation logs
+			if (PullRequestOverviewPanel.operationLogsStore) {
+				await PullRequestOverviewPanel.operationLogsStore.refresh(
+					this.context.repository.fullName,
+					this.context.pullRequestNumber,
+				);
+			}
+			this.commentsSnapshot = undefined;
+			this.relatedIssuesSnapshot = undefined;
+			this.operationLogsSnapshot = undefined;
+			this.editOptions = undefined;
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to add related issues.';
+			this.logger.error(
+				`Failed to add related issues to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+			);
+			await vscode.window.showErrorMessage(errorMessage);
+		} finally {
+			this.addRelatedIssueInProgress = false;
+		}
+
+		// Reload the overview with fresh data
+		await this.load(true);
+	}
+
+	private async promptRelatedIssueNumbers(linkedNumbers: readonly number[]): Promise<number[]> {
+		let issues: IssueSummary[] = [];
+		try {
+			issues = await this.store.listLinkableIssues(this.context.repository);
+		} catch (error) {
+			this.logger.debug(
+				`Failed to list issues for related issue picker in ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+
+		const linkableIssues = getLinkableIssues(issues, linkedNumbers);
+		if (!linkableIssues.length) {
+			return this.promptRelatedIssueNumbersManually(linkedNumbers);
+		}
+
+		const manualItem: RelatedIssueQuickPickItem = {
+			label: '$(edit) Enter issue numbers manually',
+			description: 'Use when an issue is not shown in the list',
+			manual: true,
+			alwaysShow: true,
+		};
+		const picked = await vscode.window.showQuickPick(
+			[
+				manualItem,
+				...linkableIssues.map(formatRelatedIssueQuickPickItem),
+			],
+			{
+				title: `Select issues to link to PR #${this.context.pullRequestNumber}`,
+				placeHolder: 'Choose one or more issues, or enter issue numbers manually',
+				canPickMany: true,
+			},
+		);
+
+		if (!picked) {
+			return [];
+		}
+
+		if (picked.some((item) => item.manual)) {
+			return this.promptRelatedIssueNumbersManually(linkedNumbers);
+		}
+
+		return picked
+			.map((item) => item.issueNumber)
+			.filter((issueNumber): issueNumber is number => issueNumber !== undefined);
+	}
+
+	private async promptRelatedIssueNumbersManually(linkedNumbers: readonly number[]): Promise<number[]> {
+		const input = await vscode.window.showInputBox({
+			title: `Issue numbers to link to PR #${this.context.pullRequestNumber}`,
+			placeHolder: 'Example: 339 or 339,341,342',
+			prompt: 'Enter one or more issue numbers, separated by commas.',
+			validateInput: (value) => validateIssueNumberInput(value, linkedNumbers),
+		});
+
+		if (input === undefined) {
+			return [];
+		}
+
+		const issueNumbers = parseIssueNumbers(input);
+		const filteredNumbers = issueNumbers.filter((n) => !linkedNumbers.includes(n));
+		if (!filteredNumbers.length) {
+			await vscode.window.showInformationMessage(
+				'All selected issues are already related to this pull request.',
+			);
+		}
+
+		return filteredNumbers;
+	}
+
+	private async reloadOverviewHtml(): Promise<void> {
+		// Re-render the existing overview HTML with the updated in-progress state
+		// so the add button shows a spinner
+		if (!this.detail) {
+			return;
+		}
+
+		const relatedIssuesOptions = { canAddRelatedIssue: true, addRelatedIssueInProgress: this.addRelatedIssueInProgress };
+
+		let relatedIssuesHtml: string;
+		if (this.relatedIssuesSnapshot) {
+			relatedIssuesHtml = renderRelatedIssuesSection(this.relatedIssuesSnapshot, relatedIssuesOptions);
+		} else {
+			relatedIssuesHtml = renderRelatedIssuesLoading(relatedIssuesOptions);
+		}
+
+		if (this.commentsSnapshot) {
+			this.panel.webview.html = getOverviewWithTimelineHtml(
+				this.detail,
+				this.commentsSnapshot,
+				createNonce(),
+				relatedIssuesHtml,
+				this.editOptions,
+				undefined,
+				this.operationLogsSnapshot,
+			);
+		} else {
+			this.panel.webview.html = getOverviewWithCommentsLoadingHtml(
+				this.detail,
+				createNonce(),
+				relatedIssuesHtml,
+			);
+		}
+	}
+}
+
+export function validateIssueNumberInput(value: string, linkedNumbers: readonly number[]): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return 'Enter at least one issue number.';
+	}
+
+	const parts = trimmed.split(/[,\s\n]+/).filter((p) => p.length > 0);
+	for (const part of parts) {
+		const num = Number(part);
+		if (!Number.isInteger(num) || num <= 0) {
+			return 'Issue numbers must be positive integers.';
+		}
+	}
+
+	const numbers = parts.map(Number);
+	const newNumbers = numbers.filter((n) => !linkedNumbers.includes(n));
+	if (newNumbers.length === 0) {
+		return 'All selected issues are already related to this pull request.';
+	}
+
+	return null; // Valid
+}
+
+export function parseIssueNumbers(input: string): number[] {
+	const trimmed = input.trim();
+	if (!trimmed) {
+		return [];
+	}
+
+	const parts = trimmed.split(/[,\s\n]+/).filter((p) => p.length > 0);
+	const numbers = parts.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+
+	// Deduplicate
+	return [...new Set(numbers)];
+}
+
+export function getLinkableIssues(
+	issues: readonly IssueSummary[],
+	linkedNumbers: readonly number[],
+): IssueSummary[] {
+	const linked = new Set(linkedNumbers);
+	return issues.filter((issue) => !linked.has(issue.number));
+}
+
+export function formatRelatedIssueQuickPickItem(issue: IssueSummary): RelatedIssueQuickPickItem {
+	const meta = [
+		issue.state === 'closed' ? 'Closed' : 'Open',
+		issue.author.login ? `@${issue.author.login}` : undefined,
+		issue.issueType,
+		issue.issueState,
+	]
+		.filter((part): part is string => Boolean(part))
+		.join(' | ');
+
+	return {
+		label: `#${issue.number} ${issue.title}`,
+		description: meta,
+		detail: issue.labels.map((label) => label.name).join(', '),
+		issueNumber: issue.number,
+	};
 }
