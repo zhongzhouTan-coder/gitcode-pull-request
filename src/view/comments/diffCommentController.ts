@@ -225,6 +225,14 @@ export class DiffCommentController implements vscode.Disposable {
 	}
 
 	private async handleCommentReply(reply: vscode.CommentReply): Promise<void> {
+		// Check if this is a reply to an existing discussion thread
+		const threadMeta = this.threadMetadata.get(reply.thread);
+		if (threadMeta) {
+			await this.handleDiscussionReply(reply, threadMeta);
+			return;
+		}
+
+		// New top-level diff comment
 		const parsed = parsePrUri(reply.thread.uri);
 		const repository = parsed ? createRepository(parsed.owner, parsed.repo) : undefined;
 		const currentHeadSha = repository && parsed
@@ -273,6 +281,47 @@ export class DiffCommentController implements vscode.Disposable {
 			reply.thread.label = previousLabel;
 			const message = error instanceof Error ? error.message : 'Failed to submit pull request comment.';
 			this.logger.error(`Failed to submit diff comment for PR #${parsed.pullRequestNumber}: ${message}`);
+			await vscode.window.showErrorMessage(message);
+		}
+	}
+
+	private async handleDiscussionReply(
+		reply: vscode.CommentReply,
+		meta: { repository: GitCodeRepository; pullRequestNumber: number; discussionId: string; commentId: string },
+	): Promise<void> {
+		const text = reply.text;
+		if (!text.trim()) {
+			await vscode.window.showWarningMessage('Reply body is required.');
+			return;
+		}
+
+		const previousCanReply = reply.thread.canReply;
+		const previousLabel = reply.thread.label;
+
+		reply.thread.canReply = false;
+		reply.thread.label = 'Submitting reply...';
+
+		try {
+			const result = await this.commentsStore.replyToComment(
+				meta.repository,
+				meta.pullRequestNumber,
+				{ discussionId: meta.discussionId, body: text },
+			);
+
+			if (result.status === 'failed') {
+				reply.thread.canReply = previousCanReply;
+				reply.thread.label = previousLabel;
+				await vscode.window.showErrorMessage(result.error ?? 'Failed to submit reply.');
+				return;
+			}
+
+			// On success the store refreshes; update threads to show the new reply
+			await this.updateThreads();
+		} catch (error) {
+			reply.thread.canReply = previousCanReply;
+			reply.thread.label = previousLabel;
+			const message = error instanceof Error ? error.message : 'Failed to submit reply.';
+			this.logger.error(`Failed to reply to discussion ${meta.discussionId} on PR #${meta.pullRequestNumber}: ${message}`);
 			await vscode.window.showErrorMessage(message);
 		}
 	}

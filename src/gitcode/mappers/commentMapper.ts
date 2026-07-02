@@ -8,6 +8,7 @@ import {
 	PullRequestDiffCommentDetail,
 	PullRequestDiffCommentLocation,
 	PullRequestGeneralComment,
+	ReplyPullRequestCommentResult,
 } from '../../common/models';
 
 // ---- DTO shapes from the list-comments endpoint ----
@@ -317,6 +318,35 @@ export function mapCreatePullRequestCommentResult(
 	const id = asString(dto.id);
 	if (!id) {
 		throw new Error('Failed to map created pull request comment: missing id.');
+	}
+
+	const noteId = asPositiveInt(dto.note_id);
+	const body = asString(dto.body) || fallbackBody;
+
+	return {
+		id,
+		noteId,
+		body,
+	};
+}
+
+interface ReplyPullRequestCommentDto {
+	id?: unknown;
+	body?: unknown;
+	note_id?: unknown;
+}
+
+/**
+ * Map a reply pull request comment response into a domain result.
+ * Throws when the response is missing the required id field.
+ */
+export function mapReplyPullRequestCommentResult(
+	dto: ReplyPullRequestCommentDto,
+	fallbackBody: string,
+): ReplyPullRequestCommentResult {
+	const id = asString(dto.id);
+	if (!id) {
+		throw new Error('Failed to map reply pull request comment: missing id.');
 	}
 
 	const noteId = asPositiveInt(dto.note_id);

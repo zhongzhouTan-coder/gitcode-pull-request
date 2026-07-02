@@ -288,6 +288,22 @@ function renderConversationReplies(replies: PullRequestCommentReply[]): string {
 	`).join('');
 }
 
+function renderReplyAction(discussionId: string): string {
+	return `<button class="reply-action-btn" data-discussion-id="${escapeAttr(discussionId)}" title="Reply to this discussion" aria-label="Reply to this discussion">Reply</button>`;
+}
+
+function renderReplyComposer(discussionId: string): string {
+	return `<div class="reply-composer" data-reply-composer="${escapeAttr(discussionId)}" style="display:none">
+		<textarea class="reply-input" data-reply-input="${escapeAttr(discussionId)}" placeholder="Write a reply..." rows="3"></textarea>
+		<div class="reply-actions">
+			<button class="btn-primary btn-submit-reply" data-discussion-id="${escapeAttr(discussionId)}" disabled>Reply</button>
+			<button class="btn-secondary btn-cancel-reply" data-discussion-id="${escapeAttr(discussionId)}">Cancel</button>
+			<span class="reply-saving" data-reply-saving="${escapeAttr(discussionId)}" style="display:none">Submitting...</span>
+		</div>
+		<div class="reply-error" data-reply-error="${escapeAttr(discussionId)}" style="display:none"></div>
+	</div>`;
+}
+
 function renderConversationComment(comment: PullRequestComment, diffContexts?: ReadonlyMap<string, DiffCommentContext>): string {
 	if (comment.kind === 'pullRequest') {
 		return renderGeneralCommentCard(comment);
@@ -314,16 +330,22 @@ function renderCommentEditArea(commentId: string, body: string): string {
 function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
 	return `
 		<div class="comment-card" data-comment-id="${escapeAttr(comment.id)}">
-			<div class="comment-header">
-				${renderCommentAvatar(comment.author)}
-				<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
-				<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
-				${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
-				${renderCommentEditIcon(comment.id)}
+			<div class="comment-top-row">
+				<div class="comment-header">
+					${renderCommentAvatar(comment.author)}
+					<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
+					<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
+					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
+					${renderCommentEditIcon(comment.id)}
+				</div>
+				<div class="comment-top-actions">
+					${renderReplyAction(comment.discussionId)}
+				</div>
 			</div>
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
 			${renderCommentEditArea(comment.id, comment.body)}
 			${renderConversationReplies(comment.replies)}
+			${renderReplyComposer(comment.discussionId)}
 		</div>
 	`;
 }
@@ -361,7 +383,10 @@ function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: Di
 					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
 					${renderCommentEditIcon(comment.id)}
 				</div>
-				${renderDiffCommentReviewStatus(comment)}
+				<div class="comment-top-actions">
+					${renderDiffCommentReviewStatus(comment)}
+					${renderReplyAction(comment.discussionId)}
+				</div>
 			</div>
 			<div class="comment-meta">
 				<span class="comment-location">${renderDiffCommentLocation(comment)}</span>
@@ -371,6 +396,7 @@ function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: Di
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
 			${renderCommentEditArea(comment.id, comment.body)}
 			${renderConversationReplies(comment.replies)}
+			${renderReplyComposer(comment.discussionId)}
 		</div>
 	`;
 }
@@ -1456,6 +1482,67 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			margin-top: 12px;
 			padding-top: 12px;
 		}
+		/* ---- Reply Composer ---- */
+		.comment-top-actions {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			flex-shrink: 0;
+		}
+		.reply-action-btn {
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			padding: 2px 10px;
+			background: var(--vscode-button-secondaryBackground);
+			color: var(--vscode-button-secondaryForeground);
+			cursor: pointer;
+			font-size: 12px;
+			line-height: 1.5;
+		}
+		.reply-action-btn:hover:not(:disabled) {
+			background: var(--vscode-button-secondaryHoverBackground);
+		}
+		.reply-action-btn:disabled {
+			opacity: 0.6;
+			cursor: not-allowed;
+		}
+		.reply-composer {
+			margin-top: 12px;
+			padding-top: 12px;
+			border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+		}
+		.reply-input {
+			width: 100%;
+			box-sizing: border-box;
+			min-height: 72px;
+			resize: vertical;
+			font: inherit;
+			color: inherit;
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border, var(--border));
+			border-radius: 8px;
+			padding: 10px 12px;
+		}
+		.reply-input:focus {
+			outline: 1px solid var(--vscode-focusBorder);
+			outline-offset: 1px;
+		}
+		.reply-actions {
+			display: flex;
+			gap: 8px;
+			margin-top: 10px;
+			align-items: center;
+		}
+		.reply-saving {
+			color: var(--muted);
+			font-size: 13px;
+			font-style: italic;
+		}
+		.reply-error {
+			color: var(--vscode-errorForeground);
+			font-size: 13px;
+			margin-top: 8px;
+		}
 		.comment-error { color: var(--vscode-errorForeground); padding: 8px 0; }
 		/* ---- Related Issues ---- */
 		.related-issues-list {
@@ -2427,6 +2514,96 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			});
 		}
 
+		// ---- Reply Composer ----
+
+		function openReplyComposer(discussionId) {
+			if (!discussionId) return;
+			// Close any other open reply composers
+			document.querySelectorAll('.reply-composer').forEach(function(el) {
+				if (el.getAttribute('data-reply-composer') !== discussionId) {
+					el.style.display = 'none';
+					var input = el.querySelector('[data-reply-input]');
+					if (input) input.value = '';
+					updateReplySubmitState(el.getAttribute('data-reply-composer'));
+				}
+			});
+			var composer = document.querySelector('.reply-composer[data-reply-composer="' + CSS.escape(discussionId) + '"]');
+			if (composer) {
+				composer.style.display = 'block';
+				var input = composer.querySelector('[data-reply-input]');
+				if (input) {
+					input.focus();
+					updateReplySubmitState(discussionId);
+				}
+			}
+		}
+
+		function closeReplyComposer(discussionId) {
+			if (!discussionId) return;
+			var composer = document.querySelector('.reply-composer[data-reply-composer="' + CSS.escape(discussionId) + '"]');
+			if (composer) {
+				composer.style.display = 'none';
+				var input = composer.querySelector('[data-reply-input]');
+				if (input) input.value = '';
+				hideReplyError(discussionId);
+			}
+		}
+
+		function submitReply(discussionId) {
+			if (!discussionId) return;
+			var input = document.querySelector('[data-reply-input="' + CSS.escape(discussionId) + '"]');
+			if (!input) return;
+			var body = input.value;
+			if (!body.trim()) return;
+
+			setReplySubmitting(discussionId, true);
+			hideReplyError(discussionId);
+			vscode.postMessage({
+				command: 'replyPullRequestComment',
+				discussionId: discussionId,
+				body: body,
+			});
+		}
+
+		function setReplySubmitting(discussionId, submitting) {
+			var submitBtn = document.querySelector('.btn-submit-reply[data-discussion-id="' + CSS.escape(discussionId) + '"]');
+			var cancelBtn = document.querySelector('.btn-cancel-reply[data-discussion-id="' + CSS.escape(discussionId) + '"]');
+			var replyAction = document.querySelector('.reply-action-btn[data-discussion-id="' + CSS.escape(discussionId) + '"]');
+			var savingEl = document.querySelector('[data-reply-saving="' + CSS.escape(discussionId) + '"]');
+			var input = document.querySelector('[data-reply-input="' + CSS.escape(discussionId) + '"]');
+
+			if (submitBtn) submitBtn.disabled = submitting;
+			if (cancelBtn) cancelBtn.disabled = submitting;
+			if (replyAction) replyAction.disabled = submitting;
+			if (input) input.disabled = submitting;
+			if (savingEl) savingEl.style.display = submitting ? 'inline' : 'none';
+		}
+
+		function updateReplySubmitState(discussionId) {
+			if (!discussionId) return;
+			var input = document.querySelector('[data-reply-input="' + CSS.escape(discussionId) + '"]');
+			var submitBtn = document.querySelector('.btn-submit-reply[data-discussion-id="' + CSS.escape(discussionId) + '"]');
+			if (submitBtn) {
+				submitBtn.disabled = !input || !input.value.trim();
+			}
+		}
+
+		function showReplyError(discussionId, message) {
+			var errorEl = document.querySelector('[data-reply-error="' + CSS.escape(discussionId) + '"]');
+			if (errorEl) {
+				errorEl.textContent = message;
+				errorEl.style.display = 'block';
+			}
+		}
+
+		function hideReplyError(discussionId) {
+			var errorEl = document.querySelector('[data-reply-error="' + CSS.escape(discussionId) + '"]');
+			if (errorEl) {
+				errorEl.textContent = '';
+				errorEl.style.display = 'none';
+			}
+		}
+
 		function buildInput(section) {
 			var title = document.querySelector('[data-section-input="title"]');
 			var currentTitleValue = title ? title.value.trim() : currentTitle;
@@ -2700,6 +2877,10 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				setCommentEditSaving(msg.commentId, false);
 				showCommentEditError(msg.commentId, msg.message || 'Failed to edit comment.');
 			}
+			if (msg.command === 'replyPullRequestCommentError' && msg.discussionId) {
+				setReplySubmitting(msg.discussionId, false);
+				showReplyError(msg.discussionId, msg.message || 'Failed to submit reply.');
+			}
 		});
 
 		document.getElementById('refresh-button')?.addEventListener('click', () => {
@@ -2778,6 +2959,43 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 					path: el.dataset.path,
 					line: Number(el.dataset.line),
 				});
+			});
+		});
+
+		// Reply action button handlers
+		document.querySelectorAll('.reply-action-btn').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				openReplyComposer(btn.dataset.discussionId);
+			});
+		});
+
+		// Reply submit button handlers
+		document.querySelectorAll('.btn-submit-reply').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				submitReply(btn.dataset.discussionId);
+			});
+		});
+
+		// Reply cancel button handlers
+		document.querySelectorAll('.btn-cancel-reply').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				closeReplyComposer(btn.dataset.discussionId);
+			});
+		});
+
+		// Reply input handlers
+		document.querySelectorAll('[data-reply-input]').forEach(function(el) {
+			el.addEventListener('input', function() {
+				updateReplySubmitState(el.getAttribute('data-reply-input'));
+			});
+			el.addEventListener('keydown', function(e) {
+				if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+					e.preventDefault();
+					submitReply(el.getAttribute('data-reply-input'));
+				}
+				if (e.key === 'Escape') {
+					closeReplyComposer(el.getAttribute('data-reply-input'));
+				}
 			});
 		});
 	</script>` : ''}

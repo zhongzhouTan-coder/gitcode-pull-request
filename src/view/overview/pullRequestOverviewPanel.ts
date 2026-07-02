@@ -238,6 +238,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				return;
 			}
 
+			if (message.command === 'replyPullRequestComment' && typeof message.discussionId === 'string' && typeof message.body === 'string') {
+				await this.handleReplyPullRequestComment(message.discussionId, message.body);
+				return;
+			}
+
 			if (message.command === 'openDiffComment' && typeof message.path === 'string') {
 				await this.handleOpenDiffComment(message.path, Number(message.line));
 				return;
@@ -678,6 +683,49 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				command: 'reviseCommentStatusError',
 				discussionId,
 				error: result.error ?? 'Failed to revise comment status.',
+			});
+			return;
+		}
+
+		// On success, reload to show refreshed comments from the store
+		if (PullRequestOverviewPanel.operationLogsStore) {
+			await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+		}
+		this.commentsSnapshot = undefined;
+		this.operationLogsSnapshot = undefined;
+		await this.load(true);
+	}
+
+	private async handleReplyPullRequestComment(discussionId: string, body: string): Promise<void> {
+		if (!discussionId) {
+			this.panel.webview.postMessage({
+				command: 'replyPullRequestCommentError',
+				discussionId,
+				message: 'Discussion ID is required.',
+			});
+			return;
+		}
+
+		if (!body.trim()) {
+			this.panel.webview.postMessage({
+				command: 'replyPullRequestCommentError',
+				discussionId,
+				message: 'Reply body is required.',
+			});
+			return;
+		}
+
+		const result = await this.commentsStore.replyToComment(
+			this.context.repository,
+			this.context.pullRequestNumber,
+			{ discussionId, body },
+		);
+
+		if (result.status === 'failed') {
+			this.panel.webview.postMessage({
+				command: 'replyPullRequestCommentError',
+				discussionId,
+				message: result.error ?? 'Failed to submit reply.',
 			});
 			return;
 		}

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestCommentEditOperation, PullRequestCommentStatusOperation, RevisePullRequestCommentStatusInput } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestCommentEditOperation, PullRequestCommentReplyOperation, PullRequestCommentStatusOperation, ReplyPullRequestCommentInput, RevisePullRequestCommentStatusInput } from '../../common/models';
 import { CommentService } from '../../gitcode/services/commentService';
 
 export interface CommentChangeEvent {
@@ -23,6 +23,7 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 	private readonly snapshotPromises = new Map<CommentKey, Promise<PullRequestCommentsSnapshot>>();
 	private readonly pendingOperations = new Map<string, Promise<PullRequestCommentStatusOperation>>();
 	private readonly pendingEditOperations = new Map<string, Promise<PullRequestCommentEditOperation>>();
+	private readonly pendingReplyOperations = new Map<string, Promise<PullRequestCommentReplyOperation>>();
 
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -157,6 +158,37 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Reply to an existing pull request discussion.
+	 *
+	 * Serializes concurrent reply operations per discussionId so that
+	 * duplicate requests are ignored while one is already running.
+	 *
+	 * Returns the operation result for UI feedback. On success the store
+	 * is refreshed from the API; on failure the previous snapshot is kept
+	 * and the draft body is preserved.
+	 */
+	async replyToComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: ReplyPullRequestCommentInput,
+	): Promise<PullRequestCommentReplyOperation> {
+		// Serialize concurrent reply operations per discussionId
+		const existing = this.pendingReplyOperations.get(input.discussionId);
+		if (existing) {
+			return existing;
+		}
+
+		const operationPromise = this.executeReplyToComment(repository, pullRequestNumber, input);
+		this.pendingReplyOperations.set(input.discussionId, operationPromise);
+
+		try {
+			return await operationPromise;
+		} finally {
+			this.pendingReplyOperations.delete(input.discussionId);
+		}
+	}
+
 	private async executeReviseCommentStatus(
 		repository: GitCodeRepository,
 		pullRequestNumber: number,
@@ -234,6 +266,64 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		};
 	}
 
+	private async executeReplyToComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: ReplyPullRequestCommentInput,
+	): Promise<PullRequestCommentReplyOperation> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			return {
+				discussionId: input.discussionId,
+				body: input.body,
+				status: 'failed',
+				error: 'Sign in to GitCode first.',
+			};
+		}
+
+		// Validate that the target discussion exists in the current snapshot
+		const snapshot = await this.getOrFetch(repository, pullRequestNumber);
+		const comment = snapshot.comments.find((c) => c.discussionId === input.discussionId);
+
+		if (!comment) {
+			return {
+				discussionId: input.discussionId,
+				body: input.body,
+				status: 'failed',
+				error: 'Discussion not found.',
+			};
+		}
+
+		try {
+			await this.commentService.replyPullRequestComment(
+				repository,
+				pullRequestNumber,
+				input,
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to reply to discussion.';
+			return {
+				discussionId: input.discussionId,
+				body: input.body,
+				status: 'failed',
+				error: message,
+			};
+		}
+
+		// On success, refresh the store so consumers re-render from API state
+		try {
+			await this.refresh(repository.fullName, pullRequestNumber);
+		} catch {
+			// Reply submitted but refresh failed — still report success to the caller
+		}
+
+		return {
+			discussionId: input.discussionId,
+			body: input.body,
+			status: 'pending',
+		};
+	}
+
 	private async executeEditComment(
 		repository: GitCodeRepository,
 		pullRequestNumber: number,
@@ -305,6 +395,7 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		this.snapshotPromises.clear();
 		this.pendingOperations.clear();
 		this.pendingEditOperations.clear();
+		this.pendingReplyOperations.clear();
 		this.onDidChangeEmitter.dispose();
 	}
 

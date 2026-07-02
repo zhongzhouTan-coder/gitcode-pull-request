@@ -56,7 +56,8 @@ export function applyCommentThread(
 	thread.state = comment.resolved
 		? vscode.CommentThreadState.Resolved
 		: vscode.CommentThreadState.Unresolved;
-	thread.canReply = false;
+	thread.canReply = true;
+	thread.label = undefined;
 	thread.contextValue = comment.resolved ? 'gitcode.diffComment.resolved' : 'gitcode.diffComment.unresolved';
 }
 

@@ -651,6 +651,24 @@ export interface PullRequestCommentEditOperation {
 	error?: string;
 }
 
+export interface ReplyPullRequestCommentInput {
+	discussionId: string;
+	body: string;
+}
+
+export interface ReplyPullRequestCommentResult {
+	id: string;
+	noteId?: number;
+	body: string;
+}
+
+export interface PullRequestCommentReplyOperation {
+	discussionId: string;
+	body: string;
+	status: 'pending' | 'failed';
+	error?: string;
+}
+
 // ---- Pull Request Operation Log Types ----
 
 export interface PullRequestOperationLogActor {

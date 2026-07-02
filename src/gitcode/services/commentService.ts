@@ -1,6 +1,6 @@
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail, RevisePullRequestCommentStatusInput } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail, ReplyPullRequestCommentInput, ReplyPullRequestCommentResult, RevisePullRequestCommentStatusInput } from '../../common/models';
 import { GitCodeWriteClient } from '../client/gitcodeClient';
-import { mapCreatePullRequestCommentInput, mapCreatePullRequestCommentResult, mapListComment, mapCommentDetail, mergeCommentDetail } from '../mappers/commentMapper';
+import { mapCreatePullRequestCommentInput, mapCreatePullRequestCommentResult, mapListComment, mapCommentDetail, mapReplyPullRequestCommentResult, mergeCommentDetail } from '../mappers/commentMapper';
 import { Logger } from '../../common/logger';
 import { listPagedRecords } from './pagination';
 
@@ -230,5 +230,36 @@ export class CommentService {
 		const body = { body: input.body };
 
 		await this.client.patch<unknown>(path, body);
+	}
+
+	/**
+	 * Reply to an existing pull request discussion.
+	 *
+	 * POST /api/v5/repos/:owner/:repo/pulls/:number/discussions/:discussion_id/comments
+	 * Body: { "body": "Reply content" }
+	 *
+	 * The API returns the new reply id, body, and note_id.
+	 * Treat the response as acknowledgement — callers should refresh the
+	 * comments store afterward to get the full normalized reply shape.
+	 */
+	async replyPullRequestComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: ReplyPullRequestCommentInput,
+	): Promise<ReplyPullRequestCommentResult> {
+		if (!input.discussionId) {
+			throw new Error('discussionId is required.');
+		}
+
+		if (!input.body.trim()) {
+			throw new Error('Reply body is required.');
+		}
+
+		const path = `/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/discussions/${encodeURIComponent(input.discussionId)}/comments`;
+		const payload = { body: input.body };
+
+		const response = await this.client.post<unknown>(path, payload);
+
+		return mapReplyPullRequestCommentResult(response as Record<string, unknown>, input.body);
 	}
 }

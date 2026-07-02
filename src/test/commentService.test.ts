@@ -346,6 +346,92 @@ suite('CommentService', () => {
 		} as CreatePullRequestCommentInput), /Comment body is required\./);
 		assert.strictEqual(called, false);
 	});
+
+	test('replyPullRequestComment validates empty body and missing discussionId', async () => {
+		let posted = false;
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(): Promise<T> => {
+				posted = true;
+				return {} as T;
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+
+		await assert.rejects(
+			() => service.replyPullRequestComment(repository, 1, { discussionId: '', body: 'reply' }),
+			/discussionId is required\./,
+		);
+		assert.strictEqual(posted, false);
+
+		await assert.rejects(
+			() => service.replyPullRequestComment(repository, 1, { discussionId: 'disc-1', body: '   ' }),
+			/Reply body is required\./,
+		);
+		assert.strictEqual(posted, false);
+	});
+
+	test('replyPullRequestComment posts to the correct endpoint with body', async () => {
+		const calls: Array<{ path: string; body: unknown }> = [];
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(path: string, body?: unknown): Promise<T> => {
+				calls.push({ path, body });
+				return {
+					id: 'reply-id-1',
+					body: 'test reply',
+					note_id: 178162257,
+				} as T;
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		const body = '  test reply\n';
+		const result = await service.replyPullRequestComment(repository, 3, {
+			discussionId: 'disc-abc',
+			body,
+		});
+
+		assert.deepStrictEqual(calls, [{
+			path: '/api/v5/repos/org/repo/pulls/3/discussions/disc-abc/comments',
+			body: { body },
+		}]);
+		assert.deepStrictEqual(result, { id: 'reply-id-1', noteId: 178162257, body: 'test reply' });
+	});
+
+	test('replyPullRequestComment handles missing id in response', async () => {
+		const client: GitCodeWriteClient = {
+			get: async <T>(): Promise<T> => [] as T,
+			post: async <T>(): Promise<T> => {
+				return { note_id: 1 } as T;
+			},
+			put: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+		};
+
+		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
+		await assert.rejects(
+			() => service.replyPullRequestComment(repository, 1, { discussionId: 'disc-1', body: 'reply' }),
+			/Failed to map reply pull request comment: missing id\./,
+		);
+	});
 });
 
 function listDiffComment(id: string, createdAt: string, resolved: boolean = false): Record<string, unknown> {
@@ -376,7 +462,7 @@ function listGeneralComment(id: string, createdAt: string): Record<string, unkno
 		body: `Comment ${id}`,
 		created_at: createdAt,
 		updated_at: createdAt,
-		comment_type: 'pull_request_comment',
+		comment_type: 'pr_comment',
 		user: {
 			id: 'user-1',
 			login: 'alice',

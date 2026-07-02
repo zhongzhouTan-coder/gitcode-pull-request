@@ -40,6 +40,7 @@ suite('CommentThreadFactory', () => {
 			collapsibleState: undefined,
 			state: undefined,
 			canReply: true,
+			label: 'Submitting reply...',
 			comments: [] as readonly vscode.Comment[],
 		};
 		const controller = {
@@ -59,7 +60,8 @@ suite('CommentThreadFactory', () => {
 		assert.ok(result);
 		assert.strictEqual(created.length, 1);
 		assert.strictEqual(thread.state, vscode.CommentThreadState.Resolved);
-		assert.strictEqual(thread.canReply, false);
+		assert.strictEqual(thread.canReply, true);
+		assert.strictEqual(thread.label, undefined);
 		assert.strictEqual(thread.comments[0].contextValue, 'commentThread.resolved');
 		assert.strictEqual(thread.comments[0].label, 'Resolved');
 		assert.strictEqual(created[0].range.start.line, 23);
