@@ -1,494 +1,299 @@
-# New Tree View Architecture for `gitcode-pull-request`
+# Tree View Architecture for `gitcode-pull-request`
 
 ## Goal
 
-Design a new `src/view` architecture for `gitcode-pull-request` using `vscode-pull-request-github` as reference, but without inheriting the current GitCode view structure.
-
-The intent is:
-
-- reuse the good architectural ideas from GitHub's extension
-- avoid copying GitHub-only complexity
-- define a clean structure for GitCode from scratch
-
-## 1. What to Learn from `vscode-pull-request-github`
-
-The GitHub extension's tree view is strong because it separates three concerns clearly:
-
-1. state and refresh orchestration
-2. VS Code tree binding
-3. node rendering and lazy child loading
-
-The core upstream pattern is:
+The tree view layer provides repository-scoped navigation for GitCode pull requests and issues. It follows the useful separation from `vscode-pull-request-github`:
 
 ```text
-data/model layer
-  -> tree provider layer
-    -> node layer
+store/model layer
+  -> VS Code tree provider layer
+    -> node presentation layer
 ```
 
-In GitHub's implementation, these are mainly represented by:
+The implementation is GitCode-specific and intentionally smaller than the GitHub extension. Stores own remote state and caching, providers adapt that state to VS Code, and nodes own UI labels, icons, commands, and lazy child loading.
 
-- `src/view/prsTreeModel.ts`
-- `src/view/prsTreeDataProvider.ts`
-- `src/view/treeNodes/*`
+## Design Principles
 
-That split is the right reference point for GitCode.
+### One source of truth per tree
 
-## 2. What Not to Copy from GitHub
+Pull request list state lives in `PullRequestTreeStore`. Issue list state lives in `IssueTreeStore`. These stores own repository resolution, category filters, list caches, startup repository readiness, and refresh events.
 
-GitHub's extension also contains complexity that should not be part of the first GitCode design:
+### Thin providers
 
-- repository manager graphs
-- copilot and notification state
-- advanced review-mode checkout coupling
-- query pagination and load-more behavior
-- comment controller plumbing tied to active PR checkout
-- multiple specialized tree providers for different review flows
+`PullRequestTreeDataProvider` and `IssueTreeDataProvider` implement `vscode.TreeDataProvider<BaseNode>`, subscribe to store changes, load root nodes, translate known failures into empty states, and delegate child loading to node objects.
 
-Those solve GitHub extension-specific scale problems. They are not the right default for a clean GitCode architecture.
+### Node classes own UI semantics
 
-## 3. Design Principles for a New GitCode View Layer
+Each node type owns:
 
-The new GitCode structure should follow these rules:
-
-### 3.1 One source of truth for tree state
-
-Caching, refresh policy, expansion-aware loading, and API-backed state should live in one model layer.
-
-### 3.2 Thin provider
-
-The `TreeDataProvider` should mostly translate model output into VS Code tree behavior.
-
-### 3.3 Node classes for UI semantics
-
-Each tree node type should own:
-
-- label
-- icon
+- stable `id`
+- label and description
 - tooltip
-- context value
+- icon
+- context value for menus
+- command arguments
 - child-loading behavior
 
-### 3.4 Service isolation
+### Service isolation
 
-The view layer should never call HTTP directly.
+Tree code never calls HTTP directly. Stores call GitCode services, and services use `GitCodeClientImpl`.
 
-All GitCode API interaction should stay behind `gitcode/services/*`.
+### Lazy loading
 
-### 3.5 Lazy loading by depth
+Repository and category nodes load first. Pull request and issue lists load when categories expand. Pull request files load only when the `Files` node expands.
 
-Load top-level PR lists first. Load files, comments, commits, and review metadata only when a PR subtree is expanded.
-
-## 4. Recommended New `src/view` Structure
-
-Recommended structure:
+## Current Structure
 
 ```text
 src/view/
-  index.ts
-  viewController.ts
-  commands/
-    registerTreeCommands.ts
-    registerReviewCommands.ts
   state/
     pullRequestTreeStore.ts
-    pullRequestDetailsStore.ts
-    viewState.ts
+    issueTreeStore.ts
   tree/
     pullRequestTreeDataProvider.ts
+    issueTreeDataProvider.ts
     nodeFactory.ts
     nodes/
       baseNode.ts
       emptyStateNode.ts
       repositoryNode.ts
-      inboxCategoryNode.ts
-      authoredCategoryNode.ts
-      allOpenCategoryNode.ts
+      pullRequestCategoryNode.ts
       pullRequestNode.ts
-      prSummaryNode.ts
-      filesSectionNode.ts
-      fileChangeNode.ts
-      commitsSectionNode.ts
-      commitNode.ts
-      conversationSectionNode.ts
-      commentThreadNode.ts
-      commentNode.ts
-  review/
-    diffController.ts
-    commentController.ts
-  overview/
-    prOverviewPanel.ts
-    prOverviewSerializer.ts
-  decorators/
-    prStatusDecorationProvider.ts
+      pullRequestFilesNode.ts
+      pullRequestFileNode.ts
+      directoryNode.ts
+      issueRepositoryNode.ts
+      issueCategoryNode.ts
+      issueNode.ts
 ```
 
-This structure is intentionally larger than a single tree provider, but much smaller than the GitHub extension.
+`NodeFactory` currently constructs pull request root and empty-state nodes. Issue tree nodes are built directly by `IssueTreeDataProvider` and the issue node classes.
 
-## 5. Responsibilities by Module
+## Pull Request Tree
 
-### 5.1 `viewController.ts`
-
-This should be the composition root for the whole view layer.
-
-Responsibilities:
-
-- create stores
-- create tree provider
-- create tree view
-- register commands
-- register overview panel integration
-- wire refresh events from auth and repository changes
-
-`extension.ts` should stay minimal and delegate all view setup here.
-
-### 5.2 `state/pullRequestTreeStore.ts`
-
-This is the most important class in the new design.
-
-It is the GitCode equivalent of the architectural role played by GitHub's `PrsTreeModel`.
-
-Responsibilities:
-
-- resolve repositories
-- load top-level pull requests
-- compute categories
-- cache PR lists by repository
-- cache file lists, commits, and comments by PR
-- invalidate caches after review actions
-- emit events for tree refresh
-
-This store should know nothing about `TreeItem` rendering.
-
-Suggested API:
-
-```ts
-export interface PullRequestTreeStore {
-  readonly onDidChange: vscode.Event<TreeRefreshTarget | void>;
-
-  getRepositories(): Promise<GitCodeRepository[]>;
-  getCategoryItems(repository: GitCodeRepository): Promise<CategoryState[]>;
-  getPullRequests(repository: GitCodeRepository, category: CategoryKey): Promise<PullRequestSummary[]>;
-  getFiles(repository: GitCodeRepository, prNumber: number): Promise<PullRequestFileChange[]>;
-  getCommits(repository: GitCodeRepository, prNumber: number): Promise<PullRequestCommit[]>;
-  getComments(repository: GitCodeRepository, prNumber: number): Promise<PullRequestComment[]>;
-
-  refreshAll(): Promise<void>;
-  refreshRepository(repositoryKey: string): Promise<void>;
-  refreshPullRequest(repositoryKey: string, prNumber: number): Promise<void>;
-}
-```
-
-### 5.3 `state/pullRequestDetailsStore.ts`
-
-This store should handle non-list detail state that may later be shared by:
-
-- tree sections
-- overview webview
-- diff/review UI
-
-Responsibilities:
-
-- load PR detail body, labels, mergeability
-- memoize detailed PR payloads
-- expose targeted invalidation for a single PR
-
-This separation avoids putting all detail and list state into one class.
-
-### 5.4 `tree/pullRequestTreeDataProvider.ts`
-
-Responsibilities:
-
-- implement `vscode.TreeDataProvider<BaseNode>`
-- subscribe to tree store changes
-- delegate child construction to node classes or a node factory
-- expose `refresh`, `getParent`, and reveal helpers
-
-This class should not own API caches.
-
-### 5.5 `tree/nodeFactory.ts`
-
-This is optional but useful.
-
-Responsibilities:
-
-- centralize construction of node objects
-- inject shared dependencies into nodes
-- keep provider logic small
-
-This is useful once the tree has more than a few node types.
-
-### 5.6 `tree/nodes/*`
-
-Nodes should be small and focused.
-
-Recommended node groups:
-
-- root and empty state nodes
-- repository/category nodes
-- PR nodes
-- PR subsection nodes
-- leaf data nodes
-
-The tree shape should be:
+### Shape
 
 ```text
 Repository
-  Needs My Review
-    Pull Request
-      Summary
-      Files
-        File
-      Commits
-        Commit
-      Conversation
-        Thread
-          Comment
-  Authored By Me
-    Pull Request
   All Open
-    Pull Request
+    #123 Pull request title
+      Files
+        src
+          view
+            file.ts
+        README.md
+  Created By Me
+    #124 Another pull request
+      Files
 ```
 
-That is more explicit than the current simple structure and gives you room to grow.
-
-## 6. Recommended Tree Semantics
-
-### 6.1 Root level
-
-Root nodes should be repository-scoped, not workspace-scoped UI wrappers.
-
-Reason:
-
-- the feature domain is remote PRs, not local folders
-- repository identity is the stable domain object
-- this maps more cleanly to GitCode API operations
-
-### 6.2 Category level
-
-Use fixed product categories instead of configurable query strings in the first version.
-
-Recommended categories:
-
-- `Needs My Review`
-- `Authored By Me`
-- `All Open`
-
-This is simpler than GitHub's query-driven categories and better for a GitCode-first UX.
-
-If custom queries are needed later, they can be added as another category strategy.
-
-### 6.3 Pull request node
-
-Each PR node should show:
-
-- number
-- title
-- author
-- branch direction
-- review/status hint
-
-The PR node should expand to logical sections, not directly to flat files/comments.
-
-Recommended PR child sections:
-
-- `Summary`
-- `Files`
-- `Commits`
-- `Conversation`
-
-This is a better long-term design than mixing metadata leaf nodes and content nodes directly.
-
-## 7. New Architecture Data Flow
-
-The new flow should be:
+When `gitcode.pullRequests.fileListLayout` is `flat`, the `Files` node renders file paths directly:
 
 ```text
-VS Code events / commands
-  -> ViewController
-  -> PullRequestTreeStore / PullRequestDetailsStore
-  -> PullRequestTreeDataProvider
-  -> Node tree
-  -> VS Code TreeView
+Files
+  src/view/file.ts
+  README.md
 ```
 
-Detailed flow:
+### Store
 
-1. auth changes, repo changes, or commands trigger refresh
-2. `ViewController` tells the relevant store to refresh
-3. store invalidates or updates cache
-4. store emits change event
-5. provider refreshes tree or subtree
-6. when a node expands, the node asks the store for the needed children
+`PullRequestTreeStore` owns:
 
-This keeps the refresh path predictable.
+- repository discovery through `GitCodeRepositoryResolver`
+- repository startup retry while the VS Code git extension initializes
+- pull request categories
+- PR list cache keyed by repository, category, and account name
+- changed-file cache keyed by repository and PR number
+- refresh events for all data, repository data, and PR file data
 
-## 8. Why This Is Better Than a Single Provider Design
+Implemented categories:
 
-If all logic lives in one provider, the provider ends up owning:
+- `allOpen` -> `All Open`
+- `createdByMe` -> `Created By Me`
 
-- auth state checks
-- repo resolution
-- category computation
-- PR caching
-- detail caching
-- child branching
-- command-specific refresh rules
-
-That becomes hard to maintain quickly.
-
-The proposed structure avoids that by making the tree provider mostly an adapter, not a controller.
-
-## 9. Mapping to Existing Non-View Layers
-
-This new view architecture should integrate with the rest of the repo like this:
+The store applies these default list filters:
 
 ```text
-authentication/
-  AuthService
-
-common/
-  models
-  logger
-  configuration
-  repositoryContext
-
-gitcode/
-  services/pullRequestService.ts
-  services/userService.ts
-  resolver/gitcodeRepositoryResolver.ts
-
-view/
-  state/*
-  tree/*
-  review/*
-  overview/*
+state=open
+sort=updated
+direction=desc
+perPage=gitcode.pullRequests.pageSize
 ```
 
-Dependency direction should be one-way:
+For `Created By Me`, it also sets `author` to the signed-in account name.
 
-```text
-view -> gitcode -> common
-view -> authentication -> common
-```
+### Provider
 
-`gitcode` must not depend on `view`.
+`PullRequestTreeDataProvider` owns:
 
-## 10. Suggested Class Boundaries
-
-### `PullRequestTreeStore`
-
-Owns:
-
-- repository list
-- categorized PR summaries
-- file cache
-- commit cache
-- comment cache
-
-Does not own:
-
-- icon choice
-- command objects
-- markdown tooltip formatting
-
-### `PullRequestDetailsStore`
-
-Owns:
-
-- detailed PR payload cache
-- detail refresh policy
-
-Does not own:
-
-- tree grouping
-
-### `PullRequestTreeDataProvider`
-
-Owns:
-
-- VS Code `EventEmitter`
-- `getChildren`
+- `onDidChangeTreeData`
 - `getTreeItem`
+- `getChildren`
 - `getParent`
-- reveal helpers
+- full refresh delegation to `PullRequestTreeStore.refreshAll()`
+- root-level empty states and root-level error states
 
-Does not own:
+It does not own API caches or category filtering.
 
-- API fetch strategy
-- cache invalidation policy
+### Nodes
 
-### Node classes
+Pull request node responsibilities:
 
-Own:
+- `RepositoryNode` renders a GitCode repository and creates category nodes.
+- `PullRequestCategoryNode` loads PR summaries for one category.
+- `PullRequestNode` renders PR number, title, author, branch direction, draft icon, and open command.
+- `PullRequestFilesNode` lazily loads changed files and chooses tree or flat layout.
+- `DirectoryNode` renders compacted folder paths in tree layout.
+- `PullRequestFileNode` renders file status, additions/deletions, tooltip, and file-open commands.
+- `EmptyStateNode` renders loading, empty, and error messages.
 
-- UI identity
-- parent-child relation
-- presentation
-- requesting child data from stores
+## Issue Tree
 
-Do not own:
+### Shape
 
-- global mutable cache
+```text
+Repository
+  My Issues
+    #12 [Bug] Issue title
+  Created Issues
+    #13 Issue title
+  Recent Issues
+    #14 Issue title
+```
 
-## 11. Suggested Implementation Phases
+### Store
 
-### Phase 1: foundation
+`IssueTreeStore` mirrors the pull request store pattern for issues. It owns:
 
-Create:
+- repository discovery
+- repository startup retry
+- issue categories
+- issue list cache keyed by repository, category, and account name
+- full and repository refresh events
 
-- `src/view/viewController.ts`
-- `src/view/state/pullRequestTreeStore.ts`
-- `src/view/tree/pullRequestTreeDataProvider.ts`
-- basic node classes
+Implemented categories:
 
-Support:
+- `myIssues` -> `My Issues`
+- `createdIssues` -> `Created Issues`
+- `recentIssues` -> `Recent Issues`
 
-- repository root nodes
-- category nodes
-- PR nodes
+The store applies these default list filters:
 
-### Phase 2: deeper PR sections
+```text
+state=open
+sort=updated
+direction=desc
+perPage=gitcode.issues.pageSize
+```
 
-Add:
+`My Issues` adds `assignee=<accountName>`. `Created Issues` adds `creator=<accountName>`.
 
-- `Files`
-- `Commits`
-- `Conversation`
+### Provider and Nodes
 
-with lazy loading from the store.
+`IssueTreeDataProvider` follows the same adapter role as the pull request provider.
 
-### Phase 3: review and overview integration
+Issue node responsibilities:
 
-Add:
+- `IssueRepositoryNode` renders the repository and creates issue category nodes.
+- `IssueCategoryNode` loads issue summaries for one category.
+- `IssueNode` renders number, issue type, title, author, labels, comment count, tooltip, and open command.
+- `EmptyStateNode` renders loading, empty, and error messages.
 
-- diff controller
-- overview webview
-- targeted refresh after approve/comment actions
+## Repository Discovery and Startup Readiness
 
-### Phase 4: polish
+Both tree stores use the same startup approach:
 
-Add:
+1. If `gitcode.repository` is set, resolve that override immediately.
+2. Otherwise, ask `GitCodeRepositoryResolver` to inspect VS Code git repositories and remotes.
+3. During startup, retry briefly because the VS Code git extension may not have opened repositories yet.
+4. If no repository is available after the initial window, return an empty root and keep waiting for git repository readiness.
+5. Fire a full refresh when a repository becomes available or the wait completes.
 
-- decorations
-- badges
-- partial refresh targeting
-- better error and empty states
+This avoids showing a permanent "No GitCode remote found" state just because the extension activated before the git extension finished initialization.
 
-## 12. Final Recommendation
+## Refresh Flow
 
-For GitCode, the best reference from `vscode-pull-request-github` is not its exact folder layout. It is its separation of:
+```text
+VS Code event or command
+  -> ViewController / command handler
+  -> tree store refresh method
+  -> store clears affected cache entries
+  -> store emits a refresh target
+  -> provider fires onDidChangeTreeData
+  -> VS Code asks nodes for children again
+```
 
-- model/store
-- provider
-- node hierarchy
+Common refresh triggers:
 
-The new `gitcode-pull-request/src/view` should be designed as a clean, GitCode-specific system with:
+- `gitcode.refreshPullRequests`
+- `gitcode.refreshIssues`
+- `gitcode.refreshPullRequestFiles`
+- sign-in or auth session changes
+- workspace folder changes
+- git repository open/close events
+- `gitcode.pullRequests.fileListLayout` changes
+- create or edit operations that affect list or detail state
 
-- repository-first roots
-- fixed review-focused categories
-- PR section nodes
-- centralized stores
-- a thin provider
+## Error and Empty States
 
-That gives you a structure that is simpler than GitHub's extension, but still scales correctly as review, diff, and overview features grow.
+Providers handle root errors. Category and section nodes handle their own child-loading errors.
+
+Known errors are converted to actionable empty-state nodes:
+
+- not signed in -> `Sign in to GitCode`
+- authentication failure -> `GitCode authentication failed`
+- repository resolution failure -> open or configure a GitCode repository
+- API failure -> `Unable to load ...` with HTTP status where useful
+
+Failed list and file promises are removed from caches so subsequent refreshes can retry.
+
+## Context Values and Commands
+
+Tree nodes set context values consumed by `package.json` menus:
+
+- `pullRequest`
+- `pullRequestFiles`
+- `pullRequestFile:<status>`
+- `pullRequestFile:<status>:tooLarge`
+- `issue`
+- `repository`
+- `issueRepository`
+- `pullRequestCategory`
+- `issueCategory`
+- `directory`
+- `emptyState`
+
+Important commands:
+
+- `gitcode.openPullRequest`
+- `gitcode.openPullRequestOnWeb`
+- `gitcode.openPullRequestFile`
+- `gitcode.openPullRequestFileOnWeb`
+- `gitcode.refreshPullRequestFiles`
+- `gitcode.setPullRequestFilesLayoutTree`
+- `gitcode.setPullRequestFilesLayoutFlat`
+- `gitcode.openIssue`
+- `gitcode.openIssueOnWeb`
+- `gitcode.copyIssueUrl`
+- `gitcode.createBranchForIssue`
+- `gitcode.usePullRequestAsCopilotContext`
+- `gitcode.useIssueAsCopilotContext`
+
+## Extension Points for Future Work
+
+The current tree architecture can support additional sections without changing the provider/store boundary:
+
+- pull request conversations under `PullRequestNode`
+- commits or checks under `PullRequestNode`
+- review-request categories
+- configurable PR or issue queries
+- targeted subtree refresh by node
+- decorations and badges
+
+New behavior should preserve the existing direction:
+
+```text
+commands/events -> stores -> providers -> nodes -> VS Code
+```
+
+Avoid putting API calls, cache invalidation policy, or repository resolution into node classes or tree providers.

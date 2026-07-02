@@ -2,43 +2,32 @@
 
 ## Goal
 
-Build a VS Code extension for GitCode pull requests with a UX close to `microsoft/vscode-pull-request-github`, while keeping the codebase split into four main packages:
+`gitcode-pull-request` is a VS Code extension for working with GitCode pull requests and issues from the editor. It follows the interaction model of `microsoft/vscode-pull-request-github`, but keeps the GitCode implementation smaller and organized around explicit service, store, and view boundaries.
 
-- `authentication`
-- `common`
-- `gitcode`
-- `view`
+The implemented feature set includes:
 
-The first deliverable should support:
-
-1. Sign in to GitCode
-2. Discover the current repository's GitCode remote
-3. List and open pull requests
-4. Show a tree view similar to the GitHub Pull Requests extension
-5. Show PR details, changed files, and comments
-6. Allow basic review actions and commenting
+1. Personal access token sign-in.
+2. GitCode repository discovery from VS Code git remotes, with an `owner/repo` override setting.
+3. Pull request and issue tree views.
+4. Pull request and issue overview webviews.
+5. Pull request file browsing in tree or flat layout.
+6. Virtual read-only PR file content and patch views.
+7. Inline pull request diff comments with resolve/unresolve actions.
+8. Create and edit pull request flows.
+9. Create issue and create branch for issue flows.
+10. Copilot chat participants for selected pull request and issue context.
 
 ## External Constraints
 
 GitCode API details that shape the design:
 
 - The REST API base path is `/api/v5`.
-- GitCode supports Personal Access Token authentication with `Authorization: Bearer <token>` or `PRIVATE-TOKEN`.
-- GitCode also exposes OAuth with:
-  - `GET https://gitcode.com/oauth/authorize`
-  - `POST https://gitcode.com/oauth/token`
-  - `GET https://api.gitcode.com/api/v5/user`
-- Pull request APIs exist for:
-  - PR list: `/api/v5/repos/:owner/:repo/pulls`
-  - PR detail: `/api/v5/repos/:owner/:repo/pulls/:number`
-  - PR comments: `/api/v5/repos/:owner/:repo/pulls/:number/comments`
-  - PR files: `/api/v5/repos/:owner/:repo/pulls/:number/files`
-  - PR review handling: `/api/v5/repos/:owner/:repo/pulls/:number/review`
+- The default API host is `https://api.gitcode.com`.
+- The default web host is `https://gitcode.com`.
+- Authentication uses a Personal Access Token stored in VS Code secret storage.
+- Repository, pull request, issue, comment, operation log, branch, label, member, milestone, compare, and raw-content APIs are accessed through service classes.
 
-Implication:
-
-- The extension should start with PAT authentication because it is simpler and lower risk.
-- The architecture should still keep an OAuth provider abstraction so OAuth can be added without rewriting the rest of the system.
+The code keeps authentication and HTTP concerns behind facades so OAuth or alternate token flows can be added later without rewriting the view layer.
 
 ## High-Level Architecture
 
@@ -48,597 +37,316 @@ VS Code Host
   +-- extension.ts
         |
         +-- common
-        |     +-- configuration
+        |     +-- configuration and constants
+        |     +-- typed domain models
+        |     +-- error types
         |     +-- logging
-        |     +-- models
-        |     +-- git remote parsing
-        |     +-- errors / telemetry contracts
+        |     +-- git remote and repository context helpers
         |
         +-- authentication
         |     +-- session store
         |     +-- PAT provider
-        |     +-- OAuth provider
         |     +-- auth service facade
         |
         +-- gitcode
-        |     +-- REST client
-        |     +-- API resources
-        |     |     +-- user
-        |     |     +-- repos
-        |     |     +-- pull requests
-        |     |     +-- comments
-        |     |     +-- reviews
+        |     +-- REST client and request helper
         |     +-- repository resolver
-        |     +-- DTO -> domain mappers
+        |     +-- API services
+        |     +-- DTO-to-domain mappers
         |
         +-- view
-              +-- tree views
-              +-- webview/detail panels
+              +-- composition root
               +-- commands
-              +-- state/store
+              +-- pull request and issue trees
+              +-- stores
+              +-- overview webviews
+              +-- create PR / create issue flows
+              +-- diff and comment controllers
+              +-- Copilot context providers
 ```
+
+Dependency direction is one-way:
+
+```text
+view -> gitcode -> common
+view -> authentication -> common
+authentication -> common
+```
+
+`gitcode` and `common` must not depend on `view`.
 
 ## Package Responsibilities
 
 ### `authentication`
 
-Purpose: isolate all credential acquisition and storage.
+Purpose: isolate credential acquisition, validation, storage, and auth state notifications.
 
-Recommended structure:
+Current structure:
 
 ```text
 src/authentication/
   authService.ts
-  authProvider.ts
   patAuthProvider.ts
-  oauthProvider.ts
   sessionStore.ts
-  authCommands.ts
   types.ts
 ```
 
 Responsibilities:
 
-- Prompt for PAT and store it in `context.secrets`
-- Validate token via `GET /api/v5/user`
-- Expose current signed-in account
-- Later support OAuth device/browser flow through the same facade
-- Notify listeners when auth state changes
+- Prompt for a GitCode PAT.
+- Store the serialized auth session in `context.secrets`.
+- Validate the token through `UserService.getCurrentUser()`.
+- Expose the current signed-in account.
+- Emit auth state changes so stores and views can clear cached data.
 
-Key interfaces:
-
-```ts
-export interface AuthSession {
-  accessToken: string;
-  accountName: string;
-  authType: 'pat' | 'oauth';
-  expiresAt?: number;
-  refreshToken?: string;
-}
-
-export interface AuthProvider {
-  signIn(): Promise<AuthSession>;
-  signOut(): Promise<void>;
-  getSession(): Promise<AuthSession | undefined>;
-}
-```
-
-Design choice:
-
-- `AuthService` should be the only entry point used by `gitcode` and `view`.
-- `view` must not know whether the session came from PAT or OAuth.
+`AuthService` is the only authentication entry point used by the rest of the extension. View code does not know how the session was created.
 
 ### `common`
 
 Purpose: shared primitives with no GitCode API side effects.
 
-Recommended structure:
+Current structure:
 
 ```text
 src/common/
-  constants.ts
   configuration.ts
+  constants.ts
   errors.ts
   logger.ts
-  models/
+  models.ts
   git/
+    gitTypes.ts
+    localGitService.ts
     remoteParser.ts
     repositoryContext.ts
-  utils/
 ```
 
 Responsibilities:
 
-- Extension constants and setting keys
-- Domain models shared across packages
-- Parse git remotes such as:
-  - `git@gitcode.com:owner/repo.git`
-  - `https://gitcode.com/owner/repo.git`
-- Resolve active repository from the VS Code Git extension
-- Shared error types:
-  - auth errors
-  - API errors
-  - repository resolution errors
-- Logging and optional telemetry abstraction
-
-Important rule:
-
-- `common` must not depend on `view`.
-- `common` should avoid depending on raw API DTO shapes from `gitcode`.
+- Read extension settings such as `gitcode.baseUrl`, `gitcode.webUrl`, `gitcode.repository`, page sizes, trace mode, and pull request file layout.
+- Define command IDs, view IDs, URI schemes, and storage keys.
+- Parse GitCode remotes such as `git@gitcode.com:owner/repo.git` and `https://gitcode.com/owner/repo.git`.
+- Resolve active VS Code git repositories.
+- Provide domain models consumed by services and views.
+- Provide typed error categories for auth, API, and repository resolution failures.
 
 ### `gitcode`
 
-Purpose: everything related to GitCode network communication and remote-to-resource mapping.
+Purpose: all GitCode network communication and REST DTO mapping.
 
-Recommended structure:
+Current structure:
 
 ```text
 src/gitcode/
   client/
     gitcodeClient.ts
     request.ts
-    pagination.ts
-  services/
-    userService.ts
-    repositoryService.ts
-    pullRequestService.ts
-    commentService.ts
-    reviewService.ts
   mappers/
-    pullRequestMapper.ts
-    commentMapper.ts
-    repositoryMapper.ts
   resolver/
     gitcodeRepositoryResolver.ts
-  dto/
+  services/
 ```
 
 Responsibilities:
 
-- Build authenticated HTTP requests
-- Apply API version and pagination rules
-- Convert API DTOs into extension domain models
-- Centralize GitCode endpoint paths
-- Resolve owner/repo from the active git remote
+- Build authenticated HTTP requests using the current session.
+- Apply API base URL and pagination conventions.
+- Centralize GitCode endpoint paths.
+- Convert API DTOs into `common/models.ts` domain types.
+- Resolve `owner/repo` targets from git remotes or `gitcode.repository`.
 
-Core client contract:
+Service classes expose behavior-oriented operations:
 
-```ts
-export interface GitCodeClient {
-  get<T>(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<T>;
-  post<T>(path: string, body?: unknown, query?: Record<string, string | number | boolean | undefined>): Promise<T>;
-  put<T>(path: string, body?: unknown, query?: Record<string, string | number | boolean | undefined>): Promise<T>;
-}
-```
+- `UserService`
+- `RepositoryService`
+- `PullRequestService`
+- `CommentService`
+- `IssueService`
+- `IssueCommentService`
+- `IssueOperationLogService`
+- `RawContentService`
 
-Initial service surface:
-
-- `UserService.getCurrentUser()`
-- `RepositoryService.getRepository(owner, repo)`
-- `PullRequestService.listPullRequests(owner, repo, filters)`
-- `PullRequestService.getPullRequest(owner, repo, number)`
-- `PullRequestService.getFiles(owner, repo, number)`
-- `CommentService.listPullRequestComments(owner, repo, number)`
-- `CommentService.createPullRequestComment(owner, repo, number, input)`
-- `ReviewService.submitReview(owner, repo, number, input)`
-
-Design choice:
-
-- Keep raw REST calling in `client/`.
-- Keep behavior-oriented operations in `services/`.
-- Never call HTTP directly from `view`.
+Views must call services or stores. They must not issue HTTP requests directly.
 
 ### `view`
 
-Purpose: all user-facing VS Code UI, especially the PR tree view.
+Purpose: all user-facing VS Code UI and command orchestration.
 
-Recommended structure:
+Current structure:
 
 ```text
 src/view/
+  viewController.ts
   commands/
   tree/
-    pullRequestTreeDataProvider.ts
-    nodes/
-      workspaceNode.ts
-      categoryNode.ts
-      pullRequestNode.ts
-      filesNode.ts
-      fileChangeNode.ts
-      commentsNode.ts
-      reviewStatusNode.ts
-  panels/
-    pullRequestDetailPanel.ts
   state/
-    pullRequestViewState.ts
+  overview/
+  issueOverview/
+  createPullRequest/
+  createIssue/
+  diff/
+  comments/
+  copilot/
+  webview/
 ```
 
-Responsibilities:
+`ViewController` is the composition root. It creates stores, providers, tree views, overview stores, comment controllers, create-flow helpers, virtual file providers, chat participants, and command registrations.
 
-- Register tree views and commands
-- Render pull request lists grouped by query/category
-- Open PR detail views
-- Refresh on auth change, repo change, and manual refresh
-- Coordinate user actions like checkout, comment, approve, refresh
+`extension.ts` stays minimal: it creates infrastructure services, constructs `ViewController`, registers disposables, and calls `initialize()`.
 
-## Tree View Design
+## Contribution Points
 
-The target UX should be close to GitHub Pull Requests:
-
-- A dedicated activity bar container, for example `GitCode`
-- A primary tree view for pull requests
-- Optional secondary views later:
-  - reviewers
-  - issues
-  - notifications
-
-### Proposed Tree Structure
+The extension contributes one activity bar container:
 
 ```text
-GitCode
-  Pull Requests
-    Local Repository: owner/repo
-      Waiting for my review
-        PR #102 Add auth service
-        PR #98 Refactor repo resolver
-      Assigned to me
-      Created by me
-      All Open
-      Merged
+GitCode Pull Requests
 ```
 
-When a PR expands:
+Views:
 
-```text
-PR #102 Add auth service
-  Summary
-  Checks
-  Reviewers
-  Changed Files
-    src/authentication/authService.ts
-    src/gitcode/client/gitcodeClient.ts
-  Conversation
-    General comments
-    File comments
-```
+- `pr:gitcode` - pull request tree.
+- `gitcode:createPullRequestWebview` - create pull request webview.
+- `issues:gitcode` - issue tree.
 
-### Node Model
+Chat participants:
 
-Use typed tree nodes instead of loosely shaped objects:
+- `gitcode-pull-request.context`
+- `gitcode-issue.context`
 
-```ts
-type TreeNodeKind =
-  | 'workspace'
-  | 'category'
-  | 'pullRequest'
-  | 'section'
-  | 'fileChange'
-  | 'comment';
-```
+Important URI schemes:
 
-Each node should provide:
-
-- stable `id`
-- `TreeItemCollapsibleState`
-- command
-- context value for menus
-- lazy child loading
-
-### Why This Matches the GitHub Extension Style
-
-The GitHub PR extension uses tree navigation as the entry point for:
-
-- query-based PR grouping
-- repository-aware context
-- quick actions from context menus
-- expansion into review-relevant child nodes
-
-We should keep the same interaction model, but avoid copying its internals directly. The point is UX parity, not code parity.
-
-## Extension Activation Model
-
-Recommended activation events:
-
-- on view open
-- on command execution
-- on Git repository availability
-
-Suggested contributions:
-
-```json
-{
-  "activationEvents": [
-    "onView:gitcodePullRequests",
-    "onCommand:gitcode.signIn",
-    "onCommand:gitcode.refreshPullRequests"
-  ]
-}
-```
-
-`extension.ts` should compose services in this order:
-
-1. `common` infrastructure
-2. `authentication` service
-3. `gitcode` client/services
-4. `view` registrations
-
-This keeps startup deterministic and testable.
+- `gitcode-pr-diff` for generated patch content.
+- `gitcode-pr` for read-only PR file content.
 
 ## State and Refresh Flow
 
 ### State Sources
 
-- VS Code secret storage for credentials
-- VS Code workspace state for lightweight UI preferences
-- In-memory cache for current repo, PR list, and expanded PR details
+- VS Code secret storage for auth sessions.
+- VS Code settings for API hosts, repository override, page sizes, trace mode, and PR file layout.
+- In-memory stores for tree lists, overview details, comments, operation logs, diff snapshots, and Copilot context.
 
 ### Refresh Triggers
 
-- sign in / sign out
-- branch or repository change
-- explicit refresh command
-- PR detail panel opened
+- Sign in or session change.
+- Workspace folder change.
+- Git repository open/close events from the VS Code git extension.
+- Manual refresh commands.
+- File layout setting changes.
+- Targeted refresh after edit, create, comment, or resolve actions.
 
 ### Refresh Strategy
 
-- PR list can use short-lived cache
-- PR detail, files, and comments load lazily on expand/open
-- Avoid fetching comments/files for every PR in the list
+- Repository discovery waits briefly during startup so the git extension can finish initializing.
+- PR and issue lists are cached by repository, category, and signed-in account.
+- Pull request file lists are loaded lazily when the `Files` node is expanded.
+- Detail, comment, operation-log, and related-resource stores are separate from tree list stores.
+- Auth changes clear user-scoped caches and refresh both tree views.
 
-This matters because tree views degrade quickly if all PR children are eagerly loaded.
+## Pull Request Flow
 
-## Proposed Domain Models
-
-Keep domain models minimal and UI-oriented.
-
-```ts
-export interface GitCodeRepository {
-  owner: string;
-  name: string;
-  fullName: string;
-  defaultBranch?: string;
-  htmlUrl?: string;
-}
-
-export interface PullRequestSummary {
-  id: number;
-  number: number;
-  title: string;
-  state: 'open' | 'closed' | 'merged';
-  author: string;
-  createdAt: string;
-  updatedAt: string;
-  sourceBranch: string;
-  targetBranch: string;
-  isDraft?: boolean;
-}
-
-export interface PullRequestFileChange {
-  path: string;
-  status: string;
-  additions?: number;
-  deletions?: number;
-}
-
-export interface PullRequestComment {
-  id: string;
-  body: string;
-  author: string;
-  createdAt: string;
-  filePath?: string;
-  line?: number;
-  resolved?: boolean;
-}
+```text
+PullRequestTreeStore
+  -> PullRequestTreeDataProvider
+    -> RepositoryNode
+      -> PullRequestCategoryNode
+        -> PullRequestNode
+          -> PullRequestFilesNode
+            -> DirectoryNode / PullRequestFileNode
 ```
 
-The `view` package should consume these models rather than raw REST response objects.
+Implemented categories:
 
-## Commands
+- `All Open`
+- `Created By Me`
 
-Initial commands:
+Opening a pull request uses `PullRequestOverviewStore` and `PullRequestOverviewPanel`. File actions use `PullRequestDiffStore`, `PullRequestDiffController`, `PullRequestPatchContentProvider`, and `GitCodePullRequestFileSystemProvider` to present changed content and patch context.
 
-- `gitcode.signIn`
-- `gitcode.signOut`
-- `gitcode.refreshPullRequests`
-- `gitcode.openPullRequest`
-- `gitcode.openPullRequestOnWeb`
-- `gitcode.copyPullRequestUrl`
-- `gitcode.approvePullRequest`
-- `gitcode.commentOnPullRequest`
+Diff comments are coordinated by:
 
-Later commands:
+- `PullRequestCommentsStore`
+- `DiffCommentController`
+- `CommentThreadFactory`
 
-- `gitcode.checkoutPullRequest`
-- `gitcode.mergePullRequest`
-- `gitcode.requestReview`
-- `gitcode.resolveCommentThread`
+## Issue Flow
+
+```text
+IssueTreeStore
+  -> IssueTreeDataProvider
+    -> IssueRepositoryNode
+      -> IssueCategoryNode
+        -> IssueNode
+```
+
+Implemented categories:
+
+- `My Issues`
+- `Created Issues`
+- `Recent Issues`
+
+Opening an issue uses:
+
+- `IssueOverviewStore`
+- `IssueCommentsStore`
+- `IssueOperationLogsStore`
+- `IssueRelatedPullRequestsStore`
+- `IssueOverviewPanel`
+
+Issue commands include opening on GitCode, copying the URL, creating a branch, creating an issue, and using an issue as Copilot context.
 
 ## Configuration
 
-Recommended settings:
+Current contributed settings:
 
 ```json
 {
   "gitcode.baseUrl": "https://api.gitcode.com",
   "gitcode.webUrl": "https://gitcode.com",
-  "gitcode.pullRequests.queries": [],
-  "gitcode.pullRequests.pageSize": 20,
+  "gitcode.repository": "",
+  "gitcode.pullRequests.pageSize": 100,
+  "gitcode.pullRequests.fileListLayout": "tree",
+  "gitcode.issues.pageSize": 100,
   "gitcode.trace.server": "off"
 }
 ```
 
-Notes:
-
-- `gitcode.pullRequests.queries` should mirror the GitHub extension concept so users can customize tree sections later.
-- `baseUrl` and `webUrl` should stay configurable in case enterprise/self-hosted variants appear later.
+`gitcode.repository` accepts `owner/repo` and is useful when the workspace remote is not hosted on `gitcode.com`.
 
 ## Error Handling
 
-Centralize user-facing error categories:
+User-facing errors are normalized before they reach tree views and panels:
 
-- `NotSignedIn`
-- `RepositoryNotOnGitCode`
-- `AuthenticationFailed`
-- `RateLimited`
-- `PermissionDenied`
-- `PullRequestNotFound`
-- `UnknownApiError`
+- `NotSignedInError`
+- `AuthenticationFailedError`
+- `RepositoryResolutionError`
+- `RepositoryNotOnGitCodeError`
+- `ApiRequestError`
 
 Rules:
 
-- `gitcode` throws typed errors
-- `view` decides whether to show notification, status item, or silent retry
-- auth failures should offer re-login actions
+- `gitcode` services throw typed errors.
+- Stores cache promises and clear failed promises so retry works.
+- Tree providers and nodes turn known errors into empty-state nodes.
+- Command handlers decide whether to show notifications, open panels, or refresh state.
 
 ## Testing Strategy
 
-### Unit Tests
+The test suite focuses on unit-level behavior with mocked services:
 
-- remote parsing
-- repository resolution
-- auth session storage
-- API response mapping
-- tree node generation
+- remote parsing and repository context
+- API mappers
+- pagination
+- tree stores and nodes
+- overview stores and generated HTML
+- create issue / create pull request data models
+- comments, diff comment context, and comment status revision
+- issue and pull request operation logs
+- Copilot context stores
 
-### Integration Tests
+Run:
 
-- mocked GitCode client for PR listing
-- tree expansion behavior
-- auth change refresh behavior
-
-### Manual Verification
-
-- PAT sign-in
-- open workspace with GitCode remote
-- PR list renders in tree
-- expand PR to load files/comments
-- approve/comment action calls the correct API
-
-## Suggested Initial Folder Layout
-
-```text
-src/
-  extension.ts
-  authentication/
-  common/
-  gitcode/
-  view/
-  test/
+```sh
+npm test
 ```
 
-More detailed shape:
-
-```text
-src/
-  extension.ts
-  authentication/
-    authService.ts
-    patAuthProvider.ts
-    oauthProvider.ts
-    sessionStore.ts
-  common/
-    configuration.ts
-    constants.ts
-    errors.ts
-    logger.ts
-    models/
-    git/
-      remoteParser.ts
-      repositoryContext.ts
-  gitcode/
-    client/
-      gitcodeClient.ts
-      request.ts
-    services/
-      pullRequestService.ts
-      repositoryService.ts
-      commentService.ts
-      reviewService.ts
-      userService.ts
-    resolver/
-      gitcodeRepositoryResolver.ts
-    mappers/
-  view/
-    commands/
-    tree/
-      pullRequestTreeDataProvider.ts
-      nodes/
-    panels/
-    state/
-  test/
-```
-
-## Implementation Phases
-
-### Phase 1: Foundation
-
-- Replace the scaffold command-only extension
-- Add settings, logging, error model
-- Add PAT sign-in and token validation
-- Detect GitCode repository from git remote
-
-### Phase 2: PR Tree View
-
-- Add activity bar container and `Pull Requests` tree view
-- Implement category nodes:
-  - created by me
-  - assigned to me
-  - all open
-- Load PR list from active repository
-
-### Phase 3: PR Detail Expansion
-
-- Expand PR nodes into summary, files, and conversation
-- Add commands for open in web and refresh
-- Add comments display
-
-### Phase 4: Review Actions
-
-- submit comment
-- approve/review action
-- basic state refresh after actions
-
-### Phase 5: Advanced UX
-
-- checkout PR branch
-- notifications
-- reviewers view
-- custom query definitions
-- richer review panel/webview
-
-## Key Design Decisions
-
-1. Start with PAT, not OAuth-first.
-   PAT is directly documented and simpler for the first milestone. OAuth stays behind the same provider abstraction.
-
-2. Keep `gitcode` separate from `view`.
-   This prevents UI code from becoming the de facto API layer.
-
-3. Model tree nodes explicitly.
-   A PR-centered tree view becomes hard to maintain if nodes are ad hoc objects.
-
-4. Resolve repository context once, then reuse it.
-   Most extension actions depend on `owner/repo`; this should be a first-class object, not repeatedly parsed from remotes.
-
-5. Load PR children lazily.
-   Files and comments should not block the main PR list.
-
-## Open Questions
-
-These should be confirmed before implementation of later phases:
-
-- Does GitCode expose a complete reviewer-assignment API equivalent to GitHub's PR reviewer flows?
-- Is there a dedicated mergeability/checks endpoint needed for richer status nodes?
-- Are there enterprise/self-hosted GitCode deployments that require different base URLs or auth rules?
-- Does GitCode provide enough diff metadata to support inline review decorations in editors, or should that wait until a later phase?
-
-## Recommendation
-
-Use this architecture for the first implementation:
-
-- `authentication` for PAT-first sign-in with future OAuth compatibility
-- `common` for models, errors, config, and git remote resolution
-- `gitcode` for all REST API integration
-- `view` for tree views, commands, and detail presentation
-
-That gives a clean path to build a GitHub-PR-style tree view now without locking the extension into a fragile UI-driven design.
+The `pretest` script compiles tests, builds the extension bundle, and runs ESLint before launching `vscode-test`.
