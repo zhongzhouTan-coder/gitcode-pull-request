@@ -1,9 +1,33 @@
 {
   "name": "gitcode-pull-request",
-  "displayName": "gitcode-pull-request",
+  "displayName": "GitCode Pull Requests",
   "description": "GitCode pull request integration for Visual Studio Code",
   "version": "0.0.1",
-  "license": "MIT",
+  "publisher": "zhongzhoutan-coder",
+  "license": "SEE LICENSE IN LICENSE",
+  "preview": true,
+  "icon": "media/gitcode.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhongzhouTan-coder/gitcode-pull-request.git"
+  },
+  "homepage": "https://github.com/zhongzhouTan-coder/gitcode-pull-request#readme",
+  "bugs": {
+    "url": "https://github.com/zhongzhouTan-coder/gitcode-pull-request/issues"
+  },
+  "keywords": [
+    "gitcode",
+    "pull request",
+    "pull requests",
+    "issues",
+    "scm",
+    "code review",
+    "git"
+  ],
+  "galleryBanner": {
+    "color": "#1f6feb",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.120.0"
   },
