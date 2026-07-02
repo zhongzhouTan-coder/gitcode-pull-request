@@ -14,6 +14,18 @@ export class EmptyStateNode extends BaseNode {
 		this.id = `empty:${label}:${description ?? ''}`;
 	}
 
+	static signIn(parent?: BaseNode): EmptyStateNode {
+		return new EmptyStateNode(
+			'Sign in to GitCode',
+			'Click to sign in',
+			{
+				command: 'gitcode.signIn',
+				title: 'Sign in to GitCode',
+			},
+			parent,
+		);
+	}
+
 	getTreeItem(): vscode.TreeItem {
 		const item = new vscode.TreeItem(this.label, vscode.TreeItemCollapsibleState.None);
 		item.description = this.description;

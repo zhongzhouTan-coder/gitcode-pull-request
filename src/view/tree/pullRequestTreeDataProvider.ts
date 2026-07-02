@@ -57,7 +57,7 @@ export class PullRequestTreeDataProvider implements vscode.TreeDataProvider<Base
 
 	private toRootErrorNode(error: unknown): EmptyStateNode {
 		if (error instanceof NotSignedInError) {
-			return new EmptyStateNode('Sign in to GitCode');
+			return EmptyStateNode.signIn();
 		}
 
 		if (error instanceof AuthenticationFailedError) {

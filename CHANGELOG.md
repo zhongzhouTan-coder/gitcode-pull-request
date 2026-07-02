@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- Made `Sign in to GitCode` tree empty states clickable so they run the existing sign-in command.
+
 ## [0.0.2] - 2026-07-02
 
 ### Added

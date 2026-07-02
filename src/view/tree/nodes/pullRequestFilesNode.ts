@@ -190,7 +190,7 @@ export class PullRequestFilesNode extends BaseNode {
 
 	private toErrorNode(error: unknown): EmptyStateNode {
 		if (error instanceof NotSignedInError) {
-			return new EmptyStateNode('Sign in to GitCode', undefined, undefined, this);
+			return EmptyStateNode.signIn(this);
 		}
 
 		if (error instanceof AuthenticationFailedError) {

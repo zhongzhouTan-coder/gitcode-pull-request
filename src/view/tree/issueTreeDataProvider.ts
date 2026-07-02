@@ -56,7 +56,7 @@ export class IssueTreeDataProvider implements vscode.TreeDataProvider<BaseNode> 
 
 	private toRootErrorNode(error: unknown): EmptyStateNode {
 		if (error instanceof NotSignedInError) {
-			return new EmptyStateNode('Sign in to GitCode');
+			return EmptyStateNode.signIn();
 		}
 
 		if (error instanceof AuthenticationFailedError) {
