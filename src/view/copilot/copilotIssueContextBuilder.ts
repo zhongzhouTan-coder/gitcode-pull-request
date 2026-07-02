@@ -3,12 +3,17 @@ import { IssueService } from '../../gitcode/services/issueService';
 import { IssueCommentService } from '../../gitcode/services/issueCommentService';
 import { RepositoryContextService } from '../../common/git/repositoryContext';
 import { SelectedCopilotIssue } from './copilotIssueContextStore';
+import { IssueComment, IssueRelatedPullRequest } from '../../common/models';
+import { BudgetedContextWriter } from './budgetedContextWriter';
+import { CopilotPromptBudget, DEFAULT_COPILOT_PROMPT_BUDGET } from './copilotPromptBudget';
+import { GitRepository } from '../../common/git/gitTypes';
 
-const MAX_BODY_CHARS = 12_000;
 const MAX_COMMENTS = 50;
-const MAX_SINGLE_COMMENT_CHARS = 2_000;
 const MAX_RELATED_PRS = 20;
-const MAX_TOTAL_CHARS = 40_000;
+
+type Result<T> =
+	| { ok: true; value: T }
+	| { ok: false; error: unknown };
 
 export class CopilotIssueContextBuilder {
 	constructor(
@@ -20,153 +25,184 @@ export class CopilotIssueContextBuilder {
 	async build(
 		selected: SelectedCopilotIssue,
 		token: vscode.CancellationToken,
+		budget: CopilotPromptBudget = DEFAULT_COPILOT_PROMPT_BUDGET,
 	): Promise<string> {
 		const { repository, issueNumber } = selected;
-		const parts: string[] = [];
+		const writer = new BudgetedContextWriter(budget.maxContextChars);
 
-		// 1. Repository metadata
-		parts.push(`## Repository: ${repository.fullName}`);
-		parts.push(`Remote: ${repository.remoteName}`);
-		parts.push(`Web URL: ${repository.webUrl}`);
-		parts.push('');
+		writer.appendLine(`## Repository: ${repository.fullName}`);
+		writer.appendLine(`Remote: ${repository.remoteName}`);
+		writer.appendLine(`Web URL: ${repository.webUrl}`);
+		writer.appendLine();
 
-		// 2. Issue detail (strict — fail the request if this fails)
+		let detail;
 		try {
-			const detail = await this.issueService.getIssue(repository, issueNumber);
-			if (token.isCancellationRequested) { return ''; }
-
-			parts.push(`## Issue #${detail.number}: ${detail.title}`);
-			parts.push(`State: ${detail.state}`);
-			parts.push(`Author: ${detail.author.login}`);
-			if (detail.labels.length > 0) {
-				parts.push(`Labels: ${detail.labels.map((l) => l.name).join(', ')}`);
-			}
-			if (detail.assignees.length > 0) {
-				parts.push(`Assignees: ${detail.assignees.map((a) => a.login).join(', ')}`);
-			}
-			if (detail.milestone) {
-				parts.push(`Milestone: ${detail.milestone.title}`);
-			}
-			if (detail.issueTypeDetail) {
-				parts.push(`Type: ${detail.issueTypeDetail.title}`);
-			}
-			if (detail.priorityDetail) {
-				parts.push(`Priority: ${detail.priorityDetail.title}`);
-			}
-			if (detail.issueStateDetail) {
-				parts.push(`Workflow State: ${detail.issueStateDetail.title}`);
-			}
-			parts.push(`Created: ${detail.createdAt} | Updated: ${detail.updatedAt}`);
-			if (detail.url) {
-				parts.push(`URL: ${detail.url}`);
-			}
-			parts.push('');
-
-			if (detail.body) {
-				parts.push('### Description');
-				parts.push(truncate(detail.body, MAX_BODY_CHARS));
-				parts.push('');
-			}
+			detail = await this.issueService.getIssue(repository, issueNumber);
 		} catch (error) {
 			throw new Error(
 				`Unable to load issue #${issueNumber} from ${repository.fullName}: ${errorMessage(error)}`,
 			);
 		}
 
-		if (token.isCancellationRequested) { return ''; }
-
-		// 3. Issue comments (lenient)
-		try {
-			const comments = await this.issueCommentService.listIssueComments(repository, issueNumber);
-			if (token.isCancellationRequested) { return ''; }
-
-			const newest = comments.slice(-MAX_COMMENTS);
-
-			if (newest.length > 0) {
-				parts.push(`### Recent Comments (${newest.length}${comments.length > MAX_COMMENTS ? ` of ${comments.length}` : ''})`);
-				parts.push('');
-
-				for (const comment of newest) {
-					parts.push(`**${comment.author.login}** at ${comment.createdAt}:`);
-					parts.push(truncate(comment.body, MAX_SINGLE_COMMENT_CHARS));
-					parts.push('');
-				}
-
-				if (comments.length > MAX_COMMENTS) {
-					parts.push(`[limited to the ${MAX_COMMENTS} most recent comments]`);
-					parts.push('');
-				}
-			}
-		} catch (error) {
-			parts.push('### Comments');
-			parts.push(`_Unable to load comments: ${errorMessage(error)}_`);
-			parts.push('');
+		if (token.isCancellationRequested) {
+			return '';
 		}
 
-		if (token.isCancellationRequested) { return ''; }
+		const [commentsResult, relatedPrsResult, workspaceResult] = await Promise.all([
+			toResult(this.issueCommentService.listIssueComments(repository, issueNumber)),
+			toResult(this.issueService.listIssueRelatedPullRequests(repository, issueNumber)),
+			toResult(this.repositoryContextService.getActiveRepository()),
+		]);
 
-		// 4. Related pull requests (lenient)
-		try {
-			const relatedPrs = await this.issueService.listIssueRelatedPullRequests(repository, issueNumber);
-			if (token.isCancellationRequested) { return ''; }
-
-			const prLimit = Math.min(relatedPrs.length, MAX_RELATED_PRS);
-			const truncated = relatedPrs.length > MAX_RELATED_PRS;
-
-			if (prLimit > 0) {
-				parts.push(`### Related Pull Requests (${prLimit}${truncated ? ` of ${relatedPrs.length}` : ''})`);
-				parts.push('');
-
-				for (let i = 0; i < prLimit; i++) {
-					const pr = relatedPrs[i];
-					parts.push(`- #${pr.number} ${pr.title} (${pr.state}) by ${pr.author.login}`);
-					parts.push(`  Source: ${pr.source.ref} → Target: ${pr.target.ref}`);
-					if (pr.url) {
-						parts.push(`  URL: ${pr.url}`);
-					}
-					parts.push('');
-				}
-
-				if (truncated) {
-					parts.push(`[truncated: ${relatedPrs.length - MAX_RELATED_PRS} more pull requests not shown]`);
-					parts.push('');
-				}
-			}
-		} catch (error) {
-			parts.push('### Related Pull Requests');
-			parts.push(`_Unable to load related pull requests: ${errorMessage(error)}_`);
-			parts.push('');
+		if (token.isCancellationRequested) {
+			return '';
 		}
 
-		if (token.isCancellationRequested) { return ''; }
+		writer.appendLine(`## Issue #${detail.number}: ${detail.title}`);
+		writer.appendLine(`State: ${detail.state}`);
+		writer.appendLine(`Author: ${detail.author.login}`);
+		if (detail.labels.length > 0) {
+			writer.appendLine(`Labels: ${detail.labels.map((label) => label.name).join(', ')}`);
+		}
+		if (detail.assignees.length > 0) {
+			writer.appendLine(`Assignees: ${detail.assignees.map((assignee) => assignee.login).join(', ')}`);
+		}
+		if (detail.milestone) {
+			writer.appendLine(`Milestone: ${detail.milestone.title}`);
+		}
+		if (detail.issueTypeDetail) {
+			writer.appendLine(`Type: ${detail.issueTypeDetail.title}`);
+		}
+		if (detail.priorityDetail) {
+			writer.appendLine(`Priority: ${detail.priorityDetail.title}`);
+		}
+		if (detail.issueStateDetail) {
+			writer.appendLine(`Workflow State: ${detail.issueStateDetail.title}`);
+		}
+		writer.appendLine(`Created: ${detail.createdAt} | Updated: ${detail.updatedAt}`);
+		if (detail.url) {
+			writer.appendLine(`URL: ${detail.url}`);
+		}
+		writer.appendLine();
 
-		// 5. Workspace metadata
-		try {
-			const gitRepo = await this.repositoryContextService.getActiveRepository();
-			if (gitRepo) {
-				const currentBranch = gitRepo.state.HEAD?.name;
-				if (currentBranch) {
-					parts.push('### Workspace');
-					parts.push(`Current branch: \`${currentBranch}\``);
-					parts.push(`Repository path: ${gitRepo.rootUri.fsPath}`);
-					parts.push('');
-				}
-			}
-		} catch {
-			// Omit workspace section if unavailable
+		if (detail.body) {
+			writer.appendLine('### Description');
+			writer.appendTruncated(detail.body, budget.maxBodyChars);
+			writer.appendLine();
+			writer.appendLine();
 		}
 
-		// Build final payload
-		const raw = parts.join('\n');
-		return truncate(raw, MAX_TOTAL_CHARS);
+		appendIssueComments(writer, commentsResult, budget);
+		appendRelatedPullRequests(writer, relatedPrsResult);
+		appendWorkspace(writer, workspaceResult);
+
+		return writer.toString();
 	}
 }
 
-function truncate(value: string, maxChars: number): string {
-	if (value.length <= maxChars) {
-		return value;
+function appendIssueComments(
+	writer: BudgetedContextWriter,
+	result: Result<IssueComment[]>,
+	budget: CopilotPromptBudget,
+): void {
+	if (!result.ok) {
+		writer.appendLine('### Comments');
+		writer.appendLine(`_Unable to load comments: ${errorMessage(result.error)}_`);
+		writer.appendLine();
+		return;
 	}
-	return value.slice(0, maxChars) + '\n[truncated]';
+
+	const comments = [...result.value]
+		.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+	const selected = comments.slice(0, MAX_COMMENTS);
+
+	if (selected.length === 0) {
+		return;
+	}
+
+	writer.appendLine(`### Recent Comments (${selected.length}${comments.length > selected.length ? ` of ${comments.length}` : ''})`);
+	writer.appendLine();
+
+	for (const comment of selected) {
+		writer.appendLine(`- ${comment.author.login} at ${comment.createdAt}`);
+		writer.appendTruncated(indent(comment.body), budget.maxPullRequestCommentChars);
+		writer.appendLine();
+		writer.appendLine();
+	}
+
+	if (comments.length > selected.length) {
+		writer.appendLine(`[limited to the ${selected.length} most recent comments]`);
+		writer.appendLine();
+	}
+}
+
+function appendRelatedPullRequests(
+	writer: BudgetedContextWriter,
+	result: Result<IssueRelatedPullRequest[]>,
+): void {
+	if (!result.ok) {
+		writer.appendLine('### Related Pull Requests');
+		writer.appendLine(`_Unable to load related pull requests: ${errorMessage(result.error)}_`);
+		writer.appendLine();
+		return;
+	}
+
+	const relatedPrs = result.value;
+	const prLimit = Math.min(relatedPrs.length, MAX_RELATED_PRS);
+	const truncated = relatedPrs.length > MAX_RELATED_PRS;
+
+	if (prLimit === 0) {
+		return;
+	}
+
+	writer.appendLine(`### Related Pull Requests (${prLimit}${truncated ? ` of ${relatedPrs.length}` : ''})`);
+	writer.appendLine();
+
+	for (let i = 0; i < prLimit; i++) {
+		const pr = relatedPrs[i];
+		writer.appendLine(`- #${pr.number} ${pr.title} (${pr.state}) by ${pr.author.login}`);
+		writer.appendLine(`  Source: ${pr.source.ref} -> Target: ${pr.target.ref}`);
+		if (pr.url) {
+			writer.appendLine(`  URL: ${pr.url}`);
+		}
+		writer.appendLine();
+	}
+
+	if (truncated) {
+		writer.appendLine(`[truncated: ${relatedPrs.length - MAX_RELATED_PRS} more pull requests not shown]`);
+		writer.appendLine();
+	}
+}
+
+function appendWorkspace(
+	writer: BudgetedContextWriter,
+	result: Result<GitRepository | undefined>,
+): void {
+	if (!result.ok || !result.value) {
+		return;
+	}
+
+	const currentBranch = result.value.state.HEAD?.name;
+	if (!currentBranch) {
+		return;
+	}
+
+	writer.appendLine('### Workspace');
+	writer.appendLine(`Current branch: \`${currentBranch}\``);
+	writer.appendLine(`Repository path: ${result.value.rootUri.fsPath}`);
+	writer.appendLine();
+}
+
+async function toResult<T>(promise: Promise<T>): Promise<Result<T>> {
+	try {
+		return { ok: true, value: await promise };
+	} catch (error) {
+		return { ok: false, error };
+	}
+}
+
+function indent(value: string, prefix: string = '  '): string {
+	return value.split(/\r?\n/).map((line) => `${prefix}${line}`).join('\n');
 }
 
 function errorMessage(error: unknown): string {
