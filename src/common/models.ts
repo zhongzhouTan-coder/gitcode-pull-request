@@ -485,6 +485,10 @@ export interface AddPullRequestRelatedIssuesInput {
 	issueNumbers: readonly number[];
 }
 
+export interface RemovePullRequestRelatedIssuesInput {
+	issueNumbers: readonly number[];
+}
+
 export interface AddedPullRequestRelatedIssue {
 	id: number;
 	number: number;

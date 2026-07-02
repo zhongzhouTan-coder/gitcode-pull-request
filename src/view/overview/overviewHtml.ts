@@ -533,9 +533,12 @@ function renderIssueLabels(labels: IssueLabel[]): string {
 export interface RelatedIssuesSectionOptions {
 	canAddRelatedIssue: boolean;
 	addRelatedIssueInProgress?: boolean;
+	canRemoveRelatedIssue?: boolean;
+	removeRelatedIssueInProgress?: boolean;
+	removingRelatedIssueNumbers?: readonly number[];
 }
 
-function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
+function renderRelatedIssueRow(issue: PullRequestRelatedIssue, options?: RelatedIssuesSectionOptions): string {
 	const stateClass = issue.state === 'closed' ? 'closed' : 'open';
 	const repositoryName = issue.repository?.fullName ?? '';
 
@@ -563,6 +566,12 @@ function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
 		? `<button class="external-link-btn" data-action="openUrl" data-url="${escapeHtml(issue.url)}" title="Open on GitCode">${EXTERNAL_LINK_ICON}</button>`
 		: '';
 
+	const isRemoving = options?.removeRelatedIssueInProgress && options.removingRelatedIssueNumbers?.includes(issue.number);
+	const removeBtnDisabled = options?.removeRelatedIssueInProgress ? 'disabled' : '';
+	const removeButton = options?.canRemoveRelatedIssue
+		? `<button class="icon-button remove-related-issue-btn" data-action="removeRelatedIssue" data-issue="${issue.number}" aria-label="Unlink related issue" title="Unlink related issue" ${removeBtnDisabled}>${isRemoving ? '<span class="spinner" aria-hidden="true"></span>' : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.85 2.15 13.85 13.15l-.7.7-2.44-2.44-.86.86a3 3 0 0 1-4.24-4.24l.89-.88.7.7-.88.89a2 2 0 0 0 2.82 2.82l.86-.85-2.12-2.12-.68.68-.7-.7.68-.69L2.15 2.85l.7-.7Zm7.54 5.8-.71-.7.68-.68a2 2 0 0 0-2.83-2.83l-.84.84-.7-.71.84-.84a3 3 0 0 1 4.24 4.24l-.68.68Zm2.2 1.13-.7-.7.88-.88.7.7-.88.88Z"/></svg>'}</button>`
+		: '';
+
 	return `
 		<div class="related-issue-row related-issue-${stateClass}">
 			<div class="related-issue-rail" aria-hidden="true"></div>
@@ -570,6 +579,7 @@ function renderRelatedIssueRow(issue: PullRequestRelatedIssue): string {
 				<div class="related-issue-title-row">
 					${titleHtml}
 					${externalLink}
+					${removeButton}
 				</div>
 				<div class="related-issue-meta">
 					${metaParts.join('')}
@@ -596,7 +606,7 @@ export function renderRelatedIssuesSection(snapshot: PullRequestRelatedIssuesSna
 				${addButtonHtml}
 			</div>
 			<div class="related-issues-list">
-				${issues.map((issue) => renderRelatedIssueRow(issue)).join('')}
+				${issues.map((issue) => renderRelatedIssueRow(issue, options)).join('')}
 			</div>
 		</section>
 	`;
@@ -3081,6 +3091,14 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		document.querySelectorAll('[data-action="addRelatedIssue"]').forEach((el) => {
 			el.addEventListener('click', () => {
 				vscode.postMessage({ command: 'addRelatedIssue' });
+			});
+		});
+		document.querySelectorAll('[data-action="removeRelatedIssue"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				vscode.postMessage({
+					command: 'removeRelatedIssue',
+					issue: Number(el.dataset.issue),
+				});
 			});
 		});
 		document.querySelectorAll('[data-action="openDiffComment"]').forEach((el) => {

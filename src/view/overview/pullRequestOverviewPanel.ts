@@ -183,6 +183,8 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private operationLogsSnapshot?: PullRequestOperationLogsSnapshot;
 	private editOptions?: EditPullRequestOptions;
 	private addRelatedIssueInProgress: boolean = false;
+	private removeRelatedIssueInProgress: boolean = false;
+	private removingRelatedIssueNumbers: readonly number[] = [];
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -251,6 +253,15 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'addRelatedIssue') {
 				await this.handleAddRelatedIssue();
+				return;
+			}
+
+			if (message.command === 'removeRelatedIssue' && message.issue !== undefined) {
+				const issueNumber = Number(message.issue);
+				if (!Number.isFinite(issueNumber) || issueNumber <= 0) {
+					return;
+				}
+				await this.handleRemoveRelatedIssues([issueNumber]);
 				return;
 			}
 
@@ -341,7 +352,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		// Render detail with loading timeline and related issues.
-		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading({ canAddRelatedIssue: true, addRelatedIssueInProgress: this.addRelatedIssueInProgress });
+		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading(this.buildRelatedIssuesOptions());
 		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml);
 
 		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
@@ -426,7 +437,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		// Build related issues HTML
-		const relatedIssuesOptions = { canAddRelatedIssue: true, addRelatedIssueInProgress: this.addRelatedIssueInProgress };
+		const relatedIssuesOptions = this.buildRelatedIssuesOptions();
 		let relatedIssuesHtml: string;
 		if (relatedIssuesSnapshot) {
 			relatedIssuesHtml = renderRelatedIssuesSection(relatedIssuesSnapshot, relatedIssuesOptions);
@@ -834,6 +845,17 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		return true;
 	}
 
+	static async removeRelatedIssueFromCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before removing a related issue.');
+			return false;
+		}
+
+		await activePanel.handleRemoveRelatedIssues();
+		return true;
+	}
+
 	private async handleAddRelatedIssue(): Promise<void> {
 		if (this.addRelatedIssueInProgress) {
 			return;
@@ -855,10 +877,12 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				filteredNumbers,
 			);
 
+			this.addRelatedIssueInProgress = false;
+
 			const message = filteredNumbers.length === 1
 				? `Related issue added to pull request #${this.context.pullRequestNumber}`
 				: `Related issues added to pull request #${this.context.pullRequestNumber}`;
-			await vscode.window.showInformationMessage(message);
+			void vscode.window.showInformationMessage(message);
 
 			// Refresh related issues and operation logs
 			if (PullRequestOverviewPanel.operationLogsStore) {
@@ -872,11 +896,12 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.operationLogsSnapshot = undefined;
 			this.editOptions = undefined;
 		} catch (error) {
+			this.addRelatedIssueInProgress = false;
 			const errorMessage = error instanceof Error ? error.message : 'Failed to add related issues.';
 			this.logger.error(
 				`Failed to add related issues to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
-			await vscode.window.showErrorMessage(errorMessage);
+			void vscode.window.showErrorMessage(errorMessage);
 		} finally {
 			this.addRelatedIssueInProgress = false;
 		}
@@ -954,6 +979,115 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		return filteredNumbers;
 	}
 
+	private async handleRemoveRelatedIssues(issueNumbers?: readonly number[]): Promise<void> {
+		if (this.removeRelatedIssueInProgress) {
+			return;
+		}
+
+		// Validate that we have a related issues snapshot loaded
+		const currentIssues = this.relatedIssuesSnapshot?.issues ?? [];
+		if (!currentIssues.length) {
+			await vscode.window.showInformationMessage('No related issues to remove.');
+			return;
+		}
+
+		let selectedNumbers: number[];
+		if (issueNumbers && issueNumbers.length > 0) {
+			// Row-level action: validate that the numbers are in the current snapshot
+			const currentNumbers = new Set(currentIssues.map((i) => i.number));
+			selectedNumbers = [...new Set(issueNumbers)].filter((n) => currentNumbers.has(n));
+			if (!selectedNumbers.length) {
+				await vscode.window.showInformationMessage('Selected issues are no longer related to this pull request.');
+				return;
+			}
+		} else {
+			// Command palette: show multi-select quick pick
+			const items = currentIssues.map((issue) => ({
+				label: `#${issue.number} ${issue.title}`,
+				description: issue.state === 'closed' ? 'Closed' : 'Open',
+				issueNumber: issue.number,
+			}));
+
+			const picked = await vscode.window.showQuickPick(items, {
+				title: `Select related issues to unlink from PR #${this.context.pullRequestNumber}`,
+				placeHolder: 'Choose one or more issues to unlink',
+				canPickMany: true,
+			});
+
+			if (!picked || !picked.length) {
+				return;
+			}
+
+			selectedNumbers = [...new Set(picked.map((p) => p.issueNumber))];
+		}
+
+		if (!selectedNumbers.length) {
+			return;
+		}
+
+		// Confirm
+		const issueList = selectedNumbers.map((n) => `#${n}`).join(', ');
+		const confirmMessage = selectedNumbers.length === 1
+			? `Unlink issue ${issueList} from PR #${this.context.pullRequestNumber}?`
+			: `Unlink issues ${issueList} from PR #${this.context.pullRequestNumber}?`;
+
+		const choice = await vscode.window.showWarningMessage(
+			confirmMessage,
+			{ modal: true },
+			'Unlink issue',
+		);
+
+		if (choice !== 'Unlink issue') {
+			return;
+		}
+
+		this.removeRelatedIssueInProgress = true;
+		this.removingRelatedIssueNumbers = selectedNumbers;
+		await this.reloadOverviewHtml();
+
+		try {
+			await this.store.removeRelatedIssues(
+				this.context.repository,
+				this.context.pullRequestNumber,
+				selectedNumbers,
+			);
+
+			this.removeRelatedIssueInProgress = false;
+			this.removingRelatedIssueNumbers = [];
+
+			const message = selectedNumbers.length === 1
+				? `Related issue unlinked from pull request #${this.context.pullRequestNumber}`
+				: `Related issues unlinked from pull request #${this.context.pullRequestNumber}`;
+			void vscode.window.showInformationMessage(message);
+
+			// Refresh related issues and operation logs
+			if (PullRequestOverviewPanel.operationLogsStore) {
+				await PullRequestOverviewPanel.operationLogsStore.refresh(
+					this.context.repository.fullName,
+					this.context.pullRequestNumber,
+				);
+			}
+			this.commentsSnapshot = undefined;
+			this.relatedIssuesSnapshot = undefined;
+			this.operationLogsSnapshot = undefined;
+			this.editOptions = undefined;
+		} catch (error) {
+			this.removeRelatedIssueInProgress = false;
+			this.removingRelatedIssueNumbers = [];
+			const errorMessage = error instanceof Error ? error.message : 'Failed to unlink related issues.';
+			this.logger.error(
+				`Failed to unlink related issues from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+			);
+			void vscode.window.showErrorMessage(errorMessage);
+		} finally {
+			this.removeRelatedIssueInProgress = false;
+			this.removingRelatedIssueNumbers = [];
+		}
+
+		// Reload the overview with fresh data
+		await this.load(true);
+	}
+
 	private async reloadOverviewHtml(): Promise<void> {
 		// Re-render the existing overview HTML with the updated in-progress state
 		// so the add button shows a spinner
@@ -961,7 +1095,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		const relatedIssuesOptions = { canAddRelatedIssue: true, addRelatedIssueInProgress: this.addRelatedIssueInProgress };
+		const relatedIssuesOptions = this.buildRelatedIssuesOptions();
 
 		let relatedIssuesHtml: string;
 		if (this.relatedIssuesSnapshot) {
@@ -987,6 +1121,16 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				relatedIssuesHtml,
 			);
 		}
+	}
+
+	private buildRelatedIssuesOptions() {
+		return {
+			canAddRelatedIssue: true,
+			addRelatedIssueInProgress: this.addRelatedIssueInProgress,
+			canRemoveRelatedIssue: true,
+			removeRelatedIssueInProgress: this.removeRelatedIssueInProgress,
+			removingRelatedIssueNumbers: this.removingRelatedIssueNumbers,
+		};
 	}
 }
 

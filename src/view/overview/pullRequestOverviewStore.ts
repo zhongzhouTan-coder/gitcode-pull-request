@@ -138,6 +138,24 @@ export class PullRequestOverviewStore {
 		return result;
 	}
 
+	async removeRelatedIssues(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		issueNumbers: readonly number[],
+	): Promise<void> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		await this.pullRequestService.removeRelatedIssues(repository, pullRequestNumber, issueNumbers);
+
+		// Invalidate the related issue cache so the overview reloads fresh data
+		const key = this.getKey(repository, pullRequestNumber);
+		this.relatedIssuesPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+	}
+
 	async listLinkableIssues(repository: GitCodeRepository): Promise<IssueSummary[]> {
 		const session = await this.authService.getSession();
 		if (!session) {

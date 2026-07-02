@@ -27,5 +27,11 @@ export function registerOverviewCommands(options: RegisterOverviewCommandsOption
 				options.logger.debug('No active pull request overview panel to add related issue.');
 			}
 		}),
+		vscode.commands.registerCommand(COMMAND_ID.removeRelatedIssue, async () => {
+			const removed = await PullRequestOverviewPanel.removeRelatedIssueFromCurrent();
+			if (!removed) {
+				options.logger.debug('No active pull request overview panel to unlink related issue.');
+			}
+		}),
 	);
 }

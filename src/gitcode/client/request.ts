@@ -3,7 +3,7 @@ import { URL } from 'url';
 import { ApiRequestError } from '../../common/errors';
 
 interface RequestOptions {
-	method: 'GET' | 'POST' | 'PUT' | 'PATCH';
+	method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 	url: string;
 	token?: string;
 	body?: unknown;
@@ -25,7 +25,7 @@ export async function requestJson<T>(options: RequestOptions): Promise<T> {
 
 export async function requestBytes(options: RequestOptions): Promise<Uint8Array> {
 	const requestUrl = new URL(options.url);
-	const payload = options.body ? JSON.stringify(options.body) : undefined;
+	const payload = options.body === undefined ? undefined : JSON.stringify(options.body);
 
 	return new Promise<Uint8Array>((resolve, reject) => {
 		const request = https.request(
@@ -34,7 +34,10 @@ export async function requestBytes(options: RequestOptions): Promise<Uint8Array>
 				method: options.method,
 				headers: {
 					Accept: options.accept ?? '*/*',
-					...(payload ? { 'Content-Type': 'application/json' } : {}),
+					...(payload !== undefined ? {
+						'Content-Type': 'application/json',
+						'Content-Length': Buffer.byteLength(payload).toString(),
+					} : {}),
 					...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
 				},
 			},
@@ -69,7 +72,7 @@ export async function requestBytes(options: RequestOptions): Promise<Uint8Array>
 
 export async function requestText(options: RequestOptions): Promise<string> {
 	const requestUrl = new URL(options.url);
-	const payload = options.body ? JSON.stringify(options.body) : undefined;
+	const payload = options.body === undefined ? undefined : JSON.stringify(options.body);
 
 	return new Promise<string>((resolve, reject) => {
 		const request = https.request(
@@ -78,7 +81,10 @@ export async function requestText(options: RequestOptions): Promise<string> {
 				method: options.method,
 				headers: {
 					Accept: options.accept ?? '*/*',
-					...(payload ? { 'Content-Type': 'application/json' } : {}),
+					...(payload !== undefined ? {
+						'Content-Type': 'application/json',
+						'Content-Length': Buffer.byteLength(payload).toString(),
+					} : {}),
 					...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
 				},
 			},

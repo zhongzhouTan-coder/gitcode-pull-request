@@ -181,6 +181,10 @@
       {
         "command": "gitcode.pullRequest.addRelatedIssue",
         "title": "GitCode: Add Related Issue to Pull Request"
+      },
+      {
+        "command": "gitcode.pullRequest.removeRelatedIssue",
+        "title": "GitCode: Unlink Related Issue from Pull Request"
       }
     ],
     "menus": {

@@ -1,5 +1,5 @@
 import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestOperationLog, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
-import { GitCodeWriteClient } from '../client/gitcodeClient';
+import { GitCodeDeleteClient } from '../client/gitcodeClient';
 import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
 import { mapPullRequestFiles } from '../mappers/pullRequestFileMapper';
@@ -21,7 +21,7 @@ export interface PullRequestFilters {
 }
 
 export class PullRequestService {
-	constructor(private readonly client: GitCodeWriteClient) {}
+	constructor(private readonly client: GitCodeDeleteClient) {}
 
 	async listPullRequests(repository: GitCodeRepository, filters: PullRequestFilters = {}): Promise<PullRequestSummary[]> {
 		const response = await this.client.get<any[]>(
@@ -122,5 +122,20 @@ export class PullRequestService {
 		);
 
 		return mapAddedPullRequestRelatedIssues(response);
+	}
+
+	async removeRelatedIssues(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		issueNumbers: readonly number[],
+	): Promise<void> {
+		if (!issueNumbers.length) {
+			throw new Error('At least one issue number is required.');
+		}
+
+		await this.client.delete(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/issues`,
+			issueNumbers,
+		);
 	}
 }

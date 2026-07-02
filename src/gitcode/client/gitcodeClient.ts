@@ -16,7 +16,11 @@ export interface GitCodeWriteClient extends GitCodeClient {
 	patch<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
 }
 
-export class GitCodeClientImpl implements GitCodeWriteClient {
+export interface GitCodeDeleteClient extends GitCodeWriteClient {
+	delete<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T>;
+}
+
+export class GitCodeClientImpl implements GitCodeDeleteClient {
 	constructor(
 		private readonly configuration: ExtensionConfiguration,
 		private readonly sessionStore: SessionStore,
@@ -39,12 +43,16 @@ export class GitCodeClientImpl implements GitCodeWriteClient {
 		return this.request<T>(path, query, tokenOverride, body, 'PATCH');
 	}
 
+	async delete<T>(path: string, body?: unknown, query?: Record<string, QueryValue>, tokenOverride?: string): Promise<T> {
+		return this.request<T>(path, query, tokenOverride, body, 'DELETE');
+	}
+
 	private async request<T>(
 		path: string,
 		query?: Record<string, QueryValue>,
 		tokenOverride?: string,
 		body?: unknown,
-		method?: 'GET' | 'POST' | 'PUT' | 'PATCH',
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
 	): Promise<T> {
 		const token = tokenOverride ?? (await this.sessionStore.read())?.accessToken;
 		if (!token) {

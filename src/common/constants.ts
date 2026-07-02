@@ -30,6 +30,7 @@ export const COMMAND_ID = {
 	resolveDiffComment: 'gitcode.resolveDiffComment',
 	unresolveDiffComment: 'gitcode.unresolveDiffComment',
 	addRelatedIssue: 'gitcode.pullRequest.addRelatedIssue',
+	removeRelatedIssue: 'gitcode.pullRequest.removeRelatedIssue',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';
