@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../common/constants';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
-import { EditIssueInput, EditIssueOptions, EditIssueSection, GitCodeRepository, IssueCommentsSnapshot, IssueDetail, IssueOperationLogsSnapshot, IssueRelatedPullRequestsSnapshot } from '../../common/models';
+import { EditIssueInput, EditIssueOptions, EditIssueSection, GitCodeRepository, IssueCommentsSnapshot, IssueDetail, IssueOperationLogsSnapshot, IssueOverviewPermissions, IssueRelatedPullRequestsSnapshot } from '../../common/models';
 import { getIssueErrorHtml, getIssueLoadingHtml, getIssueOverviewHtml } from './issueOverviewHtml';
 import { IssueOverviewStore } from './issueOverviewStore';
 import { IssueCommentsStore } from './issueCommentsStore';
@@ -13,6 +13,9 @@ import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { IssueTreeStore } from '../state/issueTreeStore';
+import { PermissionStore } from '../state/permissionStore';
+import { checkPermission } from '../permissions/permissionChecks';
+import { buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions } from '../permissions/permissionHelpers';
 
 interface IssueOverviewContext {
 	repository: GitCodeRepository;
@@ -183,9 +186,14 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private static readonly panels = new Map<string, IssueOverviewPanel>();
 	private static activePanel: IssueOverviewPanel | undefined;
 	private static treeStore: IssueTreeStore | undefined;
+	private static permissionStore: PermissionStore | undefined;
 
 	static setEditDependencies(treeStore: IssueTreeStore): void {
 		this.treeStore = treeStore;
+	}
+
+	static setPermissionStore(store: PermissionStore): void {
+		this.permissionStore = store;
 	}
 
 	static async createOrShow(
@@ -247,6 +255,12 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private relatedPullRequestsSnapshot?: IssueRelatedPullRequestsSnapshot;
 	private relatedPullRequestsError?: Error;
 	private editOptions?: EditIssueOptions;
+	private permissions: IssueOverviewPermissions = {
+		canEditIssue: false,
+		canCloseIssue: false,
+		canReopenIssue: false,
+		canCreateComment: false,
+	};
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -381,6 +395,9 @@ export class IssueOverviewPanel implements vscode.Disposable {
 				: this.detail.title;
 		this.panel.title = `#${this.detail.number} ${truncatedTitle}`;
 
+		// Refresh permissions for this repository
+		await this.refreshPermissions();
+
 		this.panel.webview.html = getIssueOverviewHtml({
 			detail: this.detail,
 			comments: this.commentsSnapshot,
@@ -390,6 +407,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			relatedPullRequests: this.relatedPullRequestsSnapshot,
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
+			permissions: this.permissions,
 			nonce: createNonce(),
 		});
 
@@ -465,6 +483,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
+		if (!await this.checkWritePermission('issue', 'update', `You do not have permission to update issues in ${this.context.repository.fullName}.`)) {
+			return;
+		}
+
 		const errors = validateIssueSectionInput(section, input, this.detail, this.editOptions);
 		if (errors.length > 0) {
 			this.panel.webview.postMessage({
@@ -521,6 +543,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
+		if (!await this.checkWritePermission('note', 'create', `You do not have permission to comment in ${this.context.repository.fullName}.`)) {
+			return;
+		}
+
 		this.panel.webview.postMessage({
 			command: 'issueCommentSubmitting',
 		});
@@ -569,6 +595,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 				command: 'issueStateChangeError',
 				message: errors.join(' '),
 			});
+			return;
+		}
+
+		if (!await this.checkWritePermission('issue', 'reopen', `You do not have permission to ${state === 'close' ? 'close' : 'reopen'} issues in ${this.context.repository.fullName}.`)) {
 			return;
 		}
 
@@ -677,5 +707,40 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		}
 
 		return getIssueErrorHtml('Unable to load issue', 'An unknown error occurred.', createNonce());
+	}
+
+	private async refreshPermissions(): Promise<void> {
+		if (!IssueOverviewPanel.permissionStore) {
+			return;
+		}
+
+		try {
+			const snapshot = await IssueOverviewPanel.permissionStore.get(this.context.repository);
+			this.permissions = buildIssueOverviewPermissions(snapshot);
+		} catch (error) {
+			this.logger.debug(
+				`Failed to load permissions for ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			this.permissions = buildUnknownIssueOverviewPermissions();
+		}
+	}
+
+	private async checkWritePermission(scope: string, action: string, deniedMessage: string): Promise<boolean> {
+		if (!IssueOverviewPanel.permissionStore) {
+			return true;
+		}
+
+		const allowed = await checkPermission(IssueOverviewPanel.permissionStore, this.context.repository, {
+			scope,
+			action,
+			message: () => deniedMessage,
+		});
+
+		if (!allowed) {
+			vscode.window.showWarningMessage(deniedMessage);
+			return false;
+		}
+
+		return true;
 	}
 }

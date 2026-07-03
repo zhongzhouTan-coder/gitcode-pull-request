@@ -678,6 +678,80 @@ export type GitCodeLabel = PullRequestLabel;
 // Reuse IssueMilestone for GitCodeMilestone
 export type GitCodeMilestone = IssueMilestone;
 
+// ---- Permission Types ----
+
+export type PermissionScope =
+	| 'repo'
+	| 'code'
+	| 'wiki'
+	| 'member'
+	| 'issue'
+	| 'label'
+	| 'milestone'
+	| 'branch'
+	| 'tag'
+	| 'pr'
+	| 'note'
+	| 'pipeline'
+	| 'discussion'
+	| 'kanban'
+	| string;
+
+export type PermissionAction = string;
+
+export interface GitCodePermissionPoint {
+	scope: PermissionScope;
+	action: PermissionAction;
+	selected: boolean;
+	permissionId?: number;
+	name?: string;
+	displayName?: string;
+}
+
+export interface GitCodeRoleInfo {
+	roleUuid?: string;
+	name?: string;
+	displayName?: string;
+	rolesType?: number;
+	accessLevel?: number;
+}
+
+export interface GitCodePermissionSnapshot {
+	repository: GitCodeRepository;
+	role?: GitCodeRoleInfo;
+	permissions: readonly GitCodePermissionPoint[];
+	loadedAt: number;
+	has(scope: PermissionScope, action: PermissionAction): boolean;
+}
+
+export interface PermissionRequirement {
+	scope: PermissionScope;
+	action: PermissionAction;
+	message: (repository: GitCodeRepository) => string;
+}
+
+export interface PullRequestOverviewPermissions {
+	canEditPullRequest: boolean;
+	canClosePullRequest: boolean;
+	canReopenPullRequest: boolean;
+	canCreateComment: boolean;
+	canEditComment: boolean;
+	canResolveComment: boolean;
+	canUpdateRelatedIssues: boolean;
+}
+
+export interface IssueOverviewPermissions {
+	canEditIssue: boolean;
+	canCloseIssue: boolean;
+	canReopenIssue: boolean;
+	canCreateComment: boolean;
+}
+
+export interface CreatePullRequestPermissions {
+	canCreatePullRequest: boolean;
+	canCreateBranch: boolean;
+}
+
 export interface EditPullRequestCommentInput {
 	commentId: string;
 	body: string;

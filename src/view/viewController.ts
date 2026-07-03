@@ -46,6 +46,8 @@ import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
 import { GitCodeClientImpl } from '../gitcode/client/gitcodeClient';
 import { RepositoryService } from '../gitcode/services/repositoryService';
+import { PermissionService } from '../gitcode/services/permissionService';
+import { PermissionStore } from './state/permissionStore';
 
 interface ViewControllerOptions {
 	context: vscode.ExtensionContext;
@@ -81,6 +83,7 @@ export class ViewController implements vscode.Disposable {
 	private readonly copilotIssueContextStore: CopilotIssueContextStore;
 	private readonly createPullRequestHelper: CreatePullRequestHelper;
 	private readonly createIssueHelper: CreateIssueHelper;
+	private readonly permissionStore: PermissionStore;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly layoutSupplier: () => 'tree' | 'flat';
 
@@ -163,6 +166,12 @@ export class ViewController implements vscode.Disposable {
 			this.store,
 		);
 
+		// Permission system
+		const permissionService = new PermissionService(gitCodeClient);
+		this.permissionStore = new PermissionStore(permissionService, options.logger);
+		PullRequestOverviewPanel.setPermissionStore(this.permissionStore);
+		IssueOverviewPanel.setPermissionStore(this.permissionStore);
+
 		// Operation logs store
 		const operationLogsStore = new PullRequestOperationLogsStore(
 			options.authService,
@@ -184,6 +193,7 @@ export class ViewController implements vscode.Disposable {
 			{
 				onCreateSuccess: (repo, prNumber) => this.createPullRequestHelper.handleCreateSuccess(repo, prNumber),
 			},
+			this.permissionStore,
 			options.logger,
 		);
 		this.createPullRequestHelper = new CreatePullRequestHelper(
@@ -195,6 +205,7 @@ export class ViewController implements vscode.Disposable {
 			this.overviewStore,
 			this.commentsStore,
 			this.copilotIssueContextStore,
+			this.permissionStore,
 			options.logger,
 		);
 
@@ -231,6 +242,7 @@ export class ViewController implements vscode.Disposable {
 			this.issueRelatedPrsStore,
 			this.overviewStore,
 			this.commentsStore,
+			this.permissionStore,
 			options.logger,
 		);
 
@@ -271,6 +283,7 @@ export class ViewController implements vscode.Disposable {
 				diffController: this.diffController,
 				diffStore: this.diffStore,
 				copilotContextStore: this.copilotContextStore,
+				permissionStore: this.permissionStore,
 			}),
 			registerIssueCommands({
 				authService: options.authService,
@@ -284,6 +297,7 @@ export class ViewController implements vscode.Disposable {
 				copilotIssueContextStore: this.copilotIssueContextStore,
 				repositoryContext: options.repositoryContext,
 				createIssueHelper: this.createIssueHelper,
+				permissionStore: this.permissionStore,
 				logger: options.logger,
 			}),
 			registerOverviewCommands({
@@ -306,6 +320,7 @@ export class ViewController implements vscode.Disposable {
 				this.issueRelatedPrsStore.clear();
 				this.copilotContextStore.clear();
 				this.copilotIssueContextStore.clear();
+				this.permissionStore.clear();
 				void this.store.refreshAll();
 				void this.issueStore.refreshAll();
 			}),

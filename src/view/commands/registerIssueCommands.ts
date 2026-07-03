@@ -17,6 +17,9 @@ import { IssueNode, IssueNodeContext, getIssueUrl } from '../tree/nodes/issueNod
 import { GitRemote, GitRepository } from '../../common/git/gitTypes';
 import { parseGitCodeRemote } from '../../common/git/remoteParser';
 import { CreateIssueHelper } from '../createIssue/createIssueHelper';
+import { PermissionStore } from '../state/permissionStore';
+import { requirePermission } from '../permissions/permissionChecks';
+import { createBranchDeniedMessage } from '../permissions/permissionMessages';
 
 interface RegisterIssueCommandsOptions {
 	authService: AuthService;
@@ -30,6 +33,7 @@ interface RegisterIssueCommandsOptions {
 	copilotIssueContextStore: CopilotIssueContextStore;
 	repositoryContext: RepositoryContextService;
 	createIssueHelper: CreateIssueHelper;
+	permissionStore: PermissionStore;
 	logger: Logger;
 }
 
@@ -222,7 +226,7 @@ async function pickIssueBranchBase(
 }
 
 export function registerIssueCommands(options: RegisterIssueCommandsOptions): vscode.Disposable {
-	const { authService, store, issueOverviewStore, issueCommentsStore, issueOperationLogsStore, issueRelatedPrsStore, prOverviewStore, prCommentsStore, copilotIssueContextStore, repositoryContext, createIssueHelper, logger } = options;
+	const { authService, store, issueOverviewStore, issueCommentsStore, issueOperationLogsStore, issueRelatedPrsStore, prOverviewStore, prCommentsStore, copilotIssueContextStore, repositoryContext, createIssueHelper, permissionStore, logger } = options;
 
 	const gitService = new LocalGitService();
 
@@ -308,6 +312,16 @@ export function registerIssueCommands(options: RegisterIssueCommandsOptions): vs
 					vscode.window.showErrorMessage(
 						'Open a GitCode issue or select one from the Issues tree before creating an issue branch.',
 					);
+					return;
+				}
+
+				// Check permission before creating branch
+				const allowed = await requirePermission(permissionStore, resolved.repository, {
+					scope: 'branch',
+					action: 'create',
+					message: createBranchDeniedMessage,
+				});
+				if (!allowed) {
 					return;
 				}
 

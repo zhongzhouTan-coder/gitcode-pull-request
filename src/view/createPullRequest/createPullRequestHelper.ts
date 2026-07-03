@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository, CreatePullRequestInitialIssueContext } from '../../common/models';
+import { GitCodeRepository, CreatePullRequestInitialIssueContext, CreatePullRequestPermissions } from '../../common/models';
 import { RepositoryContextService } from '../../common/git/repositoryContext';
 import { GitCodeRepositoryResolver } from '../../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
@@ -9,6 +9,9 @@ import { PullRequestOverviewPanel } from '../overview/pullRequestOverviewPanel';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { CopilotIssueContextStore } from '../copilot/copilotIssueContextStore';
+import { PermissionStore } from '../state/permissionStore';
+import { checkPermission } from '../permissions/permissionChecks';
+import { createBranchDeniedMessage } from '../permissions/permissionMessages';
 import { CreatePullRequestViewProvider } from './createPullRequestViewProvider';
 
 export class CreatePullRequestHelper implements vscode.Disposable {
@@ -21,6 +24,7 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 		private readonly overviewStore: PullRequestOverviewStore,
 		private readonly commentsStore: PullRequestCommentsStore,
 		private readonly copilotIssueContextStore: CopilotIssueContextStore,
+		private readonly permissionStore: PermissionStore,
 		private readonly logger: Logger,
 	) {}
 
@@ -42,6 +46,8 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 			);
 			return;
 		}
+
+		await this.permissionStore.refreshAll(repositories);
 
 		let repository: GitCodeRepository;
 		if (repositories.length === 1) {
@@ -86,8 +92,23 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 		// Build issue context if a matching issue is selected
 		const issueContext = this.buildIssueContext(repository);
 
+		const sourceRepository = repositories.find((r) => r.remoteName === 'origin') ?? repository;
+
+		// Build permission view model for the provider
+		let permissions: CreatePullRequestPermissions = { canCreatePullRequest: true, canCreateBranch: false };
+		try {
+			const canCreateBranch = await checkPermission(this.permissionStore, sourceRepository, {
+				scope: 'branch',
+				action: 'create',
+				message: createBranchDeniedMessage,
+			});
+			permissions = { canCreatePullRequest: true, canCreateBranch };
+		} catch {
+			// If we can't check branch permission, default to disabled
+		}
+
 		// Initialize the sidebar provider with the resolved data
-		await this.provider.initialize(repositories, repository, sourceBranch, gitRepo, issueContext);
+		await this.provider.initialize(repositories, repository, sourceBranch, gitRepo, issueContext, permissions);
 	}
 
 	private buildIssueContext(repository: GitCodeRepository): CreatePullRequestInitialIssueContext | undefined {

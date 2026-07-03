@@ -13,6 +13,9 @@ import { IssueRelatedPullRequestsStore } from '../issueOverview/issueRelatedPull
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { IssueTreeStore } from '../state/issueTreeStore';
 import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
+import { PermissionStore } from '../state/permissionStore';
+import { requirePermission } from '../permissions/permissionChecks';
+import { createIssueDeniedMessage } from '../permissions/permissionMessages';
 import { CreateIssuePanel } from './createIssuePanel';
 
 export class CreateIssueHelper {
@@ -28,6 +31,7 @@ export class CreateIssueHelper {
 		private readonly issueRelatedPrsStore: IssueRelatedPullRequestsStore,
 		private readonly prOverviewStore: PullRequestOverviewStore,
 		private readonly prCommentsStore: PullRequestCommentsStore,
+		private readonly permissionStore: PermissionStore,
 		private readonly logger: Logger,
 	) {}
 
@@ -66,6 +70,16 @@ export class CreateIssueHelper {
 			}
 
 			repository = pick.repository;
+		}
+
+		// Check permission before opening the create issue form
+		const allowed = await requirePermission(this.permissionStore, repository, {
+			scope: 'issue',
+			action: 'create',
+			message: createIssueDeniedMessage,
+		});
+		if (!allowed) {
+			return;
 		}
 
 		await CreateIssuePanel.createOrShow(repository, {

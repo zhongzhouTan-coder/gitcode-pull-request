@@ -10,6 +10,7 @@ import {
 	PullRequestLabel,
 	PullRequestOperationLog,
 	PullRequestOperationLogsSnapshot,
+	PullRequestOverviewPermissions,
 	PullRequestParticipant,
 	PullRequestRelatedIssue,
 	PullRequestRelatedIssuesSnapshot,
@@ -567,9 +568,17 @@ function renderRelatedIssueRow(issue: PullRequestRelatedIssue, options?: Related
 		: '';
 
 	const isRemoving = options?.removeRelatedIssueInProgress && options.removingRelatedIssueNumbers?.includes(issue.number);
-	const removeBtnDisabled = options?.removeRelatedIssueInProgress ? 'disabled' : '';
-	const removeButton = options?.canRemoveRelatedIssue
-		? `<button class="icon-button remove-related-issue-btn" data-action="removeRelatedIssue" data-issue="${issue.number}" aria-label="Unlink related issue" title="Unlink related issue" ${removeBtnDisabled}>${isRemoving ? '<span class="spinner" aria-hidden="true"></span>' : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.85 2.15 13.85 13.15l-.7.7-2.44-2.44-.86.86a3 3 0 0 1-4.24-4.24l.89-.88.7.7-.88.89a2 2 0 0 0 2.82 2.82l.86-.85-2.12-2.12-.68.68-.7-.7.68-.69L2.15 2.85l.7-.7Zm7.54 5.8-.71-.7.68-.68a2 2 0 0 0-2.83-2.83l-.84.84-.7-.71.84-.84a3 3 0 0 1 4.24 4.24l-.68.68Zm2.2 1.13-.7-.7.88-.88.7.7-.88.88Z"/></svg>'}</button>`
+	const canRemoveRelatedIssue = options?.canRemoveRelatedIssue ?? false;
+	const removeBtnDisabled = !canRemoveRelatedIssue || options?.removeRelatedIssueInProgress ? 'disabled' : '';
+	const removeButtonTitle = canRemoveRelatedIssue
+		? 'Unlink related issue'
+		: 'You do not have permission to unlink related issues.';
+	const removeButtonTitleAttr = canRemoveRelatedIssue ? ` title="${escapeAttr(removeButtonTitle)}"` : '';
+	const removeButtonMarkup = `<button class="icon-button remove-related-issue-btn" data-action="removeRelatedIssue" data-issue="${issue.number}" aria-label="${escapeAttr(removeButtonTitle)}"${removeButtonTitleAttr} ${removeBtnDisabled}>${isRemoving ? '<span class="spinner" aria-hidden="true"></span>' : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.85 2.15 13.85 13.15l-.7.7-2.44-2.44-.86.86a3 3 0 0 1-4.24-4.24l.89-.88.7.7-.88.89a2 2 0 0 0 2.82 2.82l.86-.85-2.12-2.12-.68.68-.7-.7.68-.69L2.15 2.85l.7-.7Zm7.54 5.8-.71-.7.68-.68a2 2 0 0 0-2.83-2.83l-.84.84-.7-.71.84-.84a3 3 0 0 1 4.24 4.24l-.68.68Zm2.2 1.13-.7-.7.88-.88.7.7-.88.88Z"/></svg>'}</button>`;
+	const removeButton = options
+		? canRemoveRelatedIssue
+			? removeButtonMarkup
+			: `<span class="permission-tooltip-target" data-tooltip="${escapeAttr(removeButtonTitle)}" aria-label="${escapeAttr(removeButtonTitle)}" tabindex="0">${removeButtonMarkup}</span>`
 		: '';
 
 	return `
@@ -613,22 +622,30 @@ export function renderRelatedIssuesSection(snapshot: PullRequestRelatedIssuesSna
 }
 
 function renderAddRelatedIssueButton(options?: RelatedIssuesSectionOptions): string {
-	if (!options?.canAddRelatedIssue) {
+	if (!options) {
 		return '';
 	}
 
-	const disabled = options.addRelatedIssueInProgress ? 'disabled' : '';
+	const disabled = !options.canAddRelatedIssue || options.addRelatedIssueInProgress ? 'disabled' : '';
+	const title = options.canAddRelatedIssue
+		? 'Add related issue'
+		: 'You do not have permission to add related issues.';
 	const loadingIndicator = options.addRelatedIssueInProgress
 		? '<span class="spinner" aria-hidden="true"></span>'
 		: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 0 0-3.882 9.394l-.707.707A6.5 6.5 0 1 1 8 14.5v-1a5.5 5.5 0 0 0 0-11ZM8 5.5v5h1v-5H8Z"/></svg>';
 
-	return `<button
+	const titleAttr = options.canAddRelatedIssue ? `title="${escapeAttr(title)}"` : '';
+	const button = `<button
 		class="icon-button add-related-issue-btn"
 		data-action="addRelatedIssue"
-		aria-label="Add related issue"
-		title="Add related issue"
+		aria-label="${escapeAttr(title)}"
+		${titleAttr}
 		${disabled}
 	>${loadingIndicator}</button>`;
+
+	return options.canAddRelatedIssue
+		? button
+		: `<span class="permission-tooltip-target" data-tooltip="${escapeAttr(title)}" aria-label="${escapeAttr(title)}" tabindex="0">${button}</span>`;
 }
 
 export function renderRelatedIssuesLoading(options?: RelatedIssuesSectionOptions): string {
@@ -720,7 +737,7 @@ export function renderActivityError(message: string): string {
 	return `<section><h2>Activity</h2><div class="comment-error">${escapeHtml(message)}</div></section>`;
 }
 
-export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, includeScripts: boolean = true, activityHtml?: string): string {
+export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conversationHtml?: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, includeScripts: boolean = true, activityHtml?: string, permissions?: PullRequestOverviewPermissions): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
 	const openOnWebDisabled = detail.htmlUrl ? '' : 'disabled';
@@ -743,6 +760,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 				url: milestone.url,
 			})),
 		})
+		: 'null';
+	const permissionsJson = permissions
+		? serializeForInlineScript(permissions)
 		: 'null';
 	const detailSnapshotJson = serializeForInlineScript({
 		title: detail.title,
@@ -842,7 +862,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		button.danger:focus-visible:not(:disabled) {
 			background: color-mix(in srgb, var(--danger) 30%, var(--vscode-button-background));
 		}
-		button:disabled { opacity: 0.5; cursor: default; }
+		button:disabled { opacity: 0.5; cursor: not-allowed; }
 		section, aside .card {
 			border: 1px solid var(--border);
 			border-radius: 10px;
@@ -1574,7 +1594,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			background: var(--vscode-button-secondaryHoverBackground);
 		}
 		.reply-action-btn:disabled {
-			opacity: 0.6;
+			opacity: 0.5;
 			cursor: not-allowed;
 		}
 		.reply-composer {
@@ -1642,7 +1662,39 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		}
 		.icon-button:disabled {
 			opacity: 0.5;
-			cursor: default;
+			cursor: not-allowed;
+		}
+		.permission-tooltip-target {
+			display: inline-flex;
+			position: relative;
+			cursor: not-allowed;
+		}
+		.permission-tooltip-target::after {
+			content: attr(data-tooltip);
+			position: absolute;
+			z-index: 20;
+			right: 0;
+			bottom: calc(100% + 6px);
+			display: none;
+			width: max-content;
+			max-width: 240px;
+			padding: 6px 8px;
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+			color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+			font-size: 12px;
+			line-height: 1.35;
+			white-space: normal;
+			pointer-events: none;
+		}
+		.permission-tooltip-target:hover::after,
+		.permission-tooltip-target:focus-visible::after {
+			display: block;
+		}
+		.permission-tooltip-target :disabled {
+			pointer-events: none;
 		}
 		.spinner {
 			display: inline-block;
@@ -2113,6 +2165,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 	${includeScripts ? `<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
 		const editOptions = ${editOptionsJson};
+		const overviewPermissions = ${permissionsJson};
 		const detailSnapshot = ${detailSnapshotJson};
 
 		// Current pull request title (always sent with section saves per API contract)
@@ -2356,7 +2409,136 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			return edit ? edit.querySelector('.btn-cancel-section') : null;
 		}
 
+		function isPermissionTooltipWrapper(element) {
+			return Boolean(
+				element
+				&& element.classList
+				&& element.classList.contains('permission-tooltip-target')
+			);
+		}
+
+		function unwrapPermissionTooltip(element) {
+			if (!element || !element.parentElement || !isPermissionTooltipWrapper(element.parentElement)) {
+				return;
+			}
+
+			var wrapper = element.parentElement;
+			var parent = wrapper.parentElement;
+			if (!parent) {
+				return;
+			}
+
+			parent.insertBefore(element, wrapper);
+			wrapper.remove();
+		}
+
+		function wrapPermissionTooltip(element, message) {
+			if (!element || !element.parentElement) {
+				return;
+			}
+
+			var wrapper = isPermissionTooltipWrapper(element.parentElement)
+				? element.parentElement
+				: document.createElement('span');
+
+			wrapper.className = 'permission-tooltip-target';
+			wrapper.setAttribute('data-tooltip', message);
+			wrapper.removeAttribute('title');
+			wrapper.setAttribute('aria-label', message);
+			wrapper.setAttribute('tabindex', '0');
+
+			if (wrapper !== element.parentElement) {
+				element.parentElement.insertBefore(wrapper, element);
+				wrapper.appendChild(element);
+			}
+		}
+
+		function setDisabledWithTooltip(element, disabled, message) {
+			if (!element) {
+				return;
+			}
+			element.disabled = Boolean(disabled);
+			if (disabled && message) {
+				element.setAttribute('aria-label', message);
+				if (element instanceof HTMLButtonElement) {
+					if (element.hasAttribute('title') && !element.hasAttribute('data-original-title')) {
+						element.setAttribute('data-original-title', element.getAttribute('title') || '');
+					}
+					element.removeAttribute('title');
+					wrapPermissionTooltip(element, message);
+				} else {
+					element.setAttribute('title', message);
+				}
+			} else {
+				unwrapPermissionTooltip(element);
+				if (element.hasAttribute('data-original-title')) {
+					var originalTitle = element.getAttribute('data-original-title');
+					element.removeAttribute('data-original-title');
+					if (originalTitle) {
+						element.setAttribute('title', originalTitle);
+					} else {
+						element.removeAttribute('title');
+					}
+				}
+			}
+		}
+
+		function hasOverviewPermission(key) {
+			return !overviewPermissions || overviewPermissions[key] !== false;
+		}
+
+		function applyPermissionControls() {
+			if (!overviewPermissions) {
+				return;
+			}
+
+			if (!overviewPermissions.canEditPullRequest) {
+				document.querySelectorAll('.edit-icon-btn[data-section], .preference-card [data-section-input]').forEach(function(el) {
+					setDisabledWithTooltip(el, true, 'You do not have permission to update pull requests in this repository.');
+				});
+			}
+
+			var stateButton = document.getElementById('state-action-button');
+			if (stateButton) {
+				var requestedState = stateButton.getAttribute('data-state-action');
+				if (requestedState === 'closed' && !overviewPermissions.canClosePullRequest) {
+					setDisabledWithTooltip(stateButton, true, 'You do not have permission to close pull requests in this repository.');
+				}
+				if (requestedState === 'open' && !overviewPermissions.canReopenPullRequest) {
+					setDisabledWithTooltip(stateButton, true, 'You do not have permission to reopen pull requests in this repository.');
+				}
+			}
+
+			if (!overviewPermissions.canCreateComment) {
+				setDisabledWithTooltip(document.getElementById('conversation-comment-input'), true, 'You do not have permission to comment in this repository.');
+				setDisabledWithTooltip(document.getElementById('conversation-comment-submit'), true, 'You do not have permission to comment in this repository.');
+				document.querySelectorAll('.reply-action-btn, .reply-input, .btn-submit-reply').forEach(function(el) {
+					setDisabledWithTooltip(el, true, 'You do not have permission to comment in this repository.');
+				});
+			}
+
+			if (!overviewPermissions.canEditComment) {
+				document.querySelectorAll('.edit-comment-btn').forEach(function(el) {
+					setDisabledWithTooltip(el, true, 'You do not have permission to edit comments in this repository.');
+				});
+			}
+
+			if (!overviewPermissions.canResolveComment) {
+				document.querySelectorAll('.comment-toggle-input').forEach(function(el) {
+					setDisabledWithTooltip(el, true, 'You do not have permission to resolve comments in this repository.');
+					var label = el.closest('.comment-toggle');
+					if (label) {
+						label.setAttribute('title', 'You do not have permission to resolve comments in this repository.');
+						label.setAttribute('aria-label', 'You do not have permission to resolve comments in this repository.');
+					}
+				});
+			}
+		}
+
 		function startEdit(section) {
+			if (!hasOverviewPermission('canEditPullRequest')) {
+				return;
+			}
 			// Only one section editable at a time
 			if (editingSection && editingSection !== section) {
 				cancelEdit(editingSection);
@@ -2441,12 +2623,13 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			pendingConversationComment = submitting;
 			var button = document.getElementById('conversation-comment-submit');
 			var input = document.getElementById('conversation-comment-input');
+			var canCreateComment = hasOverviewPermission('canCreateComment');
 			if (button) {
-				button.disabled = submitting;
+				button.disabled = submitting || !canCreateComment;
 				button.textContent = submitting ? 'Commenting...' : 'Comment';
 			}
 			if (input) {
-				input.disabled = submitting;
+				input.disabled = submitting || !canCreateComment;
 			}
 		}
 
@@ -2458,6 +2641,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		}
 
 		function submitConversationComment() {
+			if (!hasOverviewPermission('canCreateComment')) {
+				return;
+			}
 			if (pendingConversationComment) {
 				return;
 			}
@@ -2520,6 +2706,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		var editingCommentId = null;
 
 		function startCommentEdit(commentId) {
+			if (!hasOverviewPermission('canEditComment')) {
+				return;
+			}
 			if (editingCommentId && editingCommentId !== commentId) {
 				cancelCommentEdit(editingCommentId);
 			}
@@ -2630,6 +2819,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		// ---- Reply Composer ----
 
 		function openReplyComposer(discussionId) {
+			if (!hasOverviewPermission('canCreateComment')) {
+				return;
+			}
 			if (!discussionId) return;
 			// Close any other open reply composers
 			document.querySelectorAll('.reply-composer').forEach(function(el) {
@@ -2663,9 +2855,12 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		}
 
 		function submitReply(discussionId) {
+			if (!hasOverviewPermission('canCreateComment')) {
+				return;
+			}
 			if (!discussionId) return;
 			var input = document.querySelector('[data-reply-input="' + CSS.escape(discussionId) + '"]');
-			if (!input) return;
+			if (!input || input.disabled) return;
 			var body = input.value;
 			if (!body.trim()) return;
 
@@ -2684,11 +2879,12 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			var replyAction = document.querySelector('.reply-action-btn[data-discussion-id="' + CSS.escape(discussionId) + '"]');
 			var savingEl = document.querySelector('[data-reply-saving="' + CSS.escape(discussionId) + '"]');
 			var input = document.querySelector('[data-reply-input="' + CSS.escape(discussionId) + '"]');
+			var canCreateComment = hasOverviewPermission('canCreateComment');
 
-			if (submitBtn) submitBtn.disabled = submitting;
+			if (submitBtn) submitBtn.disabled = submitting || !canCreateComment;
 			if (cancelBtn) cancelBtn.disabled = submitting;
-			if (replyAction) replyAction.disabled = submitting;
-			if (input) input.disabled = submitting;
+			if (replyAction) replyAction.disabled = submitting || !canCreateComment;
+			if (input) input.disabled = submitting || !canCreateComment;
 			if (savingEl) savingEl.style.display = submitting ? 'inline' : 'none';
 		}
 
@@ -2697,7 +2893,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 			var input = document.querySelector('[data-reply-input="' + CSS.escape(discussionId) + '"]');
 			var submitBtn = document.querySelector('.btn-submit-reply[data-discussion-id="' + CSS.escape(discussionId) + '"]');
 			if (submitBtn) {
-				submitBtn.disabled = !input || !input.value.trim();
+				submitBtn.disabled = !hasOverviewPermission('canCreateComment') || !input || input.disabled || !input.value.trim();
 			}
 		}
 
@@ -2793,6 +2989,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		initializeSelectionState();
 		renderSelectedLabels();
 		syncMilestoneSelect();
+		applyPermissionControls();
 
 		const labelInput = document.querySelector('[data-section-input="labels"]');
 		const labelOptions = document.querySelector('[data-picker-options="labels"]');
@@ -3025,7 +3222,7 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		document.querySelectorAll('.comment-toggle-input').forEach((toggle) => {
 			toggle.addEventListener('change', (event) => {
 				var input = event.currentTarget;
-				if (!input) {
+				if (!input || input.disabled || !hasOverviewPermission('canResolveComment')) {
 					return;
 				}
 
@@ -3090,11 +3287,17 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		});
 		document.querySelectorAll('[data-action="addRelatedIssue"]').forEach((el) => {
 			el.addEventListener('click', () => {
+				if (el.disabled || !hasOverviewPermission('canUpdateRelatedIssues')) {
+					return;
+				}
 				vscode.postMessage({ command: 'addRelatedIssue' });
 			});
 		});
 		document.querySelectorAll('[data-action="removeRelatedIssue"]').forEach((el) => {
 			el.addEventListener('click', () => {
+				if (el.disabled || !hasOverviewPermission('canUpdateRelatedIssues')) {
+					return;
+				}
 				vscode.postMessage({
 					command: 'removeRelatedIssue',
 					issue: Number(el.dataset.issue),
@@ -3114,6 +3317,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		// Reply action button handlers
 		document.querySelectorAll('.reply-action-btn').forEach(function(btn) {
 			btn.addEventListener('click', function() {
+				if (btn.disabled || !hasOverviewPermission('canCreateComment')) {
+					return;
+				}
 				openReplyComposer(btn.dataset.discussionId);
 			});
 		});
@@ -3121,6 +3327,9 @@ export function getOverviewHtml(detail: PullRequestDetail, nonce: string, conver
 		// Reply submit button handlers
 		document.querySelectorAll('.btn-submit-reply').forEach(function(btn) {
 			btn.addEventListener('click', function() {
+				if (btn.disabled || !hasOverviewPermission('canCreateComment')) {
+					return;
+				}
 				submitReply(btn.dataset.discussionId);
 			});
 		});
@@ -3160,8 +3369,9 @@ export function getOverviewWithCommentsHtml(
 	editOptions?: EditPullRequestOptions,
 	diffContexts?: ReadonlyMap<string, DiffCommentContext>,
 	activityHtml?: string,
+	permissions?: PullRequestOverviewPermissions,
 ): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml);
+	return getOverviewHtml(detail, nonce, renderConversationSection(snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml, permissions);
 }
 
 export function getOverviewWithTimelineHtml(
@@ -3173,6 +3383,7 @@ export function getOverviewWithTimelineHtml(
 	diffContexts?: ReadonlyMap<string, DiffCommentContext>,
 	activitySnapshot?: PullRequestOperationLogsSnapshot,
 	activityError?: string,
+	permissions?: PullRequestOverviewPermissions,
 ): string {
 	return getOverviewHtml(
 		detail,
@@ -3182,15 +3393,16 @@ export function getOverviewWithTimelineHtml(
 		editOptions,
 		true,
 		undefined,
+		permissions,
 	);
 }
 
-export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string): string {
-	return getOverviewHtml(detail, nonce, renderTimelineLoading(), relatedIssuesHtml, editOptions, false, activityHtml);
+export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions): string {
+	return getOverviewHtml(detail, nonce, renderTimelineLoading(), relatedIssuesHtml, editOptions, false, activityHtml, permissions);
 }
 
-export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string): string {
-	return getOverviewHtml(detail, nonce, renderTimelineError(errorMessage), relatedIssuesHtml, editOptions, true, activityHtml);
+export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions): string {
+	return getOverviewHtml(detail, nonce, renderTimelineError(errorMessage), relatedIssuesHtml, editOptions, true, activityHtml, permissions);
 }
 
 export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {

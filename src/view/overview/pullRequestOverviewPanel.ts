@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, IssueSummary, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestRelatedIssuesSnapshot } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, IssueSummary, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestOverviewPermissions, PullRequestRelatedIssuesSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestDiffController } from '../diff/pullRequestDiffController';
@@ -13,6 +13,9 @@ import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithTimelineHt
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 import { PullRequestOperationLogsStore } from './pullRequestOperationLogsStore';
 import { buildDiffCommentContexts, DiffCommentContext } from './diffCommentContext';
+import { PermissionStore } from '../state/permissionStore';
+import { checkPermission } from '../permissions/permissionChecks';
+import { buildPullRequestOverviewPermissions, buildUnknownPullRequestOverviewPermissions } from '../permissions/permissionHelpers';
 
 interface PullRequestOverviewContext {
 	repository: GitCodeRepository;
@@ -100,6 +103,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private static treeStore: PullRequestTreeStore | undefined;
 	private static diffController: PullRequestDiffController | undefined;
 	private static operationLogsStore: PullRequestOperationLogsStore | undefined;
+	private static permissionStore: PermissionStore | undefined;
 
 	static setEditDependencies(
 		repositoryService: RepositoryService,
@@ -117,6 +121,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 	static setOperationLogsStore(store: PullRequestOperationLogsStore): void {
 		this.operationLogsStore = store;
+	}
+
+	static setPermissionStore(store: PermissionStore): void {
+		this.permissionStore = store;
 	}
 
 	static async createOrShow(
@@ -185,6 +193,15 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private addRelatedIssueInProgress: boolean = false;
 	private removeRelatedIssueInProgress: boolean = false;
 	private removingRelatedIssueNumbers: readonly number[] = [];
+	private permissions: PullRequestOverviewPermissions = {
+		canEditPullRequest: false,
+		canClosePullRequest: false,
+		canReopenPullRequest: false,
+		canCreateComment: false,
+		canEditComment: false,
+		canResolveComment: false,
+		canUpdateRelatedIssues: false,
+	};
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -351,9 +368,12 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
+		// Load permissions for this repository
+		await this.refreshPermissions();
+
 		// Render detail with loading timeline and related issues.
 		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading(this.buildRelatedIssuesOptions());
-		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml);
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, undefined, this.permissions);
 
 		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
 		const commentsPromise = this.commentsStore.getOrFetch(
@@ -478,10 +498,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 			}
 
-			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError);
+			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions);
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions);
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions);
 		}
 	}
 
@@ -500,6 +520,41 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		await vscode.env.openExternal(vscode.Uri.parse(url));
+	}
+
+	private async refreshPermissions(): Promise<void> {
+		if (!PullRequestOverviewPanel.permissionStore) {
+			return;
+		}
+
+		try {
+			const snapshot = await PullRequestOverviewPanel.permissionStore.get(this.context.repository);
+			this.permissions = buildPullRequestOverviewPermissions(snapshot);
+		} catch (error) {
+			this.logger.debug(
+				`Failed to load permissions for ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			this.permissions = buildUnknownPullRequestOverviewPermissions();
+		}
+	}
+
+	private async checkWritePermission(scope: string, action: string, deniedMessage: string): Promise<boolean> {
+		if (!PullRequestOverviewPanel.permissionStore) {
+			return true;
+		}
+
+		const allowed = await checkPermission(PullRequestOverviewPanel.permissionStore, this.context.repository, {
+			scope,
+			action,
+			message: () => deniedMessage,
+		});
+
+		if (!allowed) {
+			vscode.window.showWarningMessage(deniedMessage);
+			return false;
+		}
+
+		return true;
 	}
 
 	private renderError(error: unknown): string {
@@ -552,6 +607,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private async handleSaveSection(section: EditPullRequestSection, input: EditPullRequestInput): Promise<void> {
 		const treeStore = PullRequestOverviewPanel.treeStore;
 		if (!treeStore) {
+			return;
+		}
+
+		if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
 			return;
 		}
 
@@ -608,6 +667,14 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
+		const permissionAction = state === 'closed' ? 'close' : 'reopen';
+		const deniedMessage = state === 'closed'
+			? `You do not have permission to close pull requests in ${this.context.repository.fullName}.`
+			: `You do not have permission to reopen pull requests in ${this.context.repository.fullName}.`;
+		if (!await this.checkWritePermission('pr', permissionAction, deniedMessage)) {
+			return;
+		}
+
 		try {
 			await this.store.editPullRequest(
 				this.context.repository,
@@ -654,6 +721,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				command: 'pullRequestCommentSubmitError',
 				message: 'Pull request context is not available.',
 			});
+			return;
+		}
+
+		if (!await this.checkWritePermission('note', 'create', `You do not have permission to comment in ${this.context.repository.fullName}.`)) {
 			return;
 		}
 
@@ -712,6 +783,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
+		if (!await this.checkWritePermission('note', 'create', `You do not have permission to edit comments in ${this.context.repository.fullName}.`)) {
+			return;
+		}
+
 		const result = await this.commentsStore.editComment(
 			this.context.repository,
 			this.context.pullRequestNumber,
@@ -737,6 +812,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	}
 
 	private async handleRevisePullRequestCommentStatus(discussionId: string, resolved: boolean): Promise<void> {
+		if (!await this.checkWritePermission('note', 'resolve', `You do not have permission to resolve comments in ${this.context.repository.fullName}.`)) {
+			return;
+		}
+
 		const result = await this.commentsStore.reviseCommentStatus(
 			this.context.repository,
 			this.context.pullRequestNumber,
@@ -777,6 +856,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				discussionId,
 				message: 'Reply body is required.',
 			});
+			return;
+		}
+
+		if (!await this.checkWritePermission('note', 'create', `You do not have permission to comment in ${this.context.repository.fullName}.`)) {
 			return;
 		}
 
@@ -858,6 +941,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 	private async handleAddRelatedIssue(): Promise<void> {
 		if (this.addRelatedIssueInProgress) {
+			return;
+		}
+
+		if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
 			return;
 		}
 
@@ -981,6 +1068,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 	private async handleRemoveRelatedIssues(issueNumbers?: readonly number[]): Promise<void> {
 		if (this.removeRelatedIssueInProgress) {
+			return;
+		}
+
+		if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
 			return;
 		}
 
@@ -1113,21 +1204,26 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.editOptions,
 				undefined,
 				this.operationLogsSnapshot,
+				undefined,
+				this.permissions,
 			);
 		} else {
 			this.panel.webview.html = getOverviewWithCommentsLoadingHtml(
 				this.detail,
 				createNonce(),
 				relatedIssuesHtml,
+				undefined,
+				undefined,
+				this.permissions,
 			);
 		}
 	}
 
 	private buildRelatedIssuesOptions() {
 		return {
-			canAddRelatedIssue: true,
+			canAddRelatedIssue: this.permissions.canUpdateRelatedIssues,
 			addRelatedIssueInProgress: this.addRelatedIssueInProgress,
-			canRemoveRelatedIssue: true,
+			canRemoveRelatedIssue: this.permissions.canUpdateRelatedIssues,
 			removeRelatedIssueInProgress: this.removeRelatedIssueInProgress,
 			removingRelatedIssueNumbers: this.removingRelatedIssueNumbers,
 		};

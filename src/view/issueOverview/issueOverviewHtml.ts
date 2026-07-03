@@ -6,6 +6,7 @@ import {
 	IssueLabel,
 	IssueOperationLog,
 	IssueOperationLogsSnapshot,
+	IssueOverviewPermissions,
 	IssueRelatedPullRequest,
 	IssueRelatedPullRequestsSnapshot,
 	IssueUser,
@@ -325,6 +326,7 @@ export interface IssueOverviewHtmlOptions {
 	relatedPullRequests?: IssueRelatedPullRequestsSnapshot;
 	relatedPullRequestsError?: Error;
 	editOptions?: EditIssueOptions;
+	permissions?: IssueOverviewPermissions;
 	nonce: string;
 	includeScripts?: boolean;
 }
@@ -620,6 +622,10 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			milestones: editOptions.milestones.map((milestone) => ({ number: milestone.number, title: milestone.title, state: milestone.state })),
 		})
 		: 'null';
+	const permissions = options.permissions;
+	const permissionsJson = permissions
+		? serializeForInlineScript(permissions)
+		: 'null';
 	const detailSnapshotJson = serializeForInlineScript({
 		title: detail.title,
 		body: detail.body,
@@ -742,7 +748,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		button.danger:focus-visible:not(:disabled) {
 			background: color-mix(in srgb, var(--danger) 30%, var(--vscode-button-background));
 		}
-		button:disabled { opacity: 0.5; cursor: default; }
+		button:disabled { opacity: 0.5; cursor: not-allowed; }
 		section, aside .card {
 			border: 1px solid var(--border);
 			border-radius: 10px;
@@ -1246,6 +1252,38 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.comment-input:disabled {
 			opacity: 0.6;
 		}
+		.permission-tooltip-target {
+			display: inline-flex;
+			position: relative;
+			cursor: not-allowed;
+		}
+		.permission-tooltip-target::after {
+			content: attr(data-tooltip);
+			position: absolute;
+			z-index: 20;
+			right: 0;
+			bottom: calc(100% + 6px);
+			display: none;
+			width: max-content;
+			max-width: 240px;
+			padding: 6px 8px;
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+			color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+			font-size: 12px;
+			line-height: 1.35;
+			white-space: normal;
+			pointer-events: none;
+		}
+		.permission-tooltip-target:hover::after,
+		.permission-tooltip-target:focus-visible::after {
+			display: block;
+		}
+		.permission-tooltip-target :disabled {
+			pointer-events: none;
+		}
 		.comment-composer-actions {
 			display: flex;
 			align-items: center;
@@ -1320,6 +1358,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		${includeScripts ? `<script nonce="${nonce}">
 			const vscode = acquireVsCodeApi();
 			const editOptions = ${editOptionsJson};
+			const issuePermissions = ${permissionsJson};
 			const detailSnapshot = ${detailSnapshotJson};
 			let activeSection = null;
 			let pendingStateAction = null;
@@ -1361,6 +1400,113 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				});
 			}
 
+			function isPermissionTooltipWrapper(element) {
+				return Boolean(
+					element
+					&& element.classList
+					&& element.classList.contains('permission-tooltip-target')
+				);
+			}
+
+			function unwrapPermissionTooltip(element) {
+				if (!element || !element.parentElement || !isPermissionTooltipWrapper(element.parentElement)) {
+					return;
+				}
+
+				var wrapper = element.parentElement;
+				var parent = wrapper.parentElement;
+				if (!parent) {
+					return;
+				}
+
+				parent.insertBefore(element, wrapper);
+				wrapper.remove();
+			}
+
+			function wrapPermissionTooltip(element, message) {
+				if (!element || !element.parentElement) {
+					return;
+				}
+
+				var wrapper = isPermissionTooltipWrapper(element.parentElement)
+					? element.parentElement
+					: document.createElement('span');
+
+				wrapper.className = 'permission-tooltip-target';
+				wrapper.setAttribute('data-tooltip', message);
+				wrapper.removeAttribute('title');
+				wrapper.setAttribute('aria-label', message);
+				wrapper.setAttribute('tabindex', '0');
+
+				if (wrapper !== element.parentElement) {
+					element.parentElement.insertBefore(wrapper, element);
+					wrapper.appendChild(element);
+				}
+			}
+
+			function setDisabledWithTooltip(element, disabled, message) {
+				if (!element) {
+					return;
+				}
+				element.disabled = Boolean(disabled);
+				if (disabled && message) {
+					element.setAttribute('aria-label', message);
+					if (element instanceof HTMLButtonElement) {
+						if (element.hasAttribute('title') && !element.hasAttribute('data-original-title')) {
+							element.setAttribute('data-original-title', element.getAttribute('title') || '');
+						}
+						element.removeAttribute('title');
+						wrapPermissionTooltip(element, message);
+					} else {
+						element.setAttribute('title', message);
+					}
+				} else {
+					unwrapPermissionTooltip(element);
+					if (element.hasAttribute('data-original-title')) {
+						var originalTitle = element.getAttribute('data-original-title');
+						element.removeAttribute('data-original-title');
+						if (originalTitle) {
+							element.setAttribute('title', originalTitle);
+						} else {
+							element.removeAttribute('title');
+						}
+					}
+				}
+			}
+
+			function hasIssuePermission(key) {
+				return !issuePermissions || issuePermissions[key] !== false;
+			}
+
+			function applyPermissionControls() {
+				if (!issuePermissions) {
+					return;
+				}
+
+				if (!issuePermissions.canEditIssue) {
+					document.querySelectorAll('.edit-icon-btn[data-section]').forEach(function(el) {
+						setDisabledWithTooltip(el, true, 'You do not have permission to update issues in this repository.');
+					});
+				}
+
+				var stateButton = document.getElementById('state-action-button');
+				if (stateButton) {
+					var requestedState = stateButton.getAttribute('data-state-action');
+					if (requestedState === 'close' && !issuePermissions.canCloseIssue) {
+						setDisabledWithTooltip(stateButton, true, 'You do not have permission to close issues in this repository.');
+					}
+					if (requestedState === 'reopen' && !issuePermissions.canReopenIssue) {
+						setDisabledWithTooltip(stateButton, true, 'You do not have permission to reopen issues in this repository.');
+					}
+				}
+
+				if (!issuePermissions.canCreateComment) {
+					document.querySelectorAll('.comment-composer .comment-input, .comment-composer button[type="submit"]').forEach(function(el) {
+						setDisabledWithTooltip(el, true, 'You do not have permission to comment in this repository.');
+					});
+				}
+			}
+
 			function resetSectionState(section) {
 				if (section === 'title') {
 					var titleInput = document.querySelector('[data-section-input="title"]');
@@ -1399,6 +1545,9 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			}
 
 			function showSection(section) {
+				if (!hasIssuePermission('canEditIssue')) {
+					return;
+				}
 				if (activeSection && activeSection !== section) {
 					hideSection(activeSection, true);
 				}
@@ -1498,7 +1647,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		});
 		document.getElementById('state-action-button')?.addEventListener('click', () => {
 			var button = document.getElementById('state-action-button');
-			if (!button) {
+			if (!button || button.disabled) {
 				return;
 			}
 			setActionError('');
@@ -1574,6 +1723,9 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		document.querySelectorAll('.comment-composer').forEach(function(form) {
 			form.addEventListener('submit', function(event) {
 				event.preventDefault();
+				if (!hasIssuePermission('canCreateComment')) {
+					return;
+				}
 				var textarea = form.querySelector('.comment-input');
 				var errorEl = form.querySelector('.comment-submit-error');
 				var submitBtn = form.querySelector('button[type="submit"]');
@@ -1600,6 +1752,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				});
 			});
 		});
+		applyPermissionControls();
 
 		window.addEventListener('message', (event) => {
 			var msg = event.data || {};

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- Refreshed repository permission snapshots on pull request tree refresh and
+  before opening the create pull request flow.
+- Updated create pull request permission checks to use the current source
+  repository for cross-repository pull request submission and source-branch
+  creation.
+- Unified permission-denied button tooltips across the create pull request,
+  pull request overview, and issue overview webviews with the same
+  wrapper-based custom tooltip pattern.
+
 ### Fixed
 
 - Made `Sign in to GitCode` tree empty states clickable so they run the existing sign-in command.

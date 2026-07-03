@@ -335,19 +335,55 @@ export function getCreatePullRequestHtml(): string {
 			cursor: pointer;
 		}
 
+		button:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+
+		.permission-tooltip-target {
+			display: inline-flex;
+			position: relative;
+			cursor: not-allowed;
+		}
+
+		.permission-tooltip-target::after {
+			content: attr(data-tooltip);
+			position: absolute;
+			z-index: 20;
+			right: 0;
+			bottom: calc(100% + 6px);
+			display: none;
+			width: max-content;
+			max-width: 240px;
+			padding: 6px 8px;
+			border: 1px solid var(--border-color);
+			border-radius: 6px;
+			background: var(--vscode-editorWidget-background, var(--bg-primary));
+			color: var(--vscode-editorWidget-foreground, var(--fg-primary));
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+			font-size: 12px;
+			line-height: 1.35;
+			white-space: normal;
+			pointer-events: none;
+		}
+
+		.permission-tooltip-target:hover::after,
+		.permission-tooltip-target:focus-visible::after {
+			display: block;
+		}
+
+		.permission-tooltip-target :disabled {
+			pointer-events: none;
+		}
+
 		.btn-primary {
 			background: var(--button-bg);
 			color: var(--button-fg);
 			font-weight: 650;
 		}
 
-		.btn-primary:hover {
+		.btn-primary:hover:not(:disabled) {
 			background: var(--button-hover);
-		}
-
-		.btn-primary:disabled {
-			opacity: 0.5;
-			cursor: not-allowed;
 		}
 
 		.btn-secondary {
@@ -356,7 +392,7 @@ export function getCreatePullRequestHtml(): string {
 			border: 1px solid var(--border-color);
 		}
 
-		.btn-secondary:hover {
+		.btn-secondary:hover:not(:disabled) {
 			background: var(--vscode-button-secondaryHoverBackground, var(--bg-secondary));
 		}
 
@@ -584,6 +620,11 @@ export function getCreatePullRequestHtml(): string {
 	<script>
 		const vscode = acquireVsCodeApi();
 		let isRestoringState = false;
+		let isSubmitting = false;
+		let createPermissions = {
+			canCreatePullRequest: true,
+			canCreateBranch: false,
+		};
 
 		// Elements
 		const idleState = document.getElementById('idle-state');
@@ -619,6 +660,73 @@ export function getCreatePullRequestHtml(): string {
 		const labelPicker = createMultiPicker(labelsInput, labelOptions, selectedLabels, persistFormState);
 		const assigneePicker = createMultiPicker(assigneesInput, assigneeOptions, selectedAssignees, persistFormState);
 		const testerPicker = createMultiPicker(testersInput, testerOptions, selectedTesters, persistFormState);
+
+		function canSubmitPullRequest() {
+			return createPermissions.canCreatePullRequest !== false;
+		}
+
+		function isPermissionTooltipWrapper(element) {
+			return Boolean(
+				element &&
+				element.classList &&
+				element.classList.contains('permission-tooltip-target')
+			);
+		}
+
+		function unwrapPermissionTooltip(element) {
+			if (!element || !element.parentElement || !isPermissionTooltipWrapper(element.parentElement)) {
+				return;
+			}
+
+			var wrapper = element.parentElement;
+			var parent = wrapper.parentElement;
+			if (!parent) {
+				return;
+			}
+
+			parent.insertBefore(element, wrapper);
+			wrapper.remove();
+		}
+
+		function wrapPermissionTooltip(element, message) {
+			if (!element || !element.parentElement) {
+				return;
+			}
+
+			var wrapper = isPermissionTooltipWrapper(element.parentElement)
+				? element.parentElement
+				: document.createElement('span');
+
+			wrapper.className = 'permission-tooltip-target';
+			wrapper.setAttribute('data-tooltip', message);
+			wrapper.setAttribute('aria-label', message);
+			wrapper.setAttribute('tabindex', '0');
+
+			if (wrapper !== element.parentElement) {
+				element.parentElement.insertBefore(wrapper, element);
+				wrapper.appendChild(element);
+			}
+		}
+
+		function updateSubmitButton() {
+			const allowed = canSubmitPullRequest();
+			const deniedMessage = 'You do not have permission to create pull requests in the source repository.';
+			submitBtn.disabled = isSubmitting || !allowed;
+			submitBtn.textContent = isSubmitting ? 'Creating...' : 'Create Pull Request';
+			if (!allowed && !isSubmitting) {
+				submitBtn.removeAttribute('title');
+				submitBtn.setAttribute('aria-label', deniedMessage);
+				wrapPermissionTooltip(submitBtn, deniedMessage);
+			} else {
+				unwrapPermissionTooltip(submitBtn);
+				submitBtn.setAttribute('aria-label', 'Create Pull Request');
+			}
+		}
+
+		function applyPermissions(permissions) {
+			createPermissions = Object.assign({}, createPermissions, permissions || {});
+			updateSubmitButton();
+		}
 
 		// Toggle squash message visibility
 		squashCheckbox.addEventListener('change', () => {
@@ -898,8 +1006,12 @@ export function getCreatePullRequestHtml(): string {
 			labelPicker.clear();
 			assigneePicker.clear();
 			testerPicker.clear();
-			submitBtn.disabled = false;
-			submitBtn.textContent = 'Create Pull Request';
+			isSubmitting = false;
+			createPermissions = {
+				canCreatePullRequest: true,
+				canCreateBranch: false,
+			};
+			updateSubmitButton();
 			squashMessageGroup.classList.add('hidden');
 			loadingState.classList.add('hidden');
 			errorState.classList.add('hidden');
@@ -995,6 +1107,7 @@ export function getCreatePullRequestHtml(): string {
 					break;
 				case 'initialize':
 					showForm(msg.defaults);
+					applyPermissions(msg.permissions);
 					break;
 				case 'error':
 					showError(msg.message);
@@ -1009,18 +1122,20 @@ export function getCreatePullRequestHtml(): string {
 					if (msg.sourceRepository) sourceRepoSelect.value = msg.sourceRepository.fullName;
 					if (msg.targetRepository) targetRepoSelect.value = msg.targetRepository.fullName;
 					applyRepositoryFields(msg);
+					applyPermissions(msg.permissions);
 					break;
 				case 'validationErrors':
 					showErrors(msg.errors);
-					submitBtn.disabled = false;
+					isSubmitting = false;
+					updateSubmitButton();
 					break;
 				case 'submitting':
-					submitBtn.disabled = true;
-					submitBtn.textContent = 'Creating...';
+					isSubmitting = true;
+					updateSubmitButton();
 					break;
 				case 'submitDone':
-					submitBtn.disabled = false;
-					submitBtn.textContent = 'Create Pull Request';
+					isSubmitting = false;
+					updateSubmitButton();
 					break;
 				case 'reset':
 					resetForm();
@@ -1065,9 +1180,12 @@ export function getCreatePullRequestHtml(): string {
 		form.addEventListener('submit', (e) => {
 			e.preventDefault();
 			errorArea.innerHTML = '';
+			if (!canSubmitPullRequest()) {
+				return;
+			}
 			const input = collectInput();
-			submitBtn.disabled = true;
-			submitBtn.textContent = 'Creating...';
+			isSubmitting = true;
+			updateSubmitButton();
 			vscode.postMessage({ command: 'submit', input: input });
 		});
 

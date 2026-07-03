@@ -577,7 +577,7 @@ suite('OverviewHtml', () => {
 		assert.match(html, /aria-label="Add related issue"/);
 	});
 
-	test('does not render the add button when canAddRelatedIssue is false', () => {
+	test('renders the add button disabled when canAddRelatedIssue is false', () => {
 		const snapshot: PullRequestRelatedIssuesSnapshot = {
 			repositoryKey: 'org/repo',
 			pullRequestNumber: 2,
@@ -587,7 +587,57 @@ suite('OverviewHtml', () => {
 
 		const html = renderRelatedIssuesSection(snapshot, { canAddRelatedIssue: false });
 
-		assert.doesNotMatch(html, /data-action="addRelatedIssue"/);
+		assert.match(html, /data-action="addRelatedIssue"/);
+		assert.match(html, /disabled/);
+		assert.match(html, /class="permission-tooltip-target"/);
+		assert.match(html, /data-tooltip="You do not have permission to add related issues\."/);
+		assert.doesNotMatch(html, /class="permission-tooltip-target"[^>]*title=/);
+		assert.match(html, /You do not have permission to add related issues\./);
+	});
+
+	test('renders unlink related issue permission tooltip on an enabled wrapper', () => {
+		const snapshot: PullRequestRelatedIssuesSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			issues: [{ id: 1, number: 339, title: 'Test', state: 'open', author: { login: 'alice' }, labels: [], createdAt: '', updatedAt: '' }],
+			loadedAt: Date.now(),
+		};
+
+		const html = renderRelatedIssuesSection(snapshot, {
+			canAddRelatedIssue: true,
+			canRemoveRelatedIssue: false,
+		});
+
+		assert.match(html, /class="permission-tooltip-target"/);
+		assert.match(html, /data-tooltip="You do not have permission to unlink related issues\."/);
+		assert.doesNotMatch(html, /class="permission-tooltip-target"[^>]*title=/);
+		assert.match(html, /tabindex="0"/);
+		assert.match(html, /data-action="removeRelatedIssue"/);
+		assert.match(html, /disabled/);
+		assert.match(html, /You do not have permission to unlink related issues\./);
+	});
+
+	test('allows permission tooltip wrapper to receive hover over disabled icon buttons', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+
+		assert.match(html, /\.permission-tooltip-target::after \{/);
+		assert.match(html, /content: attr\(data-tooltip\);/);
+		assert.match(html, /\.permission-tooltip-target:hover::after,\n\t\t\.permission-tooltip-target:focus-visible::after \{[\s\S]*display: block;/);
+		assert.match(html, /\.permission-tooltip-target :disabled \{[\s\S]*pointer-events: none;/);
+	});
+
+	test('guards disabled related issue action handlers', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+
+		assert.match(html, /if \(el\.disabled \|\| !hasOverviewPermission\('canUpdateRelatedIssues'\)\)/);
+	});
+
+	test('keeps reply controls disabled without comment permission', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+
+		assert.match(html, /replyAction\.disabled = submitting \|\| !canCreateComment/);
+		assert.match(html, /submitBtn\.disabled = !hasOverviewPermission\('canCreateComment'\) \|\| !input \|\| input\.disabled \|\| !input\.value\.trim\(\)/);
+		assert.match(html, /if \(btn\.disabled \|\| !hasOverviewPermission\('canCreateComment'\)\)/);
 	});
 
 	test('does not render the add button when options are omitted', () => {

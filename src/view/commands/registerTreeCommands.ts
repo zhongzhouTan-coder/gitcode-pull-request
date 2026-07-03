@@ -12,6 +12,7 @@ import { PullRequestDiffController } from '../diff/pullRequestDiffController';
 import { PullRequestDiffStore } from '../diff/pullRequestDiffStore';
 import { PullRequestFilesNode } from '../tree/nodes/pullRequestFilesNode';
 import { CopilotPullRequestContextStore } from '../copilot/copilotPullRequestContextStore';
+import { PermissionStore } from '../state/permissionStore';
 
 interface RegisterTreeCommandsOptions {
 	authService: AuthService;
@@ -22,6 +23,7 @@ interface RegisterTreeCommandsOptions {
 	diffController: PullRequestDiffController;
 	diffStore: PullRequestDiffStore;
 	copilotContextStore: CopilotPullRequestContextStore;
+	permissionStore: PermissionStore;
 }
 
 function getPullRequestUrl(context: PullRequestNodeContext): string {
@@ -90,7 +92,7 @@ function resolvePullRequestFileContext(
 }
 
 export function registerTreeCommands(options: RegisterTreeCommandsOptions): vscode.Disposable {
-	const { authService, logger, overviewStore, commentsStore, store, diffController, diffStore, copilotContextStore } = options;
+	const { authService, logger, overviewStore, commentsStore, store, diffController, diffStore, copilotContextStore, permissionStore } = options;
 
 	return vscode.Disposable.from(
 		vscode.commands.registerCommand(COMMAND_ID.signIn, async () => {
@@ -99,6 +101,14 @@ export function registerTreeCommands(options: RegisterTreeCommandsOptions): vsco
 		}),
 		vscode.commands.registerCommand(COMMAND_ID.refreshPullRequests, async () => {
 			await store.refreshAll();
+			try {
+				const repositories = await store.getRepositories();
+				await permissionStore.refreshAll(repositories);
+			} catch (error) {
+				logger.debug(
+					`Failed to refresh pull request permissions: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
 		}),
 		vscode.commands.registerCommand(COMMAND_ID.openPullRequest, async (context?: PullRequestNodeContext) => {
 			const resolved = resolvePullRequestContext(context);

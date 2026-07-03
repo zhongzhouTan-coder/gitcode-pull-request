@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
-import { CreatePullRequestInput, CreatePullRequestInitialIssueContext, GitCodeRepository } from '../../common/models';
+import { CreatePullRequestInput, CreatePullRequestInitialIssueContext, CreatePullRequestPermissions, GitCodeRepository } from '../../common/models';
 import { Logger } from '../../common/logger';
 import { GitRepository } from '../../common/git/gitTypes';
 import { VIEW_ID_CREATE_PULL_REQUEST } from '../../common/constants';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
+import { checkPermission } from '../permissions/permissionChecks';
+import { createBranchDeniedMessage, createPullRequestDeniedMessage } from '../permissions/permissionMessages';
+import { PermissionStore } from '../state/permissionStore';
 import { CreatePullRequestDataModel, CreatePullRequestDefaults } from './createPullRequestDataModel';
 import { getCreatePullRequestHtml } from './createPullRequestHtml';
 
@@ -28,12 +31,17 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 	private localGitRepository?: GitRepository;
 	private publishRemoteName?: string;
 	private activeLocalBranch?: string;
+	private permissions: CreatePullRequestPermissions = {
+		canCreatePullRequest: false,
+		canCreateBranch: false,
+	};
 	private pendingInitialize?: {
 		repositories: GitCodeRepository[];
 		repository: GitCodeRepository;
 		sourceBranch: string;
 		localGitRepository?: GitRepository;
 		issueContext?: CreatePullRequestInitialIssueContext;
+		permissions?: CreatePullRequestPermissions;
 	};
 
 	constructor(
@@ -41,6 +49,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		private readonly repositoryService: RepositoryService,
 		private readonly pullRequestService: PullRequestService,
 		private readonly callbacks: CreatePullRequestViewCallbacks,
+		private readonly permissionStore: PermissionStore,
 		private readonly logger: Logger,
 	) {}
 
@@ -74,10 +83,11 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		sourceBranch: string,
 		localGitRepository?: GitRepository,
 		issueContext?: CreatePullRequestInitialIssueContext,
+		permissions?: CreatePullRequestPermissions,
 	): Promise<void> {
 		// If the view isn't ready yet, store the request
 		if (!this.view) {
-			this.pendingInitialize = { repositories, repository, sourceBranch, localGitRepository, issueContext };
+			this.pendingInitialize = { repositories, repository, sourceBranch, localGitRepository, issueContext, permissions };
 			await this.revealView();
 			return;
 		}
@@ -85,6 +95,10 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		this.localGitRepository = localGitRepository;
 		this.publishRemoteName = repository.remoteName;
 		this.activeLocalBranch = sourceBranch;
+		this.permissions = permissions ?? {
+			canCreatePullRequest: false,
+			canCreateBranch: false,
+		};
 
 		// Reveal the contributed view before posting loading so collapsed views display it.
 		await this.revealView();
@@ -98,7 +112,8 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		);
 
 		const defaults = await this.dataModel.initialize(repositories, repository, sourceBranch, issueContext);
-		this.postMessage({ command: 'initialize', defaults });
+		this.permissions = await this.buildPermissions(defaults.sourceRepository);
+		this.postMessage({ command: 'initialize', defaults, permissions: this.permissions });
 	}
 
 	private async handleMessage(msg: CreatePullRequestMessage): Promise<void> {
@@ -109,11 +124,11 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 				if (this.pendingInitialize) {
 					const pending = this.pendingInitialize;
 					this.pendingInitialize = undefined;
-					this.initialize(pending.repositories, pending.repository, pending.sourceBranch, pending.localGitRepository, pending.issueContext);
+					this.initialize(pending.repositories, pending.repository, pending.sourceBranch, pending.localGitRepository, pending.issueContext, pending.permissions);
 				} else {
 					const defaults = this.getCurrentDefaults();
 					if (defaults) {
-						this.postMessage({ command: 'initialize', defaults });
+						this.postMessage({ command: 'initialize', defaults, permissions: this.permissions });
 					}
 				}
 				break;
@@ -167,6 +182,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 
 		this.publishRemoteName = repository.remoteName;
 		await this.dataModel.setSourceRepository(repository);
+		this.permissions = await this.buildPermissions(repository);
 
 		this.postMessage({
 			command: 'updateRepositoryFields',
@@ -182,6 +198,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			title: this.dataModel.title,
 			body: this.dataModel.body,
 			warning: this.dataModel.duplicateWarning,
+			permissions: this.permissions,
 		});
 	}
 
@@ -211,7 +228,25 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			title: this.dataModel.title,
 			body: this.dataModel.body,
 			warning: this.dataModel.duplicateWarning,
+			permissions: this.permissions,
 		});
+	}
+
+	private async buildPermissions(sourceRepository: GitCodeRepository): Promise<CreatePullRequestPermissions> {
+		const [canCreatePullRequest, canCreateBranch] = await Promise.all([
+			checkPermission(this.permissionStore, sourceRepository, {
+				scope: 'pr',
+				action: 'create',
+				message: createPullRequestDeniedMessage,
+			}),
+			checkPermission(this.permissionStore, sourceRepository, {
+				scope: 'branch',
+				action: 'create',
+				message: createBranchDeniedMessage,
+			}),
+		]);
+
+		return { canCreatePullRequest, canCreateBranch };
 	}
 
 	private async handleSourceBranchChange(branch: string): Promise<void> {
@@ -246,8 +281,20 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 
 	private async handleSubmit(input: CreatePullRequestInput): Promise<void> {
 		const repo = this.dataModel?.repository;
-		if (!repo || !this.dataModel) {
+		const sourceRepository = this.dataModel?.sourceRepository;
+		if (!repo || !this.dataModel || !sourceRepository) {
 			vscode.window.showErrorMessage('No repository selected.');
+			this.postMessage({ command: 'submitDone' });
+			return;
+		}
+
+		const canCreatePullRequest = await checkPermission(this.permissionStore, sourceRepository, {
+			scope: 'pr',
+			action: 'create',
+			message: createPullRequestDeniedMessage,
+		});
+		if (!canCreatePullRequest) {
+			vscode.window.showWarningMessage(createPullRequestDeniedMessage(sourceRepository));
 			this.postMessage({ command: 'submitDone' });
 			return;
 		}
@@ -316,6 +363,10 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		this.localGitRepository = undefined;
 		this.publishRemoteName = undefined;
 		this.activeLocalBranch = undefined;
+		this.permissions = {
+			canCreatePullRequest: false,
+			canCreateBranch: false,
+		};
 		this.postMessage({ command: 'reset' });
 	}
 
@@ -398,6 +449,22 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			return false;
 		}
 
+		const sourceRepository = dataModel.sourceRepository;
+		if (!sourceRepository) {
+			vscode.window.showErrorMessage('No source repository selected.');
+			return false;
+		}
+
+		const canCreateBranch = await checkPermission(this.permissionStore, sourceRepository, {
+			scope: 'branch',
+			action: 'create',
+			message: createBranchDeniedMessage,
+		});
+		if (!canCreateBranch) {
+			vscode.window.showWarningMessage(createBranchDeniedMessage(sourceRepository));
+			return false;
+		}
+
 		const action = await vscode.window.showWarningMessage(
 			`Source branch "${sourceBranch}" does not exist on GitCode. Create it from "${baseBranch}"?`,
 			{ modal: false },
@@ -432,6 +499,10 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 	dispose(): void {
 		this.view = undefined;
 		this.dataModel = undefined;
+		this.permissions = {
+			canCreatePullRequest: false,
+			canCreateBranch: false,
+		};
 		for (const d of this.disposables) {
 			d.dispose();
 		}
