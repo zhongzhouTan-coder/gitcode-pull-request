@@ -239,15 +239,21 @@ suite('OverviewHtml', () => {
 	});
 
 	test('renders pull request refresh and state management actions', () => {
-		const openHtml = getOverviewHtml(detail, 'nonce');
-		const closedHtml = getOverviewHtml({ ...detail, state: 'closed' }, 'nonce');
-		const mergedHtml = getOverviewHtml({ ...detail, state: 'merged' }, 'nonce');
+		const emptyComments: PullRequestCommentsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			loadedAt: Date.now(),
+			comments: [],
+		};
+		const openHtml = getOverviewWithTimelineHtml(detail, emptyComments, 'nonce');
+		const closedHtml = getOverviewWithTimelineHtml({ ...detail, state: 'closed' }, emptyComments, 'nonce');
+		const mergedHtml = getOverviewWithTimelineHtml({ ...detail, state: 'merged' }, emptyComments, 'nonce');
 
 		assert.match(openHtml, /id="refresh-button" class="secondary" title="Refresh" aria-label="Refresh pull request">Refresh<\/button>/);
 		assert.match(openHtml, /id="open-web-button" class="secondary"/);
-		assert.match(openHtml, /id="state-action-button" class="primary" data-state-action="closed"[^>]*>Close pull request<\/button>/);
-		assert.match(closedHtml, /id="state-action-button" class="primary" data-state-action="open"[^>]*>Reopen pull request<\/button>/);
-		assert.match(mergedHtml, /id="state-action-button" class="primary" data-state-action="open" disabled>Reopen pull request<\/button>/);
+		assert.match(openHtml, /id="state-action-button" type="button" class="secondary" data-state-action="closed"[^>]*>Close pull request<\/button>/);
+		assert.match(closedHtml, /id="state-action-button" type="button" class="secondary" data-state-action="open"[^>]*>Reopen pull request<\/button>/);
+		assert.match(mergedHtml, /id="state-action-button" type="button" class="secondary" data-state-action="open" disabled>Reopen pull request<\/button>/);
 		assert.ok(openHtml.indexOf('id="state-action-button"') > openHtml.indexOf('<main>'));
 		assert.ok(openHtml.indexOf('id="state-action-button"') < openHtml.indexOf('</main>'));
 		assert.ok(openHtml.indexOf('id="state-action-button"') < openHtml.indexOf('<aside>'));
@@ -275,18 +281,59 @@ suite('OverviewHtml', () => {
 	});
 
 	test('posts pull request state change messages from the action button', () => {
-		const html = getOverviewHtml(detail, 'nonce');
+		const html = getOverviewWithTimelineHtml(
+			detail,
+			{
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				comments: [],
+			},
+			'nonce',
+		);
 
 		assert.match(html, /command: 'changePullRequestState'/);
 		assert.match(html, /state: pendingStateAction/);
 		assert.match(html, /pullRequestStateChangeError/);
 		assert.match(html, /button\.setAttribute\('data-confirming-close', 'true'\);/);
 		assert.match(html, /button\.classList\.remove\('danger'\);/);
-		assert.match(html, /button\.classList\.add\('primary'\);/);
-		assert.match(html, /button\.classList\.remove\('danger'\);/);
+		assert.match(html, /button\.classList\.add\('secondary'\);/);
 		assert.match(html, /button\.textContent = 'Confirm close pull request';/);
 		assert.match(html, /Click again to confirm closing this pull request\./);
 		assert.match(html, /button\.textContent = pendingStateAction === 'closed' \? 'Close pull request' : 'Reopen pull request';/);
+	});
+
+	test('renders related issues before the timeline and aligns footer actions around the composer', () => {
+		const html = getOverviewWithTimelineHtml(
+			detail,
+			{
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				comments: [],
+			},
+			'nonce',
+			renderRelatedIssuesSection({
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				issues: [{
+					id: 10,
+					number: 339,
+					title: 'Related issue',
+					state: 'open',
+					url: 'https://gitcode.com/org/repo/issues/339',
+					author: { login: 'alice' },
+					labels: [],
+					createdAt: '2026-06-20T10:00:00+08:00',
+					updatedAt: '2026-06-20T10:00:00+08:00',
+				}],
+			}),
+		);
+
+		assert.ok(html.indexOf('Related Issues (1)') < html.indexOf('Timeline'));
+		assert.match(html, /<div class="conversation-action-row">[\s\S]*id="state-action-button"[\s\S]*id="conversation-comment-submit"/);
+		assert.match(html, /<div class="conversation-action-feedback">[\s\S]*id="state-action-error"[\s\S]*id="conversation-comment-error"/);
 	});
 
 	test('renders review status separately from metadata badges for diff comments only', () => {

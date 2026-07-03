@@ -254,7 +254,7 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /data-state-action="close"/);
 		assert.match(html, /id="refresh-button" class="secondary" title="Refresh" aria-label="Refresh issue">Refresh<\/button>/);
 		assert.match(html, /id="open-web-button" class="secondary"/);
-		assert.match(html, /id="state-action-button" class="primary" data-state-action="close"[^>]*>Close issue<\/button>/);
+		assert.match(html, /id="state-action-button" type="button" class="secondary" data-state-action="close"[^>]*>Close issue<\/button>/);
 		assert.match(html, />Close issue</);
 		assert.ok(html.indexOf('id="state-action-button"') > html.indexOf('<main>'));
 		assert.ok(html.indexOf('id="state-action-button"') < html.indexOf('</main>'));
@@ -277,7 +277,7 @@ suite('IssueOverviewHtml', () => {
 			includeScripts: false,
 		});
 
-		assert.match(html, /id="state-action-button" class="primary" data-state-action="reopen"[^>]*>Reopen issue<\/button>/);
+		assert.match(html, /id="state-action-button" type="button" class="secondary" data-state-action="reopen"[^>]*>Reopen issue<\/button>/);
 	});
 
 	test('escapes inline script JSON for issue edit metadata', () => {
@@ -315,10 +315,22 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /milestoneNumber: null/);
 		assert.match(html, /button\.setAttribute\('data-confirming-close', 'true'\);/);
 		assert.match(html, /button\.classList\.remove\('danger'\);/);
-		assert.match(html, /button\.classList\.add\('primary'\);/);
-		assert.match(html, /button\.classList\.remove\('danger'\);/);
+		assert.match(html, /button\.classList\.add\('secondary'\);/);
 		assert.match(html, /button\.textContent = 'Confirm close issue';/);
 		assert.match(html, /Click again to confirm closing this issue\./);
 		assert.match(html, /button\.textContent = pendingStateAction === 'close' \? 'Close issue' : 'Reopen issue';/);
+	});
+
+	test('renders the issue composer with left-aligned state action and right-aligned comment action', () => {
+		const html = getIssueOverviewHtml({
+			detail,
+			comments: commentsSnapshot,
+			operationLogs: operationLogsSnapshot,
+			nonce: 'test-nonce',
+			includeScripts: false,
+		});
+
+		assert.match(html, /<div class="comment-composer-actions">[\s\S]*id="state-action-button"[\s\S]*type="submit" class="btn-primary">Comment<\/button>/);
+		assert.match(html, /<div class="comment-composer-feedback">[\s\S]*id="state-action-error"[\s\S]*class="comment-submit-error"/);
 	});
 });

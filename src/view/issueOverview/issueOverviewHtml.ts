@@ -540,23 +540,36 @@ function renderRelatedPullRequests(
 </section>`;
 }
 
-function renderCommentComposer(): string {
+function renderStateActionButton(detail: IssueDetail): string {
+	const stateAction = detail.state === 'open' ? 'close' : 'reopen';
+	const stateActionLabel = detail.state === 'open' ? 'Close issue' : 'Reopen issue';
+	return `<button id="state-action-button" type="button" class="secondary" data-state-action="${stateAction}">${stateActionLabel}</button>`;
+}
+
+function renderCommentComposer(detail: IssueDetail): string {
 	return `<form class="comment-composer" data-action="submitIssueComment">
 	<textarea class="comment-input" name="body" placeholder="Write a comment..." rows="3"></textarea>
 	<div class="comment-composer-actions">
-		<span class="comment-submit-error" style="color:var(--danger);font-size:12px" hidden></span>
+		<div class="main-state-actions">
+			${renderStateActionButton(detail)}
+		</div>
 		<button type="submit" class="btn-primary">Comment</button>
+	</div>
+	<div class="comment-composer-feedback">
+		<div class="action-error comment-action-error" id="state-action-error"></div>
+		<span class="comment-submit-error" style="color:var(--danger);font-size:12px" hidden></span>
 	</div>
 </form>`;
 }
 
 function renderTimeline(
+	detail: IssueDetail,
 	comments: readonly IssueComment[] | undefined,
 	operationLogs: readonly IssueOperationLog[] | undefined,
 	commentsError: Error | undefined,
 	operationLogsError: Error | undefined,
 ): string {
-	const composerHtml = renderCommentComposer();
+	const composerHtml = renderCommentComposer(detail);
 	const entries = mergeIssueTimelineEntries(comments, operationLogs);
 	const showCount = comments !== undefined && operationLogs !== undefined;
 	const heading = showCount ? `Timeline (${entries.length})` : 'Timeline';
@@ -612,9 +625,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		: '<div class="empty">No description provided.</div>';
 
 	const openOnWebDisabled = detail.url ? '' : 'disabled';
-	const stateAction = detail.state === 'open' ? 'close' : 'reopen';
-	const stateActionLabel = detail.state === 'open' ? 'Close issue' : 'Reopen issue';
-	const stateActionClass = 'primary';
 	const editOptionsJson = editOptions
 		? serializeForInlineScript({
 			assignees: editOptions.assignees.map((user) => ({ login: user.login, name: user.name })),
@@ -646,6 +656,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 	}
 
 	const timelineHtml = renderTimeline(
+		detail,
 		comments?.comments,
 		operationLogs?.logs,
 		commentsError,
@@ -710,15 +721,9 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		.actions { margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; }
 		.main-state-actions {
 			display: flex;
-			justify-content: flex-end;
 			align-items: center;
-			gap: 10px;
-			margin-top: 16px;
-		}
-		.main-state-actions .action-error {
-			flex: 1;
-			margin-top: 0;
-			text-align: right;
+			justify-content: flex-start;
+			flex: 0 0 auto;
 		}
 		.action-error { margin-top: 8px; color: var(--vscode-errorForeground); font-size: 13px; min-height: 18px; }
 		button {
@@ -1288,12 +1293,26 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			gap: 8px;
+			gap: 12px;
 			margin-top: 8px;
+			flex-wrap: wrap;
+		}
+		.comment-composer-feedback {
+			display: flex;
+			align-items: flex-start;
+			justify-content: space-between;
+			gap: 12px;
+			margin-top: 8px;
+			flex-wrap: wrap;
+		}
+		.comment-action-error {
+			flex: 1 1 260px;
+			margin: 0;
 		}
 		.comment-submit-error {
-			flex: 1;
+			flex: 1 1 260px;
 			min-width: 0;
+			text-align: right;
 		}
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
@@ -1346,10 +1365,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				</section>
 				${relatedPrsHtml}
 				${timelineHtml}
-				<div class="main-state-actions">
-					<div class="action-error" id="state-action-error"></div>
-					<button id="state-action-button" class="${stateActionClass}" data-state-action="${stateAction}">${stateActionLabel}</button>
-				</div>
 			</main>
 			<aside>
 				${renderSidebar(detail, editOptions)}
@@ -1654,8 +1669,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			var requestedState = button.getAttribute('data-state-action');
 			if (requestedState === 'close' && button.getAttribute('data-confirming-close') !== 'true') {
 				button.setAttribute('data-confirming-close', 'true');
-				button.classList.remove('danger');
-				button.classList.add('primary');
 				button.textContent = 'Confirm close issue';
 				setActionError('Click again to confirm closing this issue.');
 				return;
@@ -1807,7 +1820,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				if (button) {
 					button.disabled = false;
 					button.classList.remove('danger');
-					button.classList.add('primary');
+					button.classList.add('secondary');
 					button.textContent = pendingStateAction === 'close' ? 'Close issue' : 'Reopen issue';
 				}
 				setActionError(msg.message || 'Unable to update issue state.');

@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Unified permission-denied button tooltips across the create pull request,
   pull request overview, and issue overview webviews with the same
   wrapper-based custom tooltip pattern.
+- Moved pull request related issues above the timeline so the overview matches
+  the issue page's related-content placement more closely.
+- Moved issue and pull request close or reopen actions into the composer footer,
+  left-aligned opposite the right-aligned comment submit action.
+- Changed issue and pull request close or reopen actions from primary styling to
+  transparent secondary styling to reduce destructive-action emphasis.
 
 ### Fixed
 
