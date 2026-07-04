@@ -3129,40 +3129,32 @@ export function getOverviewHtml(
 		}
 
 		function buildInput(section) {
-			var title = document.querySelector('[data-section-input="title"]');
-			var currentTitleValue = title ? title.value.trim() : currentTitle;
-
-			var input = { title: currentTitleValue };
-
 			switch (section) {
 				case 'title':
-					// Only title changes
-					break;
+					var title = document.querySelector('[data-section-input="title"]');
+					return { title: title ? title.value.trim() : currentTitle };
 				case 'body':
-					input.body = getSectionInput('body') || '';
-					break;
+					return { body: getSectionInput('body') || '' };
 				case 'labels':
-						input.labels = selectedLabels.map(function(label) {
+					return {
+						labels: selectedLabels.map(function(label) {
 							return label.name;
-						}).join(',');
-					break;
+						}).join(','),
+					};
 				case 'milestone':
-						input.milestoneNumber = selectedMilestone ? Number(selectedMilestone.number) : undefined;
-					break;
+					return { milestoneNumber: selectedMilestone ? Number(selectedMilestone.number) : undefined };
 				case 'draft':
-					input.draft = getSectionInput('draft');
-					break;
+					return { draft: getSectionInput('draft') };
 				case 'closeRelatedIssue':
-					input.closeRelatedIssue = getSectionInput('closeRelatedIssue');
-					break;
+					return { closeRelatedIssue: getSectionInput('closeRelatedIssue') };
+				default:
+					return {};
 			}
-
-			return input;
 		}
 
 		function saveSection(section) {
 			var input = buildInput(section);
-			if (!input.title) {
+			if (section === 'title' && !input.title) {
 				showSectionError(section, 'Title is required.');
 				return;
 			}

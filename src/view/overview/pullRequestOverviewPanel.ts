@@ -747,7 +747,6 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.context.repository,
 				this.context.pullRequestNumber,
 				{
-					title: this.detail.title,
 					state: state as 'open' | 'closed',
 				},
 			);

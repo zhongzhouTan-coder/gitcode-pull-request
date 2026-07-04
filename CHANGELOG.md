@@ -26,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Fixed
 
 - Made `Sign in to GitCode` tree empty states clickable so they run the existing sign-in command.
+- Updated issue and pull request PATCH requests to send only changed fields
+  instead of always including the current title in section saves and state
+  changes.
 
 ## [0.0.2] - 2026-07-02
 

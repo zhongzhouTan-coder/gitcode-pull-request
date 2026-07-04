@@ -518,7 +518,7 @@ export interface CreatePullRequestInput {
 // ---- Edit Pull Request Types ----
 
 export interface EditPullRequestInput {
-	title: string;
+	title?: string;
 	body?: string;
 	state?: 'open' | 'closed';
 	milestoneNumber?: number;
@@ -578,7 +578,7 @@ export interface CreateIssueInput {
 }
 
 export interface EditIssueInput {
-	title: string;
+	title?: string;
 	body?: string;
 	state?: 'reopen' | 'close';
 	assignees?: string;

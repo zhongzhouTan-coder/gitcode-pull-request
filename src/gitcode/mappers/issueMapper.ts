@@ -80,8 +80,11 @@ export function mapIssue(dto: any): IssueSummary {
 export function mapEditIssueInput(repository: GitCodeRepository, input: EditIssueInput): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		repo: repository.name,
-		title: input.title,
 	};
+
+	if (input.title !== undefined) {
+		body.title = input.title;
+	}
 
 	if (input.body !== undefined) {
 		body.body = input.body;

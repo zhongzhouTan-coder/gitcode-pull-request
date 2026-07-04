@@ -103,9 +103,11 @@ function resolveCreatedState(dto: any): 'open' | 'closed' | 'merged' {
 }
 
 export function mapEditPullRequestInput(input: EditPullRequestInput): Record<string, unknown> {
-	const body: Record<string, unknown> = {
-		title: input.title,
-	};
+	const body: Record<string, unknown> = {};
+
+	if (input.title !== undefined) {
+		body.title = input.title;
+	}
 
 	if (input.body !== undefined) {
 		body.body = input.body;

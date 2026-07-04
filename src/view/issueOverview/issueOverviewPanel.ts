@@ -55,7 +55,7 @@ export function validateIssueSectionInput(
 	editOptions?: EditIssueOptions,
 ): string[] {
 	const errors: string[] = [];
-	if (!input.title.trim()) {
+	if (section === 'title' && !input.title?.trim()) {
 		errors.push('Title is required.');
 	}
 
@@ -502,10 +502,13 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		}
 
 		try {
-			await this.store.editIssue(this.context.repository, this.context.issueNumber, {
-				...input,
-				title: input.title.trim(),
-			});
+			const normalizedInput = input.title !== undefined
+				? {
+					...input,
+					title: input.title.trim(),
+				}
+				: input;
+			await this.store.editIssue(this.context.repository, this.context.issueNumber, normalizedInput);
 
 			vscode.window.showInformationMessage(`GitCode issue #${this.context.issueNumber} updated`);
 
@@ -612,7 +615,6 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			}
 
 			await this.store.editIssue(this.context.repository, this.context.issueNumber, {
-				title: this.detail.title,
 				state,
 			});
 

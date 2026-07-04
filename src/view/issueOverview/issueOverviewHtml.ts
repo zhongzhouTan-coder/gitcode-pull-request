@@ -1646,20 +1646,20 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 
 				if (section === 'body') {
 					var bodyInput = document.querySelector('[data-section-input="body"]');
-					return { title: detailSnapshot.title || '', body: bodyInput ? bodyInput.value : '' };
+					return { body: bodyInput ? bodyInput.value : '' };
 				}
 
 				if (section === 'assignees') {
-					return { title: detailSnapshot.title || '', assignees: collectCheckedValues('[data-assignee-option]', 'data-assignee-option').join(',') };
+					return { assignees: collectCheckedValues('[data-assignee-option]', 'data-assignee-option').join(',') };
 				}
 
 				if (section === 'labels') {
-					return { title: detailSnapshot.title || '', labels: collectCheckedValues('[data-label-option]', 'data-label-option').join(',') };
+					return { labels: collectCheckedValues('[data-label-option]', 'data-label-option').join(',') };
 				}
 
 				if (section === 'milestone') {
 					var selectedMilestone = document.querySelector('[data-section-input="milestone"]:checked');
-					var input = { title: detailSnapshot.title || '', milestoneNumber: null };
+					var input = { milestoneNumber: null };
 					if (selectedMilestone && selectedMilestone.value !== '') {
 						input.milestoneNumber = Number(selectedMilestone.value);
 					}
@@ -1668,10 +1668,10 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 
 				if (section === 'securityHole') {
 					var securityInput = document.querySelector('[data-section-input="securityHole"]');
-					return { title: detailSnapshot.title || '', securityHole: Boolean(securityInput && securityInput.checked) };
+					return { securityHole: Boolean(securityInput && securityInput.checked) };
 				}
 
-				return { title: detailSnapshot.title || '' };
+				return {};
 			}
 
 			document.getElementById('refresh-button')?.addEventListener('click', () => {
