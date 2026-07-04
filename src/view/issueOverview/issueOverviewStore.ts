@@ -18,6 +18,10 @@ export class IssueOverviewStore {
 		private readonly repositoryService?: RepositoryService,
 	) {}
 
+	async getCurrentUserLogin(): Promise<string | undefined> {
+		return (await this.authService.getSession())?.accountName;
+	}
+
 	async getDetail(repository: GitCodeRepository, issueNumber: number): Promise<IssueDetail> {
 		const session = await this.authService.getSession();
 		if (!session) {

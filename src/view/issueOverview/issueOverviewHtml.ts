@@ -1493,16 +1493,39 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				return !issuePermissions || issuePermissions[key] !== false;
 			}
 
+			function getIssueEditPermission(section) {
+				switch (section) {
+					case 'title':
+					case 'body':
+						return 'canEditIssueTitleAndBody';
+					default:
+						return 'canEditIssue';
+				}
+			}
+
+			function getIssueEditDeniedMessage(section) {
+				switch (section) {
+					case 'title':
+					case 'body':
+						return 'You do not have permission to edit this issue title or description.';
+					default:
+						return 'You do not have permission to update issues in this repository.';
+				}
+			}
+
 			function applyPermissionControls() {
 				if (!issuePermissions) {
 					return;
 				}
 
-				if (!issuePermissions.canEditIssue) {
-					document.querySelectorAll('.edit-icon-btn[data-section]').forEach(function(el) {
-						setDisabledWithTooltip(el, true, 'You do not have permission to update issues in this repository.');
-					});
-				}
+				document.querySelectorAll('.edit-icon-btn[data-section]').forEach(function(el) {
+					var section = el.getAttribute('data-section');
+					if (!section) {
+						return;
+					}
+					var permissionKey = getIssueEditPermission(section);
+					setDisabledWithTooltip(el, !hasIssuePermission(permissionKey), getIssueEditDeniedMessage(section));
+				});
 
 				var stateButton = document.getElementById('state-action-button');
 				if (stateButton) {
@@ -1560,7 +1583,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			}
 
 			function showSection(section) {
-				if (!hasIssuePermission('canEditIssue')) {
+				if (!section || !hasIssuePermission(getIssueEditPermission(section))) {
 					return;
 				}
 				if (activeSection && activeSection !== section) {

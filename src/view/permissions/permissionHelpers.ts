@@ -3,14 +3,37 @@ import {
 	IssueOverviewPermissions,
 	PullRequestOverviewPermissions,
 	CreatePullRequestPermissions,
+	GitCodeRoleKey,
+	RolePermissionProfile,
 } from '../../common/models';
+import { getRolePermissionProfile } from './rolePermissionProfiles';
+import { hasEffectivePermission } from './permissionEvaluator';
+import { isSameLogin } from './ownershipRules';
+
+export interface PermissionRoleViewModel {
+	key: GitCodeRoleKey;
+	name: string;
+	displayName: string;
+	accessLevel?: number;
+	rank: number;
+	permissionSource: string;
+}
+
+/** Re-export for consumers that previously imported from this module. */
+export { hasEffectivePermission };
 
 export function buildPullRequestOverviewPermissions(
 	snapshot: GitCodePermissionSnapshot | undefined,
+	options?: {
+		authorLogin?: string;
+		currentUserLogin?: string;
+	},
 ): PullRequestOverviewPermissions {
 	if (!snapshot) {
 		return {
 			canEditPullRequest: false,
+			canEditPullRequestTitleAndBody: false,
+			canEditPullRequestDraft: false,
 			canClosePullRequest: false,
 			canReopenPullRequest: false,
 			canCreateComment: false,
@@ -22,22 +45,28 @@ export function buildPullRequestOverviewPermissions(
 		};
 	}
 
+	const isAuthor = isSameLogin(options?.authorLogin, options?.currentUserLogin);
+
 	return {
-		canEditPullRequest: snapshot.has('pr', 'update'),
-		canClosePullRequest: snapshot.has('pr', 'close'),
-		canReopenPullRequest: snapshot.has('pr', 'reopen'),
-		canCreateComment: snapshot.has('note', 'create'),
-		canEditComment: snapshot.has('note', 'create'), // note:update is not exposed by API
-		canResolveComment: snapshot.has('note', 'resolve'),
-		canUpdateReviewers: snapshot.has('pr', 'update'),
-		canUpdateTesters: snapshot.has('pr', 'update'),
-		canUpdateRelatedIssues: snapshot.has('pr', 'update'),
+		canEditPullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
+		canEditPullRequestTitleAndBody: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }, isAuthor),
+		canEditPullRequestDraft: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }, isAuthor),
+		canClosePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'close', message: () => '' }, isAuthor),
+		canReopenPullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'reopen', message: () => '' }, isAuthor),
+		canCreateComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }),
+		canEditComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }), // note:update is not exposed by API
+		canResolveComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'resolve', message: () => '' }),
+		canUpdateReviewers: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
+		canUpdateTesters: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
+		canUpdateRelatedIssues: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
 	};
 }
 
 export function buildUnknownPullRequestOverviewPermissions(): PullRequestOverviewPermissions {
 	return {
 		canEditPullRequest: true,
+		canEditPullRequestTitleAndBody: true,
+		canEditPullRequestDraft: true,
 		canClosePullRequest: true,
 		canReopenPullRequest: true,
 		canCreateComment: true,
@@ -51,27 +80,36 @@ export function buildUnknownPullRequestOverviewPermissions(): PullRequestOvervie
 
 export function buildIssueOverviewPermissions(
 	snapshot: GitCodePermissionSnapshot | undefined,
+	options?: {
+		authorLogin?: string;
+		currentUserLogin?: string;
+	},
 ): IssueOverviewPermissions {
 	if (!snapshot) {
 		return {
 			canEditIssue: false,
+			canEditIssueTitleAndBody: false,
 			canCloseIssue: false,
 			canReopenIssue: false,
 			canCreateComment: false,
 		};
 	}
 
+	const isAuthor = isSameLogin(options?.authorLogin, options?.currentUserLogin);
+
 	return {
-		canEditIssue: snapshot.has('issue', 'update'),
-		canCloseIssue: snapshot.has('issue', 'reopen'),
-		canReopenIssue: snapshot.has('issue', 'reopen'),
-		canCreateComment: snapshot.has('note', 'create'),
+		canEditIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'update', message: () => '' }),
+		canEditIssueTitleAndBody: hasEffectivePermission(snapshot, { scope: 'issue', action: 'update', message: () => '' }, isAuthor),
+		canCloseIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'reopen', message: () => '' }, isAuthor),
+		canReopenIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'reopen', message: () => '' }, isAuthor),
+		canCreateComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }),
 	};
 }
 
 export function buildUnknownIssueOverviewPermissions(): IssueOverviewPermissions {
 	return {
 		canEditIssue: true,
+		canEditIssueTitleAndBody: true,
 		canCloseIssue: true,
 		canReopenIssue: true,
 		canCreateComment: true,
@@ -89,7 +127,29 @@ export function buildCreatePullRequestPermissions(
 	}
 
 	return {
-		canCreatePullRequest: snapshot.has('pr', 'create'),
-		canCreateBranch: snapshot.has('branch', 'create'),
+		canCreatePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'create', message: () => '' }),
+		canCreateBranch: hasEffectivePermission(snapshot, { scope: 'branch', action: 'create', message: () => '' }),
+	};
+}
+
+export function buildPermissionRoleViewModel(
+	snapshot: GitCodePermissionSnapshot | undefined,
+): PermissionRoleViewModel | undefined {
+	if (!snapshot) {
+		return undefined;
+	}
+
+	const profile = getRolePermissionProfile(snapshot.role);
+	return mapRoleProfileToViewModel(profile);
+}
+
+function mapRoleProfileToViewModel(profile: RolePermissionProfile): PermissionRoleViewModel {
+	return {
+		key: profile.key,
+		name: profile.name,
+		displayName: profile.displayName,
+		accessLevel: profile.accessLevel,
+		rank: profile.rank,
+		permissionSource: 'GitCode repository permissions',
 	};
 }

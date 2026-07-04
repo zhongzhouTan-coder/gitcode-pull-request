@@ -1,5 +1,6 @@
 import { GitCodeRepository, PermissionRequirement } from '../../common/models';
 import { PermissionStore } from '../state/permissionStore';
+import { hasEffectivePermission } from './permissionEvaluator';
 import { showPermissionDeniedWarning } from './permissionMessages';
 
 /**
@@ -18,7 +19,7 @@ export async function checkPermission(
 ): Promise<boolean> {
 	try {
 		const snapshot = await permissionStore.get(repository);
-		return snapshot.has(requirement.scope, requirement.action);
+		return hasEffectivePermission(snapshot, requirement);
 	} catch {
 		// If we can't verify permissions, allow the action to proceed.
 		// The server will still reject unauthorized requests.

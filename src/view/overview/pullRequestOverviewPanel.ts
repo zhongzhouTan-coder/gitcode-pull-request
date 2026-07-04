@@ -15,7 +15,8 @@ import { PullRequestOperationLogsStore } from './pullRequestOperationLogsStore';
 import { buildDiffCommentContexts, DiffCommentContext } from './diffCommentContext';
 import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
-import { buildPullRequestOverviewPermissions, buildUnknownPullRequestOverviewPermissions } from '../permissions/permissionHelpers';
+import { buildPullRequestOverviewPermissions, buildUnknownPullRequestOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
+import { canEditOwnPullRequest, canChangeOwnPullRequestState } from '../permissions/ownershipRules';
 
 interface PullRequestOverviewContext {
 	repository: GitCodeRepository;
@@ -207,6 +208,8 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private removingRelatedIssueNumbers: readonly number[] = [];
 	private permissions: PullRequestOverviewPermissions = {
 		canEditPullRequest: false,
+		canEditPullRequestTitleAndBody: false,
+		canEditPullRequestDraft: false,
 		canClosePullRequest: false,
 		canReopenPullRequest: false,
 		canCreateComment: false,
@@ -570,7 +573,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		try {
 			const snapshot = await PullRequestOverviewPanel.permissionStore.get(this.context.repository);
-			this.permissions = buildPullRequestOverviewPermissions(snapshot);
+			this.permissions = buildPullRequestOverviewPermissions(snapshot, {
+				authorLogin: this.detail?.author.login,
+				currentUserLogin: await this.store.getCurrentUserLogin(),
+			});
 		} catch (error) {
 			this.logger.debug(
 				`Failed to load permissions for ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
@@ -579,16 +585,30 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 	}
 
-	private async checkWritePermission(scope: string, action: string, deniedMessage: string): Promise<boolean> {
+	private async checkWritePermission(scope: string, action: string, deniedMessage: string, objectRuleAllows: boolean = false): Promise<boolean> {
 		if (!PullRequestOverviewPanel.permissionStore) {
 			return true;
 		}
 
-		const allowed = await checkPermission(PullRequestOverviewPanel.permissionStore, this.context.repository, {
-			scope,
-			action,
-			message: () => deniedMessage,
-		});
+		let allowed: boolean;
+		if (objectRuleAllows) {
+			try {
+				const snapshot = await PullRequestOverviewPanel.permissionStore.get(this.context.repository);
+				allowed = hasEffectivePermission(snapshot, {
+					scope,
+					action,
+					message: () => deniedMessage,
+				}, objectRuleAllows);
+			} catch {
+				allowed = true;
+			}
+		} else {
+			allowed = await checkPermission(PullRequestOverviewPanel.permissionStore, this.context.repository, {
+				scope,
+				action,
+				message: () => deniedMessage,
+			});
+		}
 
 		if (!allowed) {
 			vscode.window.showWarningMessage(deniedMessage);
@@ -596,6 +616,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		return true;
+	}
+
+	private async isCurrentUserPullRequestAuthor(): Promise<boolean> {
+		const currentUserLogin = await this.store.getCurrentUserLogin();
+		return canEditOwnPullRequest(currentUserLogin, this.detail?.author.login);
 	}
 
 	private renderError(error: unknown): string {
@@ -651,7 +676,8 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
+		const authorCanEditSection = section === 'title' || section === 'body' || section === 'draft';
+		if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`, authorCanEditSection && await this.isCurrentUserPullRequestAuthor())) {
 			return;
 		}
 
@@ -712,7 +738,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		const deniedMessage = state === 'closed'
 			? `You do not have permission to close pull requests in ${this.context.repository.fullName}.`
 			: `You do not have permission to reopen pull requests in ${this.context.repository.fullName}.`;
-		if (!await this.checkWritePermission('pr', permissionAction, deniedMessage)) {
+		if (!await this.checkWritePermission('pr', permissionAction, deniedMessage, await this.isCurrentUserPullRequestAuthor())) {
 			return;
 		}
 

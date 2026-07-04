@@ -716,6 +716,23 @@ export interface GitCodeRoleInfo {
 	accessLevel?: number;
 }
 
+export type GitCodeRoleKey =
+	| 'owner'
+	| 'maintainer'
+	| 'developer'
+	| 'reporter'
+	| 'guest'
+	| 'unknown';
+
+export interface RolePermissionProfile {
+	key: GitCodeRoleKey;
+	name: string;
+	displayName: string;
+	accessLevel?: number;
+	rank: number;
+	defaultPermissions: readonly PermissionRequirement[];
+}
+
 export interface GitCodePermissionSnapshot {
 	repository: GitCodeRepository;
 	role?: GitCodeRoleInfo;
@@ -732,6 +749,8 @@ export interface PermissionRequirement {
 
 export interface PullRequestOverviewPermissions {
 	canEditPullRequest: boolean;
+	canEditPullRequestTitleAndBody: boolean;
+	canEditPullRequestDraft: boolean;
 	canClosePullRequest: boolean;
 	canReopenPullRequest: boolean;
 	canCreateComment: boolean;
@@ -744,6 +763,7 @@ export interface PullRequestOverviewPermissions {
 
 export interface IssueOverviewPermissions {
 	canEditIssue: boolean;
+	canEditIssueTitleAndBody: boolean;
 	canCloseIssue: boolean;
 	canReopenIssue: boolean;
 	canCreateComment: boolean;

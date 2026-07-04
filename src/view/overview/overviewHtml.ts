@@ -2666,16 +2666,52 @@ export function getOverviewHtml(
 			return !overviewPermissions || overviewPermissions[key] !== false;
 		}
 
+		function getOverviewEditPermission(section) {
+			switch (section) {
+				case 'title':
+				case 'body':
+					return 'canEditPullRequestTitleAndBody';
+				case 'draft':
+					return 'canEditPullRequestDraft';
+				default:
+					return 'canEditPullRequest';
+			}
+		}
+
+		function getOverviewEditDeniedMessage(section) {
+			switch (section) {
+				case 'title':
+				case 'body':
+					return 'You do not have permission to edit this pull request title or description.';
+				case 'draft':
+					return 'You do not have permission to change this pull request draft status.';
+				default:
+					return 'You do not have permission to update pull requests in this repository.';
+			}
+		}
+
 		function applyPermissionControls() {
 			if (!overviewPermissions) {
 				return;
 			}
 
-			if (!overviewPermissions.canEditPullRequest) {
-				document.querySelectorAll('.edit-icon-btn[data-section], .preference-card [data-section-input]').forEach(function(el) {
-					setDisabledWithTooltip(el, true, 'You do not have permission to update pull requests in this repository.');
-				});
-			}
+			document.querySelectorAll('.edit-icon-btn[data-section]').forEach(function(el) {
+				var section = el.getAttribute('data-section');
+				if (!section) {
+					return;
+				}
+				var permissionKey = getOverviewEditPermission(section);
+				setDisabledWithTooltip(el, !hasOverviewPermission(permissionKey), getOverviewEditDeniedMessage(section));
+			});
+
+			document.querySelectorAll('.preference-card [data-section-input]').forEach(function(el) {
+				var section = el.getAttribute('data-section-input');
+				if (!section) {
+					return;
+				}
+				var permissionKey = getOverviewEditPermission(section);
+				setDisabledWithTooltip(el, !hasOverviewPermission(permissionKey), getOverviewEditDeniedMessage(section));
+			});
 
 			var stateButton = document.getElementById('state-action-button');
 			if (stateButton) {
@@ -2715,7 +2751,7 @@ export function getOverviewHtml(
 		}
 
 		function startEdit(section) {
-			if (!hasOverviewPermission('canEditPullRequest')) {
+			if (!section || !hasOverviewPermission(getOverviewEditPermission(section))) {
 				return;
 			}
 			// Only one section editable at a time

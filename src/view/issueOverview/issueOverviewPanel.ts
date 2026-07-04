@@ -15,7 +15,8 @@ import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { IssueTreeStore } from '../state/issueTreeStore';
 import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
-import { buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions } from '../permissions/permissionHelpers';
+import { buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
+import { canEditOwnIssue } from '../permissions/ownershipRules';
 
 interface IssueOverviewContext {
 	repository: GitCodeRepository;
@@ -257,6 +258,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private editOptions?: EditIssueOptions;
 	private permissions: IssueOverviewPermissions = {
 		canEditIssue: false,
+		canEditIssueTitleAndBody: false,
 		canCloseIssue: false,
 		canReopenIssue: false,
 		canCreateComment: false,
@@ -474,6 +476,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			relatedPullRequests: this.relatedPullRequestsSnapshot,
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
+			permissions: this.permissions,
 			nonce: createNonce(),
 		});
 	}
@@ -483,7 +486,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		if (!await this.checkWritePermission('issue', 'update', `You do not have permission to update issues in ${this.context.repository.fullName}.`)) {
+		const authorCanEditSection = section === 'title' || section === 'body';
+		if (!await this.checkWritePermission('issue', 'update', `You do not have permission to update issues in ${this.context.repository.fullName}.`, authorCanEditSection && await this.isCurrentUserIssueAuthor())) {
 			return;
 		}
 
@@ -598,7 +602,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		if (!await this.checkWritePermission('issue', 'reopen', `You do not have permission to ${state === 'close' ? 'close' : 'reopen'} issues in ${this.context.repository.fullName}.`)) {
+		if (!await this.checkWritePermission('issue', 'reopen', `You do not have permission to ${state === 'close' ? 'close' : 'reopen'} issues in ${this.context.repository.fullName}.`, await this.isCurrentUserIssueAuthor())) {
 			return;
 		}
 
@@ -716,7 +720,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 		try {
 			const snapshot = await IssueOverviewPanel.permissionStore.get(this.context.repository);
-			this.permissions = buildIssueOverviewPermissions(snapshot);
+			this.permissions = buildIssueOverviewPermissions(snapshot, {
+				authorLogin: this.detail?.author.login,
+				currentUserLogin: await this.store.getCurrentUserLogin(),
+			});
 		} catch (error) {
 			this.logger.debug(
 				`Failed to load permissions for ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
@@ -725,16 +732,30 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		}
 	}
 
-	private async checkWritePermission(scope: string, action: string, deniedMessage: string): Promise<boolean> {
+	private async checkWritePermission(scope: string, action: string, deniedMessage: string, objectRuleAllows: boolean = false): Promise<boolean> {
 		if (!IssueOverviewPanel.permissionStore) {
 			return true;
 		}
 
-		const allowed = await checkPermission(IssueOverviewPanel.permissionStore, this.context.repository, {
-			scope,
-			action,
-			message: () => deniedMessage,
-		});
+		let allowed: boolean;
+		if (objectRuleAllows) {
+			try {
+				const snapshot = await IssueOverviewPanel.permissionStore.get(this.context.repository);
+				allowed = hasEffectivePermission(snapshot, {
+					scope,
+					action,
+					message: () => deniedMessage,
+				}, objectRuleAllows);
+			} catch {
+				allowed = true;
+			}
+		} else {
+			allowed = await checkPermission(IssueOverviewPanel.permissionStore, this.context.repository, {
+				scope,
+				action,
+				message: () => deniedMessage,
+			});
+		}
 
 		if (!allowed) {
 			vscode.window.showWarningMessage(deniedMessage);
@@ -742,5 +763,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		}
 
 		return true;
+	}
+
+	private async isCurrentUserIssueAuthor(): Promise<boolean> {
+		const currentUserLogin = await this.store.getCurrentUserLogin();
+		return canEditOwnIssue(currentUserLogin, this.detail?.author.login);
 	}
 }

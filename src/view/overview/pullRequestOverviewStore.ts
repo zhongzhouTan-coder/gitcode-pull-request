@@ -21,6 +21,10 @@ export class PullRequestOverviewStore {
 		private readonly issueService?: IssueService,
 	) {}
 
+	async getCurrentUserLogin(): Promise<string | undefined> {
+		return (await this.authService.getSession())?.accountName;
+	}
+
 	async getDetail(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestDetail> {
 		const session = await this.authService.getSession();
 		if (!session) {
