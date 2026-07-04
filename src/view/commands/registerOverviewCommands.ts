@@ -33,6 +33,18 @@ export function registerOverviewCommands(options: RegisterOverviewCommandsOption
 				options.logger.debug('No active pull request overview panel to remove reviewer.');
 			}
 		}),
+		vscode.commands.registerCommand(COMMAND_ID.addPullRequestTester, async () => {
+			const added = await PullRequestOverviewPanel.addTesterToCurrent();
+			if (!added) {
+				options.logger.debug('No active pull request overview panel to add tester.');
+			}
+		}),
+		vscode.commands.registerCommand(COMMAND_ID.removePullRequestTester, async () => {
+			const removed = await PullRequestOverviewPanel.removeTesterFromCurrent();
+			if (!removed) {
+				options.logger.debug('No active pull request overview panel to remove tester.');
+			}
+		}),
 		vscode.commands.registerCommand(COMMAND_ID.addRelatedIssue, async () => {
 			const added = await PullRequestOverviewPanel.addRelatedIssueToCurrent();
 			if (!added) {

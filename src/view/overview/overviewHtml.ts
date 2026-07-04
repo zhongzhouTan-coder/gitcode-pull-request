@@ -178,6 +178,66 @@ function renderReviewers(reviewers: PullRequestParticipant[], options?: Reviewer
 	return `<div class="participant-list">${reviewers.map((reviewer) => renderReviewerRow(reviewer, options)).join('')}</div>`;
 }
 
+// ---- Testers ----
+
+export interface TestersSectionOptions {
+	canAddTester: boolean;
+	testerMutationInProgress?: boolean;
+	addTesterInProgress?: boolean;
+	canRemoveTester?: boolean;
+	removeTesterInProgress?: boolean;
+	removingTesterLogins?: readonly string[];
+}
+
+function renderAddTesterButton(options?: TestersSectionOptions): string {
+	if (!options) {
+		return '';
+	}
+
+	const disabled = !options.canAddTester || options.testerMutationInProgress || options.addTesterInProgress || options.removeTesterInProgress ? 'disabled' : '';
+	const title = options.canAddTester
+		? 'Add tester'
+		: 'You do not have permission to update testers.';
+	const loadingIndicator = options.addTesterInProgress
+		? '<span class="spinner" aria-hidden="true"></span>'
+		: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M7.25 2.5h1.5v4.75h4.75v1.5H8.75v4.75h-1.5V8.75H2.5v-1.5h4.75V2.5Z"/></svg>';
+	const titleAttr = options.canAddTester ? `title="${escapeAttr(title)}"` : '';
+	const button = `<button class="icon-button add-tester-btn" data-action="addTester" aria-label="${escapeAttr(title)}" ${titleAttr} ${disabled}>${loadingIndicator}</button>`;
+
+	return options.canAddTester
+		? button
+		: `<span class="permission-tooltip-target" data-tooltip="${escapeAttr(title)}" aria-label="${escapeAttr(title)}" tabindex="0">${button}</span>`;
+}
+
+function renderTesterRow(tester: PullRequestParticipant, options?: TestersSectionOptions): string {
+	const canRemoveTester = options?.canRemoveTester ?? false;
+	const isRemoving = Boolean(options?.removeTesterInProgress && options.removingTesterLogins?.includes(tester.login));
+	const title = canRemoveTester
+		? 'Remove tester'
+		: 'You do not have permission to update testers.';
+	const titleAttr = canRemoveTester ? ` title="${escapeAttr(title)}"` : '';
+	const disabled = !canRemoveTester || options?.testerMutationInProgress || options?.addTesterInProgress || options?.removeTesterInProgress ? 'disabled' : '';
+	const removeButtonMarkup = `<button class="icon-button remove-tester-btn" data-action="removeTester" data-login="${escapeAttr(tester.login)}" aria-label="${escapeAttr(title)}"${titleAttr} ${disabled}>${isRemoving ? '<span class="spinner" aria-hidden="true"></span>' : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 7.25h10v1.5H3v-1.5Z"/></svg>'}</button>`;
+	const removeButton = options
+		? canRemoveTester
+			? removeButtonMarkup
+			: `<span class="permission-tooltip-target" data-tooltip="${escapeAttr(title)}" aria-label="${escapeAttr(title)}" tabindex="0">${removeButtonMarkup}</span>`
+		: '';
+
+	return `<div class="participant-item">
+		${renderParticipantIdentity(tester, true)}
+		${removeButton}
+	</div>`;
+}
+
+function renderTesters(testers: PullRequestParticipant[], options?: TestersSectionOptions): string {
+	if (!testers.length) {
+		return '<div class="empty">None</div>';
+	}
+
+	return `<div class="participant-list">${testers.map((tester) => renderTesterRow(tester, options)).join('')}</div>`;
+}
+
 function renderLabels(labels: PullRequestLabel[]): string {
 	if (!labels.length) {
 		return '<div class="empty">None</div>';
@@ -827,6 +887,7 @@ export function getOverviewHtml(
 	activityHtml?: string,
 	permissions?: PullRequestOverviewPermissions,
 	reviewerOptions?: ReviewersSectionOptions,
+	testerOptions?: TestersSectionOptions,
 ): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
@@ -2156,8 +2217,11 @@ export function getOverviewHtml(
 					${renderParticipants(detail.assignees)}
 				</div>
 				<div class="meta-group">
-					<h3>Testers</h3>
-					${renderParticipants(detail.testers)}
+					<div class="section-heading-row">
+						<h3>Testers</h3>
+						${renderAddTesterButton(testerOptions)}
+					</div>
+					${renderTesters(detail.testers, testerOptions)}
 				</div>
 			</div>
 			<div class="card edit-section-wrapper">
@@ -3417,6 +3481,25 @@ export function getOverviewHtml(
 				});
 			});
 		});
+		document.querySelectorAll('[data-action="addTester"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				if (el.disabled || !hasOverviewPermission('canUpdateTesters')) {
+					return;
+				}
+				vscode.postMessage({ command: 'addTester' });
+			});
+		});
+		document.querySelectorAll('[data-action="removeTester"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				if (el.disabled || !hasOverviewPermission('canUpdateTesters')) {
+					return;
+				}
+				vscode.postMessage({
+					command: 'removeTester',
+					login: el.dataset.login,
+				});
+			});
+		});
 		document.querySelectorAll('[data-action="addRelatedIssue"]').forEach((el) => {
 			el.addEventListener('click', () => {
 				if (el.disabled || !hasOverviewPermission('canUpdateRelatedIssues')) {
@@ -3503,8 +3586,9 @@ export function getOverviewWithCommentsHtml(
 	activityHtml?: string,
 	permissions?: PullRequestOverviewPermissions,
 	reviewerOptions?: ReviewersSectionOptions,
+	testerOptions?: TestersSectionOptions,
 ): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(detail, snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions);
+	return getOverviewHtml(detail, nonce, renderConversationSection(detail, snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions);
 }
 
 export function getOverviewWithTimelineHtml(
@@ -3518,6 +3602,7 @@ export function getOverviewWithTimelineHtml(
 	activityError?: string,
 	permissions?: PullRequestOverviewPermissions,
 	reviewerOptions?: ReviewersSectionOptions,
+	testerOptions?: TestersSectionOptions,
 ): string {
 	return getOverviewHtml(
 		detail,
@@ -3529,15 +3614,16 @@ export function getOverviewWithTimelineHtml(
 		undefined,
 		permissions,
 		reviewerOptions,
+		testerOptions,
 	);
 }
 
-export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions): string {
-	return getOverviewHtml(detail, nonce, renderTimelineLoading(detail), relatedIssuesHtml, editOptions, false, activityHtml, permissions, reviewerOptions);
+export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions, testerOptions?: TestersSectionOptions): string {
+	return getOverviewHtml(detail, nonce, renderTimelineLoading(detail), relatedIssuesHtml, editOptions, false, activityHtml, permissions, reviewerOptions, testerOptions);
 }
 
-export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions): string {
-	return getOverviewHtml(detail, nonce, renderTimelineError(detail, errorMessage), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions);
+export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions, testerOptions?: TestersSectionOptions): string {
+	return getOverviewHtml(detail, nonce, renderTimelineError(detail, errorMessage), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions);
 }
 
 export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {

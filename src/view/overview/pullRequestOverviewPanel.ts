@@ -198,6 +198,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private addReviewerInProgress: boolean = false;
 	private removeReviewerInProgress: boolean = false;
 	private removingReviewerLogins: readonly string[] = [];
+	private testerMutationInProgress: boolean = false;
+	private addTesterInProgress: boolean = false;
+	private removeTesterInProgress: boolean = false;
+	private removingTesterLogins: readonly string[] = [];
 	private addRelatedIssueInProgress: boolean = false;
 	private removeRelatedIssueInProgress: boolean = false;
 	private removingRelatedIssueNumbers: readonly number[] = [];
@@ -209,6 +213,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		canEditComment: false,
 		canResolveComment: false,
 		canUpdateReviewers: false,
+		canUpdateTesters: false,
 		canUpdateRelatedIssues: false,
 	};
 
@@ -293,6 +298,19 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					return;
 				}
 				await this.handleRemoveReviewers([message.login]);
+				return;
+			}
+
+			if (message.command === 'addTester') {
+				await this.handleAddTesters();
+				return;
+			}
+
+			if (message.command === 'removeTester' && typeof message.login === 'string') {
+				if (!message.login.trim()) {
+					return;
+				}
+				await this.handleRemoveTesters([message.login]);
 				return;
 			}
 
@@ -396,7 +414,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Render detail with loading timeline and related issues.
 		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading(this.buildRelatedIssuesOptions());
-		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, undefined, this.permissions, this.buildReviewerOptions());
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, undefined, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions());
 
 		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
 		const commentsPromise = this.commentsStore.getOrFetch(
@@ -521,10 +539,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 			}
 
-			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions, this.buildReviewerOptions());
+			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions());
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions, this.buildReviewerOptions());
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions());
 		}
 	}
 
@@ -1160,6 +1178,227 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 	}
 
+	// ---- Testers ----
+
+	static async addTesterToCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before adding a tester.');
+			return false;
+		}
+
+		await activePanel.handleAddTesters();
+		return true;
+	}
+
+	static async removeTesterFromCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before removing a tester.');
+			return false;
+		}
+
+		await activePanel.handleRemoveTesters();
+		return true;
+	}
+
+	private async handleAddTesters(): Promise<void> {
+		if (this.testerMutationInProgress) {
+			return;
+		}
+
+		this.testerMutationInProgress = true;
+		await this.reloadOverviewHtml();
+
+		try {
+			if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
+				return;
+			}
+
+			const currentTesters = this.detail?.testers ?? [];
+			const currentLogins = currentTesters.map((tester) => tester.login);
+			const selectedLogins = await this.promptTesterLoginsToAdd(currentLogins);
+			if (!selectedLogins.length) {
+				return;
+			}
+
+			this.addTesterInProgress = true;
+			await this.reloadOverviewHtml();
+
+			try {
+				await this.store.addTesters(
+					this.context.repository,
+					this.context.pullRequestNumber,
+					selectedLogins,
+				);
+
+				if (PullRequestOverviewPanel.operationLogsStore) {
+					await PullRequestOverviewPanel.operationLogsStore.refresh(
+						this.context.repository.fullName,
+						this.context.pullRequestNumber,
+					);
+				}
+
+				const message = selectedLogins.length === 1
+					? `Tester added to pull request #${this.context.pullRequestNumber}`
+					: `Testers added to pull request #${this.context.pullRequestNumber}`;
+				void vscode.window.showInformationMessage(message);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Failed to add testers.';
+				this.logger.error(
+					`Failed to add testers to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+				);
+				void vscode.window.showErrorMessage(errorMessage);
+			} finally {
+				this.addTesterInProgress = false;
+			}
+
+			await this.load(true);
+		} finally {
+			this.testerMutationInProgress = false;
+			await this.reloadOverviewHtml();
+		}
+	}
+
+	private async promptTesterLoginsToAdd(currentLogins: readonly string[]): Promise<string[]> {
+		let testers: GitCodeUser[];
+		try {
+			testers = await this.store.listSelectableTesters(
+				this.context.repository,
+			);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to load testers.';
+			this.logger.error(
+				`Failed to list selectable testers for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+			);
+			void vscode.window.showErrorMessage(errorMessage);
+			return [];
+		}
+		const availableTesters = getAddableTesters(testers, currentLogins, this.detail?.author.login);
+
+		if (!availableTesters.length) {
+			await vscode.window.showInformationMessage('No additional testers are available for this pull request.');
+			return [];
+		}
+
+		const picked = await vscode.window.showQuickPick(
+			availableTesters.map(formatReviewerQuickPickItem),
+			{
+				title: `Select testers for PR #${this.context.pullRequestNumber}`,
+				placeHolder: 'Choose one or more testers to add',
+				canPickMany: true,
+			},
+		);
+
+		if (!picked?.length) {
+			return [];
+		}
+
+		return [...new Set(picked.map((item) => item.login).filter((login) => login.trim().length > 0))];
+	}
+
+	private async handleRemoveTesters(logins?: readonly string[]): Promise<void> {
+		if (this.testerMutationInProgress) {
+			return;
+		}
+
+		this.testerMutationInProgress = true;
+		await this.reloadOverviewHtml();
+
+		try {
+			if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
+				return;
+			}
+
+			const currentTesters = this.detail?.testers ?? [];
+			if (!currentTesters.length) {
+				await vscode.window.showInformationMessage('No testers to remove.');
+				return;
+			}
+
+			let selectedLogins: string[];
+			if (logins?.length) {
+				const currentLogins = new Set(currentTesters.map((tester) => tester.login));
+				selectedLogins = [...new Set(logins.map((login) => login.trim()))].filter((login) => currentLogins.has(login));
+				if (!selectedLogins.length) {
+					await vscode.window.showInformationMessage('Selected testers are no longer assigned to this pull request.');
+					return;
+				}
+			} else {
+				const picked = await vscode.window.showQuickPick(
+					currentTesters.map(formatReviewerQuickPickItem),
+					{
+						title: `Select testers to remove from PR #${this.context.pullRequestNumber}`,
+						placeHolder: 'Choose one or more testers to remove',
+						canPickMany: true,
+					},
+				);
+
+				if (!picked?.length) {
+					return;
+				}
+
+				selectedLogins = [...new Set(picked.map((item) => item.login).filter((login) => login.trim().length > 0))];
+			}
+
+			if (!selectedLogins.length) {
+				return;
+			}
+
+			const testerList = selectedLogins.map((login) => `@${login}`).join(', ');
+			const confirmMessage = selectedLogins.length === 1
+				? `Remove tester ${testerList} from PR #${this.context.pullRequestNumber}?`
+				: `Remove testers ${testerList} from PR #${this.context.pullRequestNumber}?`;
+			const choice = await vscode.window.showWarningMessage(
+				confirmMessage,
+				{ modal: true },
+				'Remove tester',
+			);
+
+			if (choice !== 'Remove tester') {
+				return;
+			}
+
+			this.removeTesterInProgress = true;
+			this.removingTesterLogins = selectedLogins;
+			await this.reloadOverviewHtml();
+
+			try {
+				await this.store.removeTesters(
+					this.context.repository,
+					this.context.pullRequestNumber,
+					selectedLogins,
+				);
+
+				if (PullRequestOverviewPanel.operationLogsStore) {
+					await PullRequestOverviewPanel.operationLogsStore.refresh(
+						this.context.repository.fullName,
+						this.context.pullRequestNumber,
+					);
+				}
+
+				const message = selectedLogins.length === 1
+					? `Tester removed from pull request #${this.context.pullRequestNumber}`
+					: `Testers removed from pull request #${this.context.pullRequestNumber}`;
+				void vscode.window.showInformationMessage(message);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Failed to remove testers.';
+				this.logger.error(
+					`Failed to remove testers from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+				);
+				void vscode.window.showErrorMessage(errorMessage);
+			} finally {
+				this.removeTesterInProgress = false;
+				this.removingTesterLogins = [];
+			}
+
+			await this.load(true);
+		} finally {
+			this.testerMutationInProgress = false;
+			await this.reloadOverviewHtml();
+		}
+	}
+
 	// ---- Add Related Issue ----
 
 	static async addRelatedIssueToCurrent(): Promise<boolean> {
@@ -1452,6 +1691,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				undefined,
 				this.permissions,
 				this.buildReviewerOptions(),
+				this.buildTesterOptions(),
 			);
 		} else {
 			this.panel.webview.html = getOverviewWithCommentsLoadingHtml(
@@ -1462,6 +1702,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				undefined,
 				this.permissions,
 				this.buildReviewerOptions(),
+				this.buildTesterOptions(),
 			);
 		}
 	}
@@ -1474,6 +1715,17 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			canRemoveReviewer: this.permissions.canUpdateReviewers,
 			removeReviewerInProgress: this.removeReviewerInProgress,
 			removingReviewerLogins: this.removingReviewerLogins,
+		};
+	}
+
+	private buildTesterOptions() {
+		return {
+			canAddTester: this.permissions.canUpdateTesters,
+			testerMutationInProgress: this.testerMutationInProgress,
+			addTesterInProgress: this.addTesterInProgress,
+			canRemoveTester: this.permissions.canUpdateTesters,
+			removeTesterInProgress: this.removeTesterInProgress,
+			removingTesterLogins: this.removingTesterLogins,
 		};
 	}
 
@@ -1494,6 +1746,19 @@ export function getAddableReviewers(
 ): GitCodeUser[] {
 	const assigned = new Set(currentLogins);
 	return reviewers.filter((reviewer) => reviewer.login && !assigned.has(reviewer.login));
+}
+
+export function getAddableTesters(
+	testers: readonly GitCodeUser[],
+	currentLogins: readonly string[],
+	authorLogin?: string,
+): GitCodeUser[] {
+	const excluded = new Set(currentLogins);
+	if (authorLogin) {
+		excluded.add(authorLogin);
+	}
+
+	return testers.filter((tester) => tester.login && !excluded.has(tester.login));
 }
 
 export function formatReviewerQuickPickItem(reviewer: GitCodeUser): ReviewerQuickPickItem {

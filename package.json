@@ -175,6 +175,14 @@
         "title": "GitCode: Remove Reviewer from Pull Request"
       },
       {
+        "command": "gitcode.pullRequest.addTester",
+        "title": "GitCode: Add Tester to Pull Request"
+      },
+      {
+        "command": "gitcode.pullRequest.removeTester",
+        "title": "GitCode: Remove Tester from Pull Request"
+      },
+      {
         "command": "gitcode.submitPullRequestDiffComment",
         "title": "Submit Pull Request Comment"
       },

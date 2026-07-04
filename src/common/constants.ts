@@ -31,6 +31,8 @@ export const COMMAND_ID = {
 	unresolveDiffComment: 'gitcode.unresolveDiffComment',
 	addPullRequestReviewer: 'gitcode.pullRequest.addReviewer',
 	removePullRequestReviewer: 'gitcode.pullRequest.removeReviewer',
+	addPullRequestTester: 'gitcode.pullRequest.addTester',
+	removePullRequestTester: 'gitcode.pullRequest.removeTester',
 	addRelatedIssue: 'gitcode.pullRequest.addRelatedIssue',
 	removeRelatedIssue: 'gitcode.pullRequest.removeRelatedIssue',
 };

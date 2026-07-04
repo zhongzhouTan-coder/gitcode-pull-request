@@ -20,6 +20,30 @@ function normalizeReviewerLogins(logins: readonly string[]): string[] {
 	return normalized;
 }
 
+function normalizeTesterLogins(logins: readonly string[]): string[] {
+	const normalized = [...new Set(logins.map((login) => login.trim()).filter((login) => login.length > 0))];
+	if (!normalized.length) {
+		throw new Error('At least one tester login is required.');
+	}
+
+	return normalized;
+}
+
+async function assignParticipants(
+	client: GitCodeDeleteClient,
+	path: string,
+	field: 'reviewers' | 'testers',
+	logins: readonly string[],
+): Promise<any[]> {
+	return client.post<any[]>(
+		path,
+		{
+			[field]: logins.join(','),
+			add: false,
+		},
+	);
+}
+
 export interface PullRequestFilters {
 	state?: 'open' | 'closed' | 'all';
 	perPage?: number;
@@ -135,12 +159,11 @@ export class PullRequestService {
 		logins: readonly string[],
 	): Promise<GitCodeUser[]> {
 		const reviewers = normalizeReviewerLogins(logins);
-		const response = await this.client.post<any[]>(
+		const response = await assignParticipants(
+			this.client,
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/reviewers`,
-			{
-				reviewers: reviewers.join(','),
-				add: true,
-			},
+			'reviewers',
+			reviewers,
 		);
 
 		if (!Array.isArray(response)) {
@@ -193,6 +216,52 @@ export class PullRequestService {
 		await this.client.delete(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/issues`,
 			issueNumbers,
+		);
+	}
+
+	async listSelectableTesters(repository: GitCodeRepository): Promise<GitCodeUser[]> {
+		const response = await this.client.get<any[]>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/option_testers`,
+		);
+
+		if (!Array.isArray(response)) {
+			return [];
+		}
+
+		return mapUsers(response);
+	}
+
+	async addTesters(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<GitCodeUser[]> {
+		const testers = normalizeTesterLogins(logins);
+		const response = await assignParticipants(
+			this.client,
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/testers`,
+			'testers',
+			testers,
+		);
+
+		if (!Array.isArray(response)) {
+			return [];
+		}
+
+		return mapUsers(response);
+	}
+
+	async removeTesters(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<void> {
+		const testers = normalizeTesterLogins(logins);
+		await this.client.delete(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/testers`,
+			{
+				testers: testers.join(','),
+			},
 		);
 	}
 }

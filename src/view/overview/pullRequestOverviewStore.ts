@@ -219,6 +219,51 @@ export class PullRequestOverviewStore {
 		});
 	}
 
+	async listSelectableTesters(repository: GitCodeRepository): Promise<GitCodeUser[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		return this.pullRequestService.listSelectableTesters(repository);
+	}
+
+	async addTesters(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<GitCodeUser[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const result = await this.pullRequestService.addTesters(repository, pullRequestNumber, logins);
+
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+
+		return result;
+	}
+
+	async removeTesters(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<void> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		await this.pullRequestService.removeTesters(repository, pullRequestNumber, logins);
+
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+	}
+
 	private getKey(repository: GitCodeRepository, pullRequestNumber: number): string {
 		return `${repository.fullName}#${pullRequestNumber}`;
 	}
