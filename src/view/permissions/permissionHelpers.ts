@@ -16,6 +16,7 @@ export function buildPullRequestOverviewPermissions(
 			canCreateComment: false,
 			canEditComment: false,
 			canResolveComment: false,
+			canUpdateReviewers: false,
 			canUpdateRelatedIssues: false,
 		};
 	}
@@ -27,6 +28,7 @@ export function buildPullRequestOverviewPermissions(
 		canCreateComment: snapshot.has('note', 'create'),
 		canEditComment: snapshot.has('note', 'create'), // note:update is not exposed by API
 		canResolveComment: snapshot.has('note', 'resolve'),
+		canUpdateReviewers: snapshot.has('pr', 'update'),
 		canUpdateRelatedIssues: snapshot.has('pr', 'update'),
 	};
 }
@@ -39,6 +41,7 @@ export function buildUnknownPullRequestOverviewPermissions(): PullRequestOvervie
 		canCreateComment: true,
 		canEditComment: true,
 		canResolveComment: true,
+		canUpdateReviewers: true,
 		canUpdateRelatedIssues: true,
 	};
 }

@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { ApiRequestError, NotSignedInError } from '../../common/errors';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
-import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, IssueSummary, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestOverviewPermissions, PullRequestRelatedIssuesSnapshot } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, GitCodeUser, IssueSummary, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestOverviewPermissions, PullRequestRelatedIssuesSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { PullRequestTreeStore } from '../state/pullRequestTreeStore';
 import { PullRequestDiffController } from '../diff/pullRequestDiffController';
@@ -26,6 +26,10 @@ interface PullRequestOverviewContext {
 export interface RelatedIssueQuickPickItem extends vscode.QuickPickItem {
 	issueNumber?: number;
 	manual?: boolean;
+}
+
+interface ReviewerQuickPickItem extends vscode.QuickPickItem {
+	login: string;
 }
 
 function createNonce(): string {
@@ -190,6 +194,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private relatedIssuesSnapshot?: PullRequestRelatedIssuesSnapshot;
 	private operationLogsSnapshot?: PullRequestOperationLogsSnapshot;
 	private editOptions?: EditPullRequestOptions;
+	private reviewerMutationInProgress: boolean = false;
+	private addReviewerInProgress: boolean = false;
+	private removeReviewerInProgress: boolean = false;
+	private removingReviewerLogins: readonly string[] = [];
 	private addRelatedIssueInProgress: boolean = false;
 	private removeRelatedIssueInProgress: boolean = false;
 	private removingRelatedIssueNumbers: readonly number[] = [];
@@ -200,6 +208,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		canCreateComment: false,
 		canEditComment: false,
 		canResolveComment: false,
+		canUpdateReviewers: false,
 		canUpdateRelatedIssues: false,
 	};
 
@@ -235,6 +244,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			state?: string;
 			discussionId?: string;
 			resolved?: boolean;
+			login?: string;
 			path?: string;
 			line?: number | string;
 		}) => {
@@ -270,6 +280,19 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'addRelatedIssue') {
 				await this.handleAddRelatedIssue();
+				return;
+			}
+
+			if (message.command === 'addReviewer') {
+				await this.handleAddReviewers();
+				return;
+			}
+
+			if (message.command === 'removeReviewer' && typeof message.login === 'string') {
+				if (!message.login.trim()) {
+					return;
+				}
+				await this.handleRemoveReviewers([message.login]);
 				return;
 			}
 
@@ -373,7 +396,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Render detail with loading timeline and related issues.
 		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading(this.buildRelatedIssuesOptions());
-		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, undefined, this.permissions);
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, undefined, this.permissions, this.buildReviewerOptions());
 
 		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
 		const commentsPromise = this.commentsStore.getOrFetch(
@@ -498,10 +521,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 			}
 
-			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions);
+			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions, this.buildReviewerOptions());
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions);
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions, this.buildReviewerOptions());
 		}
 	}
 
@@ -915,6 +938,228 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 	}
 
+	// ---- Reviewers ----
+
+	static async addReviewerToCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before adding a reviewer.');
+			return false;
+		}
+
+		await activePanel.handleAddReviewers();
+		return true;
+	}
+
+	static async removeReviewerFromCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before removing a reviewer.');
+			return false;
+		}
+
+		await activePanel.handleRemoveReviewers();
+		return true;
+	}
+
+	private async handleAddReviewers(): Promise<void> {
+		if (this.reviewerMutationInProgress) {
+			return;
+		}
+
+		this.reviewerMutationInProgress = true;
+		await this.reloadOverviewHtml();
+
+		try {
+			if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
+				return;
+			}
+
+			const currentReviewers = this.detail?.reviewers ?? [];
+			const currentLogins = currentReviewers.map((reviewer) => reviewer.login);
+			const selectedLogins = await this.promptReviewerLoginsToAdd(currentLogins);
+			if (!selectedLogins.length) {
+				return;
+			}
+
+			this.addReviewerInProgress = true;
+			await this.reloadOverviewHtml();
+
+			try {
+				await this.store.addReviewers(
+					this.context.repository,
+					this.context.pullRequestNumber,
+					selectedLogins,
+				);
+
+				if (PullRequestOverviewPanel.operationLogsStore) {
+					await PullRequestOverviewPanel.operationLogsStore.refresh(
+						this.context.repository.fullName,
+						this.context.pullRequestNumber,
+					);
+				}
+
+				const message = selectedLogins.length === 1
+					? `Reviewer added to pull request #${this.context.pullRequestNumber}`
+					: `Reviewers added to pull request #${this.context.pullRequestNumber}`;
+				void vscode.window.showInformationMessage(message);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Failed to add reviewers.';
+				this.logger.error(
+					`Failed to add reviewers to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+				);
+				void vscode.window.showErrorMessage(errorMessage);
+			} finally {
+				this.addReviewerInProgress = false;
+			}
+
+			await this.load(true);
+		} finally {
+			this.reviewerMutationInProgress = false;
+			await this.reloadOverviewHtml();
+		}
+	}
+
+	private async promptReviewerLoginsToAdd(currentLogins: readonly string[]): Promise<string[]> {
+		let reviewers: GitCodeUser[];
+		try {
+			reviewers = await this.store.listSelectableReviewers(
+				this.context.repository,
+				this.context.pullRequestNumber,
+			);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to load reviewers.';
+			this.logger.error(
+				`Failed to list selectable reviewers for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+			);
+			void vscode.window.showErrorMessage(errorMessage);
+			return [];
+		}
+		const availableReviewers = getAddableReviewers(reviewers, currentLogins);
+
+		if (!availableReviewers.length) {
+			await vscode.window.showInformationMessage('No additional reviewers are available for this pull request.');
+			return [];
+		}
+
+		const picked = await vscode.window.showQuickPick(
+			availableReviewers.map(formatReviewerQuickPickItem),
+			{
+				title: `Select reviewers for PR #${this.context.pullRequestNumber}`,
+				placeHolder: 'Choose one or more reviewers to add',
+				canPickMany: true,
+			},
+		);
+
+		if (!picked?.length) {
+			return [];
+		}
+
+		return [...new Set(picked.map((item) => item.login).filter((login) => login.trim().length > 0))];
+	}
+
+	private async handleRemoveReviewers(logins?: readonly string[]): Promise<void> {
+		if (this.reviewerMutationInProgress) {
+			return;
+		}
+
+		this.reviewerMutationInProgress = true;
+		await this.reloadOverviewHtml();
+
+		try {
+			if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
+				return;
+			}
+
+			const currentReviewers = this.detail?.reviewers ?? [];
+			if (!currentReviewers.length) {
+				await vscode.window.showInformationMessage('No reviewers to remove.');
+				return;
+			}
+
+			let selectedLogins: string[];
+			if (logins?.length) {
+				const currentLogins = new Set(currentReviewers.map((reviewer) => reviewer.login));
+				selectedLogins = [...new Set(logins.map((login) => login.trim()))].filter((login) => currentLogins.has(login));
+				if (!selectedLogins.length) {
+					await vscode.window.showInformationMessage('Selected reviewers are no longer assigned to this pull request.');
+					return;
+				}
+			} else {
+				const picked = await vscode.window.showQuickPick(
+					currentReviewers.map(formatReviewerQuickPickItem),
+					{
+						title: `Select reviewers to remove from PR #${this.context.pullRequestNumber}`,
+						placeHolder: 'Choose one or more reviewers to remove',
+						canPickMany: true,
+					},
+				);
+
+				if (!picked?.length) {
+					return;
+				}
+
+				selectedLogins = [...new Set(picked.map((item) => item.login).filter((login) => login.trim().length > 0))];
+			}
+
+			if (!selectedLogins.length) {
+				return;
+			}
+
+			const reviewerList = selectedLogins.map((login) => `@${login}`).join(', ');
+			const confirmMessage = selectedLogins.length === 1
+				? `Remove reviewer ${reviewerList} from PR #${this.context.pullRequestNumber}?`
+				: `Remove reviewers ${reviewerList} from PR #${this.context.pullRequestNumber}?`;
+			const choice = await vscode.window.showWarningMessage(
+				confirmMessage,
+				{ modal: true },
+				'Remove reviewer',
+			);
+
+			if (choice !== 'Remove reviewer') {
+				return;
+			}
+
+			this.removeReviewerInProgress = true;
+			this.removingReviewerLogins = selectedLogins;
+			await this.reloadOverviewHtml();
+
+			try {
+				await this.store.removeReviewers(
+					this.context.repository,
+					this.context.pullRequestNumber,
+					selectedLogins,
+				);
+
+				if (PullRequestOverviewPanel.operationLogsStore) {
+					await PullRequestOverviewPanel.operationLogsStore.refresh(
+						this.context.repository.fullName,
+						this.context.pullRequestNumber,
+					);
+				}
+
+				const message = selectedLogins.length === 1
+					? `Reviewer removed from pull request #${this.context.pullRequestNumber}`
+					: `Reviewers removed from pull request #${this.context.pullRequestNumber}`;
+				void vscode.window.showInformationMessage(message);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Failed to remove reviewers.';
+				this.logger.error(
+					`Failed to remove reviewers from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+				);
+				void vscode.window.showErrorMessage(errorMessage);
+			} finally {
+				this.removeReviewerInProgress = false;
+				this.removingReviewerLogins = [];
+			}
+
+			await this.load(true);
+		} finally {
+			this.reviewerMutationInProgress = false;
+			await this.reloadOverviewHtml();
+		}
+	}
+
 	// ---- Add Related Issue ----
 
 	static async addRelatedIssueToCurrent(): Promise<boolean> {
@@ -1206,6 +1451,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.operationLogsSnapshot,
 				undefined,
 				this.permissions,
+				this.buildReviewerOptions(),
 			);
 		} else {
 			this.panel.webview.html = getOverviewWithCommentsLoadingHtml(
@@ -1215,8 +1461,20 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				undefined,
 				undefined,
 				this.permissions,
+				this.buildReviewerOptions(),
 			);
 		}
+	}
+
+	private buildReviewerOptions() {
+		return {
+			canAddReviewer: this.permissions.canUpdateReviewers,
+			reviewerMutationInProgress: this.reviewerMutationInProgress,
+			addReviewerInProgress: this.addReviewerInProgress,
+			canRemoveReviewer: this.permissions.canUpdateReviewers,
+			removeReviewerInProgress: this.removeReviewerInProgress,
+			removingReviewerLogins: this.removingReviewerLogins,
+		};
 	}
 
 	private buildRelatedIssuesOptions() {
@@ -1228,6 +1486,26 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			removingRelatedIssueNumbers: this.removingRelatedIssueNumbers,
 		};
 	}
+}
+
+export function getAddableReviewers(
+	reviewers: readonly GitCodeUser[],
+	currentLogins: readonly string[],
+): GitCodeUser[] {
+	const assigned = new Set(currentLogins);
+	return reviewers.filter((reviewer) => reviewer.login && !assigned.has(reviewer.login));
+}
+
+export function formatReviewerQuickPickItem(reviewer: GitCodeUser): ReviewerQuickPickItem {
+	const displayName = reviewer.name && reviewer.name !== reviewer.login
+		? reviewer.name
+		: undefined;
+	return {
+		label: `@${reviewer.login}`,
+		description: displayName,
+		detail: reviewer.htmlUrl,
+		login: reviewer.login,
+	};
 }
 
 export function validateIssueNumberInput(value: string, linkedNumbers: readonly number[]): string | null {

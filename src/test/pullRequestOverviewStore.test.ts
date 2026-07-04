@@ -139,6 +139,109 @@ suite('PullRequestOverviewStore', () => {
 		assert.strictEqual(refreshed.title, 'After edit');
 	});
 
+	test('listSelectableReviewers requires authentication', async () => {
+		const authService = {
+			getSession: async () => null,
+		} as unknown as AuthService;
+		const pullRequestService = {} as PullRequestService;
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+
+		await assert.rejects(
+			() => store.listSelectableReviewers(repository, 2),
+			/Sign in to GitCode/,
+		);
+	});
+
+	test('listSelectableReviewers proxies the selectable reviewer API', async () => {
+		let calls = 0;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {
+			listSelectableReviewers: async () => {
+				calls += 1;
+				return [{ login: 'carol', name: 'Carol' }];
+			},
+		} as unknown as PullRequestService;
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+
+		const reviewers = await store.listSelectableReviewers(repository, 2);
+
+		assert.strictEqual(calls, 1);
+		assert.deepStrictEqual(reviewers.map((reviewer) => reviewer.login), ['carol']);
+	});
+
+	test('addReviewers invalidates cached detail for the pull request', async () => {
+		let getCalls = 0;
+		let addCalls = 0;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {
+			getPullRequest: async () => {
+				getCalls += 1;
+				return {
+					...detail,
+					reviewers: getCalls === 1 ? [] : [{ login: 'carol', name: 'Carol' }],
+				};
+			},
+			addReviewers: async () => {
+				addCalls += 1;
+				return [{ login: 'carol', name: 'Carol' }];
+			},
+		} as unknown as PullRequestService;
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+
+		await store.getDetail(repository, 2);
+		await store.addReviewers(repository, 2, ['carol']);
+		const refreshed = await store.getDetail(repository, 2);
+
+		assert.strictEqual(addCalls, 1);
+		assert.strictEqual(getCalls, 2);
+		assert.deepStrictEqual(refreshed.reviewers.map((reviewer) => reviewer.login), ['carol']);
+	});
+
+	test('removeReviewers invalidates cached detail for the pull request', async () => {
+		let getCalls = 0;
+		let removeCalls = 0;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {
+			getPullRequest: async () => {
+				getCalls += 1;
+				return {
+					...detail,
+					reviewers: getCalls === 1 ? [{ login: 'carol', name: 'Carol' }] : [],
+				};
+			},
+			removeReviewers: async () => {
+				removeCalls += 1;
+			},
+		} as unknown as PullRequestService;
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+
+		await store.getDetail(repository, 2);
+		await store.removeReviewers(repository, 2, ['carol']);
+		const refreshed = await store.getDetail(repository, 2);
+
+		assert.strictEqual(removeCalls, 1);
+		assert.strictEqual(getCalls, 2);
+		assert.deepStrictEqual(refreshed.reviewers, []);
+	});
+
 	// ---- Add Related Issues ----
 
 	test('addRelatedIssues requires authentication', async () => {

@@ -679,6 +679,89 @@ suite('OverviewHtml', () => {
 		assert.match(html, /if \(el\.disabled \|\| !hasOverviewPermission\('canUpdateRelatedIssues'\)\)/);
 	});
 
+	test('renders reviewer add and remove actions when reviewer options are enabled', () => {
+		const html = getOverviewHtml(
+			{
+				...detail,
+				reviewers: [{ login: 'carol', name: 'Carol', htmlUrl: 'https://gitcode.com/carol' }],
+			},
+			'nonce',
+			undefined,
+			undefined,
+			undefined,
+			true,
+			undefined,
+			undefined,
+			{
+				canAddReviewer: true,
+				canRemoveReviewer: true,
+			},
+		);
+
+		assert.match(html, /data-action="addReviewer"/);
+		assert.match(html, /aria-label="Add reviewer"/);
+		assert.match(html, /data-action="removeReviewer"/);
+		assert.match(html, /data-login="carol"/);
+		assert.match(html, /command: 'addReviewer'/);
+		assert.match(html, /command: 'removeReviewer'/);
+	});
+
+	test('renders reviewer permission tooltip when reviewer updates are disabled', () => {
+		const html = getOverviewHtml(
+			{
+				...detail,
+				reviewers: [{ login: 'carol', name: 'Carol' }],
+			},
+			'nonce',
+			undefined,
+			undefined,
+			undefined,
+			true,
+			undefined,
+			undefined,
+			{
+				canAddReviewer: false,
+				canRemoveReviewer: false,
+			},
+		);
+
+		assert.match(html, /data-tooltip="You do not have permission to update reviewers\."/);
+		assert.match(html, /data-action="addReviewer"/);
+		assert.match(html, /data-action="removeReviewer"/);
+		assert.match(html, /disabled/);
+	});
+
+	test('disables reviewer actions while a reviewer mutation is locked', () => {
+		const html = getOverviewHtml(
+			{
+				...detail,
+				reviewers: [{ login: 'carol', name: 'Carol', htmlUrl: 'https://gitcode.com/carol' }],
+			},
+			'nonce',
+			undefined,
+			undefined,
+			undefined,
+			true,
+			undefined,
+			undefined,
+			{
+				canAddReviewer: true,
+				canRemoveReviewer: true,
+				reviewerMutationInProgress: true,
+			},
+		);
+
+		assert.match(html, /class="icon-button add-reviewer-btn"[^>]*disabled/);
+		assert.match(html, /class="icon-button remove-reviewer-btn"[^>]*disabled/);
+		assert.doesNotMatch(html, /class="spinner"/);
+	});
+
+	test('guards reviewer action handlers without reviewer permission', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+
+		assert.match(html, /if \(el\.disabled \|\| !hasOverviewPermission\('canUpdateReviewers'\)\)/);
+	});
+
 	test('keeps reply controls disabled without comment permission', () => {
 		const html = getOverviewHtml(detail, 'nonce');
 

@@ -167,6 +167,14 @@
         "icon": "$(edit)"
       },
       {
+        "command": "gitcode.pullRequest.addReviewer",
+        "title": "GitCode: Add Reviewer to Pull Request"
+      },
+      {
+        "command": "gitcode.pullRequest.removeReviewer",
+        "title": "GitCode: Remove Reviewer from Pull Request"
+      },
+      {
         "command": "gitcode.submitPullRequestDiffComment",
         "title": "Submit Pull Request Comment"
       },

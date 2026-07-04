@@ -1,4 +1,4 @@
-import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestOperationLog, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
+import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, GitCodeUser, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestOperationLog, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
 import { GitCodeDeleteClient } from '../client/gitcodeClient';
 import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
@@ -7,8 +7,18 @@ import { mapPullRequestOperationLogs } from '../mappers/pullRequestOperationLogM
 import { mapCreatePullRequestInput, mapCreatedPullRequest, mapEditPullRequestInput, mapPullRequest } from '../mappers/pullRequestMapper';
 import { mapPullRequestRelatedIssues } from '../mappers/pullRequestRelatedIssueMapper';
 import { mapAddedPullRequestRelatedIssues } from '../mappers/addedPullRequestRelatedIssueMapper';
+import { mapUsers } from '../mappers/userMapper';
 import { AddedPullRequestRelatedIssue } from '../../common/models';
 import { listPagedRecords, pageQuery } from './pagination';
+
+function normalizeReviewerLogins(logins: readonly string[]): string[] {
+	const normalized = [...new Set(logins.map((login) => login.trim()).filter((login) => login.length > 0))];
+	if (!normalized.length) {
+		throw new Error('At least one reviewer login is required.');
+	}
+
+	return normalized;
+}
 
 export interface PullRequestFilters {
 	state?: 'open' | 'closed' | 'all';
@@ -105,6 +115,53 @@ export class PullRequestService {
 		);
 
 		return mapPullRequestOperationLogs(response);
+	}
+
+	async listSelectableReviewers(repository: GitCodeRepository, pullRequestNumber: number): Promise<GitCodeUser[]> {
+		const response = await this.client.get<any[]>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/option_reviewers`,
+		);
+
+		if (!Array.isArray(response)) {
+			return [];
+		}
+
+		return mapUsers(response);
+	}
+
+	async addReviewers(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<GitCodeUser[]> {
+		const reviewers = normalizeReviewerLogins(logins);
+		const response = await this.client.post<any[]>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/reviewers`,
+			{
+				reviewers: reviewers.join(','),
+				add: true,
+			},
+		);
+
+		if (!Array.isArray(response)) {
+			return [];
+		}
+
+		return mapUsers(response);
+	}
+
+	async removeReviewers(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<void> {
+		const reviewers = normalizeReviewerLogins(logins);
+		await this.client.delete(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/reviewers`,
+			{
+				reviewers: reviewers.join(','),
+			},
+		);
 	}
 
 	async addRelatedIssues(

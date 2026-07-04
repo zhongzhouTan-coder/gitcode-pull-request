@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { IssueSummary, PullRequestDetail } from '../common/models';
-import { isTrustedGitCodeUrl, validatePullRequestCommentBody, validatePullRequestStateChange, validateIssueNumberInput, parseIssueNumbers, getLinkableIssues, formatRelatedIssueQuickPickItem } from '../view/overview/pullRequestOverviewPanel';
+import { isTrustedGitCodeUrl, validatePullRequestCommentBody, validatePullRequestStateChange, validateIssueNumberInput, parseIssueNumbers, getLinkableIssues, formatRelatedIssueQuickPickItem, getAddableReviewers, formatReviewerQuickPickItem } from '../view/overview/pullRequestOverviewPanel';
 
 suite('PullRequestOverviewPanel', () => {
 	const issue = (number: number, title = `Issue ${number}`): IssueSummary => ({
@@ -138,5 +138,27 @@ suite('PullRequestOverviewPanel', () => {
 		assert.strictEqual(item.description, 'Open | @alice | Bug | TODO');
 		assert.strictEqual(item.detail, 'documentation');
 		assert.strictEqual(item.issueNumber, 339);
+	});
+
+	test('getAddableReviewers filters reviewers already assigned to the pull request', () => {
+		const reviewers = getAddableReviewers([
+			{ login: 'alice', name: 'Alice' },
+			{ login: 'bob', name: 'Bob' },
+		], ['alice']);
+
+		assert.deepStrictEqual(reviewers.map((reviewer) => reviewer.login), ['bob']);
+	});
+
+	test('formatReviewerQuickPickItem includes reviewer profile metadata', () => {
+		const item = formatReviewerQuickPickItem({
+			login: 'alice',
+			name: 'Alice',
+			htmlUrl: 'https://gitcode.com/alice',
+		});
+
+		assert.strictEqual(item.label, '@alice');
+		assert.strictEqual(item.description, 'Alice');
+		assert.strictEqual(item.detail, 'https://gitcode.com/alice');
+		assert.strictEqual(item.login, 'alice');
 	});
 });

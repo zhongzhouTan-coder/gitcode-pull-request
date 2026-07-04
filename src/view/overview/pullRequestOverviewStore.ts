@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, PullRequestDetail, PullRequestRelatedIssue, AddedPullRequestRelatedIssue, IssueSummary } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, GitCodeUser, PullRequestDetail, PullRequestRelatedIssue, AddedPullRequestRelatedIssue, IssueSummary } from '../../common/models';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { IssueService } from '../../gitcode/services/issueService';
@@ -109,6 +109,51 @@ export class PullRequestOverviewStore {
 		this.onDidChangeEmitter.fire();
 
 		return result;
+	}
+
+	async listSelectableReviewers(repository: GitCodeRepository, pullRequestNumber: number): Promise<GitCodeUser[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		return this.pullRequestService.listSelectableReviewers(repository, pullRequestNumber);
+	}
+
+	async addReviewers(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<GitCodeUser[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const result = await this.pullRequestService.addReviewers(repository, pullRequestNumber, logins);
+
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+
+		return result;
+	}
+
+	async removeReviewers(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<void> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		await this.pullRequestService.removeReviewers(repository, pullRequestNumber, logins);
+
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
 	}
 
 	async refresh(repository: GitCodeRepository, pullRequestNumber: number): Promise<void> {
