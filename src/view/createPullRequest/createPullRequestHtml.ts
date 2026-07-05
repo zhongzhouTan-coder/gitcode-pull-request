@@ -567,7 +567,7 @@ export function getCreatePullRequestHtml(): string {
 			</div>
 			<div class="row">
 				<div class="form-group">
-					<label for="assignees">Assignees</label>
+					<label for="assignees">Approvers</label>
 					<div class="multi-picker">
 						<input type="text" id="assignees" autocomplete="off" placeholder="Search members...">
 						<div id="assignee-options" class="option-list"></div>

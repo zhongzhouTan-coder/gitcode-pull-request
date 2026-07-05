@@ -1447,7 +1447,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	static async addAssigneeToCurrent(): Promise<boolean> {
 		const activePanel = PullRequestOverviewPanel.activePanel;
 		if (!activePanel) {
-			await vscode.window.showInformationMessage('Open a pull request before adding an assignee.');
+			await vscode.window.showInformationMessage('Open a pull request before adding an approver.');
 			return false;
 		}
 
@@ -1458,7 +1458,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	static async removeAssigneeFromCurrent(): Promise<boolean> {
 		const activePanel = PullRequestOverviewPanel.activePanel;
 		if (!activePanel) {
-			await vscode.window.showInformationMessage('Open a pull request before removing an assignee.');
+			await vscode.window.showInformationMessage('Open a pull request before removing an approver.');
 			return false;
 		}
 
@@ -1516,11 +1516,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 
 				const message = selectedLogins.length === 1
-					? `Assignee added to pull request #${this.context.pullRequestNumber}`
-					: `Assignees added to pull request #${this.context.pullRequestNumber}`;
+					? `Approver added to pull request #${this.context.pullRequestNumber}`
+					: `Approvers added to pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to add assignees.';
+				const errorMessage = error instanceof Error ? error.message : 'Failed to add approvers.';
 				this.logger.error(
 					`Failed to add assignees to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);
@@ -1542,7 +1542,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.detail = detail;
 			return detail;
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to load current assignees.';
+			const errorMessage = error instanceof Error ? error.message : 'Failed to load current approvers.';
 			this.logger.error(
 				`Failed to refresh pull request detail for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
@@ -1558,7 +1558,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.context.repository,
 			);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to load assignees.';
+			const errorMessage = error instanceof Error ? error.message : 'Failed to load approvers.';
 			this.logger.error(
 				`Failed to list selectable assignees for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
@@ -1568,15 +1568,15 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		const availableAssignees = getAddableAssignees(assignees, currentLogins, authorLogin);
 
 		if (!availableAssignees.length) {
-			await vscode.window.showInformationMessage('No additional assignees are available for this pull request.');
+			await vscode.window.showInformationMessage('No additional approvers are available for this pull request.');
 			return [];
 		}
 
 		const picked = await vscode.window.showQuickPick(
 			availableAssignees.map(formatReviewerQuickPickItem),
 			{
-				title: `Select assignees for PR #${this.context.pullRequestNumber}`,
-				placeHolder: 'Choose one or more assignees to add',
+				title: `Select approvers for PR #${this.context.pullRequestNumber}`,
+				placeHolder: 'Choose one or more approvers to add',
 				canPickMany: true,
 			},
 		);
@@ -1603,7 +1603,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			const currentAssignees = this.detail?.assignees ?? [];
 			if (!currentAssignees.length) {
-				await vscode.window.showInformationMessage('No assignees to remove.');
+				await vscode.window.showInformationMessage('No approvers to remove.');
 				return;
 			}
 
@@ -1612,15 +1612,15 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				const currentLogins = new Set(currentAssignees.map((assignee) => assignee.login));
 				selectedLogins = [...new Set(logins.map((login) => login.trim()))].filter((login) => currentLogins.has(login));
 				if (!selectedLogins.length) {
-					await vscode.window.showInformationMessage('Selected assignees are no longer assigned to this pull request.');
+					await vscode.window.showInformationMessage('Selected approvers are no longer assigned to this pull request.');
 					return;
 				}
 			} else {
 				const picked = await vscode.window.showQuickPick(
 					currentAssignees.map(formatReviewerQuickPickItem),
 					{
-						title: `Select assignees to remove from PR #${this.context.pullRequestNumber}`,
-						placeHolder: 'Choose one or more assignees to remove',
+						title: `Select approvers to remove from PR #${this.context.pullRequestNumber}`,
+						placeHolder: 'Choose one or more approvers to remove',
 						canPickMany: true,
 					},
 				);
@@ -1638,15 +1638,15 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			const assigneeList = selectedLogins.map((login) => `@${login}`).join(', ');
 			const confirmMessage = selectedLogins.length === 1
-				? `Remove assignee ${assigneeList} from PR #${this.context.pullRequestNumber}?`
-				: `Remove assignees ${assigneeList} from PR #${this.context.pullRequestNumber}?`;
+				? `Remove approver ${assigneeList} from PR #${this.context.pullRequestNumber}?`
+				: `Remove approvers ${assigneeList} from PR #${this.context.pullRequestNumber}?`;
 			const choice = await vscode.window.showWarningMessage(
 				confirmMessage,
 				{ modal: true },
-				'Remove assignee',
+				'Remove approver',
 			);
 
-			if (choice !== 'Remove assignee') {
+			if (choice !== 'Remove approver') {
 				return;
 			}
 
@@ -1669,11 +1669,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 
 				const message = selectedLogins.length === 1
-					? `Assignee removed from pull request #${this.context.pullRequestNumber}`
-					: `Assignees removed from pull request #${this.context.pullRequestNumber}`;
+					? `Approver removed from pull request #${this.context.pullRequestNumber}`
+					: `Approvers removed from pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to remove assignees.';
+				const errorMessage = error instanceof Error ? error.message : 'Failed to remove approvers.';
 				this.logger.error(
 					`Failed to remove assignees from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);

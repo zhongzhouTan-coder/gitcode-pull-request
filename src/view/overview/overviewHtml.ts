@@ -256,8 +256,8 @@ function renderAddAssigneeButton(options?: AssigneesSectionOptions): string {
 
 	const disabled = !options.canAddAssignee || options.assigneeMutationInProgress || options.addAssigneeInProgress || options.removeAssigneeInProgress ? 'disabled' : '';
 	const title = options.canAddAssignee
-		? 'Add assignee'
-		: 'You do not have permission to update assignees.';
+		? 'Add approver'
+		: 'You do not have permission to update approvers.';
 	const loadingIndicator = options.addAssigneeInProgress
 		? '<span class="spinner" aria-hidden="true"></span>'
 		: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M7.25 2.5h1.5v4.75h4.75v1.5H8.75v4.75h-1.5V8.75H2.5v-1.5h4.75V2.5Z"/></svg>';
@@ -273,8 +273,8 @@ function renderAssigneeRow(assignee: PullRequestParticipant, options?: Assignees
 	const canRemoveAssignee = options?.canRemoveAssignee ?? false;
 	const isRemoving = Boolean(options?.removeAssigneeInProgress && options.removingAssigneeLogins?.includes(assignee.login));
 	const title = canRemoveAssignee
-		? 'Remove assignee'
-		: 'You do not have permission to update assignees.';
+		? 'Remove approver'
+		: 'You do not have permission to update approvers.';
 	const titleAttr = canRemoveAssignee ? ` title="${escapeAttr(title)}"` : '';
 	const disabled = !canRemoveAssignee || options?.assigneeMutationInProgress || options?.addAssigneeInProgress || options?.removeAssigneeInProgress ? 'disabled' : '';
 	const removeButtonMarkup = `<button class="icon-button remove-assignee-btn" data-action="removeAssignee" data-login="${escapeAttr(assignee.login)}" aria-label="${escapeAttr(title)}"${titleAttr} ${disabled}>${isRemoving ? '<span class="spinner" aria-hidden="true"></span>' : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 7.25h10v1.5H3v-1.5Z"/></svg>'}</button>`;
@@ -2275,7 +2275,7 @@ export function getOverviewHtml(
 				</div>
 				<div class="meta-group">
 					<div class="section-heading-row">
-						<h3>Assignees</h3>
+						<h3>Approvers</h3>
 						${renderAddAssigneeButton(assigneeOptions)}
 					</div>
 					${renderAssignees(detail.assignees, assigneeOptions)}

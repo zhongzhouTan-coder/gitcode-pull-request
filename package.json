@@ -184,11 +184,11 @@
       },
       {
         "command": "gitcode.pullRequest.addAssignee",
-        "title": "GitCode: Add Assignee to Pull Request"
+        "title": "GitCode: Add Approver to Pull Request"
       },
       {
         "command": "gitcode.pullRequest.removeAssignee",
-        "title": "GitCode: Remove Assignee from Pull Request"
+        "title": "GitCode: Remove Approver from Pull Request"
       },
       {
         "command": "gitcode.submitPullRequestDiffComment",

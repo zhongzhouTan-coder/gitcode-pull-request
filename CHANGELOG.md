@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Changed
 
+- Renamed pull request assignee display copy to approver across the pull
+  request create flow, overview UI, and command titles, while leaving issue
+  assignee display unchanged.
 - Refreshed repository permission snapshots on pull request tree refresh and
   before opening the create pull request flow.
 - Updated create pull request permission checks to use the current source
