@@ -24,6 +24,7 @@ function createProvider(): CreatePullRequestViewProvider {
 		vscode.Uri.file('/tmp/gitcode-test'),
 		{} as any,
 		{} as any,
+		{ getSession: async () => ({ accountName: 'alice' }) } as any,
 		{ onCreateSuccess: () => undefined },
 		{} as any,
 		{ error: () => undefined } as any,

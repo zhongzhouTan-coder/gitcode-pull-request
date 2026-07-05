@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { AuthService } from '../../authentication/authService';
 import { CreatePullRequestInput, CreatePullRequestInitialIssueContext, CreatePullRequestPermissions, GitCodeRepository } from '../../common/models';
 import { Logger } from '../../common/logger';
 import { GitRepository } from '../../common/git/gitTypes';
@@ -49,6 +50,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		private readonly extensionUri: vscode.Uri,
 		private readonly repositoryService: RepositoryService,
 		private readonly pullRequestService: PullRequestService,
+		private readonly authService: AuthService,
 		private readonly callbacks: CreatePullRequestViewCallbacks,
 		private readonly permissionStore: PermissionStore,
 		private readonly logger: Logger,
@@ -108,9 +110,11 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		this.postMessage({ command: 'loading' });
 
 		// Create a fresh data model for this session
+		const currentUserLogin = (await this.authService.getSession())?.accountName;
 		this.dataModel = new CreatePullRequestDataModel(
 			this.repositoryService,
 			this.pullRequestService,
+			currentUserLogin,
 		);
 
 		const defaults = await this.dataModel.initialize(repositories, repository, sourceBranch, issueContext);

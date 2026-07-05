@@ -26,7 +26,7 @@ const upstreamRepository: GitCodeRepository = {
 	webUrl: 'https://gitcode.com/upstream/repo',
 };
 
-function createModel(): CreatePullRequestDataModel {
+function createModel(currentUserLogin?: string): CreatePullRequestDataModel {
 	const repositoryService = {
 		getRepository: async (_repo: GitCodeRepository) => ({
 			id: 1,
@@ -68,6 +68,7 @@ function createModel(): CreatePullRequestDataModel {
 	return new CreatePullRequestDataModel(
 		repositoryService as any,
 		pullRequestService as any,
+		currentUserLogin,
 	);
 }
 
@@ -133,6 +134,15 @@ suite('CreatePullRequestDataModel', () => {
 
 		assert.deepStrictEqual(model.listMembers('ali').map((member) => member.login), ['alice']);
 		assert.deepStrictEqual(model.listMembers('bo').map((member) => member.login), ['bob']);
+	});
+
+	test('excludes the signed-in user from assignee and tester selections', async () => {
+		const model = createModel('ALICE');
+		const defaults = await model.initialize(repository, 'feature');
+
+		assert.deepStrictEqual(defaults.members.map((member) => member.login), ['bob']);
+		assert.deepStrictEqual(model.members.map((member) => member.login), ['bob']);
+		assert.deepStrictEqual(model.listMembers().map((member) => member.login), ['bob']);
 	});
 
 	test('prefills title and body when issue context is provided', async () => {

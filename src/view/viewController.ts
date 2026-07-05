@@ -190,6 +190,7 @@ export class ViewController implements vscode.Disposable {
 			options.context.extensionUri,
 			repositoryService,
 			options.pullRequestService,
+			options.authService,
 			{
 				onCreateSuccess: (repo, prNumber) => this.createPullRequestHelper.handleCreateSuccess(repo, prNumber),
 			},

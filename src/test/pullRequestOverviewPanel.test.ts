@@ -140,13 +140,14 @@ suite('PullRequestOverviewPanel', () => {
 		assert.strictEqual(item.issueNumber, 339);
 	});
 
-	test('getAddableReviewers filters reviewers already assigned to the pull request', () => {
+	test('getAddableReviewers filters reviewers already assigned to the pull request and the pull request author', () => {
 		const reviewers = getAddableReviewers([
-			{ login: 'alice', name: 'Alice' },
+			{ login: 'Alice', name: 'Alice' },
 			{ login: 'bob', name: 'Bob' },
-		], ['alice']);
+			{ login: 'carol', name: 'Carol' },
+		], ['bob'], 'alice');
 
-		assert.deepStrictEqual(reviewers.map((reviewer) => reviewer.login), ['bob']);
+		assert.deepStrictEqual(reviewers.map((reviewer) => reviewer.login), ['carol']);
 	});
 
 	test('getAddableTesters filters the pull request author and already assigned testers', () => {

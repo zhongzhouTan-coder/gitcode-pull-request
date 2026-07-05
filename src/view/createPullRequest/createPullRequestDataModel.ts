@@ -63,6 +63,7 @@ export class CreatePullRequestDataModel {
 	constructor(
 		private readonly repositoryService: RepositoryService,
 		private readonly pullRequestService: PullRequestService,
+		private readonly currentUserLogin?: string,
 	) {}
 
 	get repositories(): GitCodeRepository[] {
@@ -102,7 +103,7 @@ export class CreatePullRequestDataModel {
 	}
 
 	get members(): GitCodeUser[] {
-		return this._members;
+		return filterOutUserByLogin(this._members, this.currentUserLogin);
 	}
 
 	get sourceBranch(): string {
@@ -201,7 +202,7 @@ export class CreatePullRequestDataModel {
 			targetBranches: this._targetBranches,
 			labels,
 			milestones,
-			members,
+			members: this.members,
 			sourceBranch,
 			targetBranch: defaultTargetBranch,
 			title: this._title,
@@ -331,11 +332,12 @@ export class CreatePullRequestDataModel {
 
 	listMembers(query?: string): GitCodeUser[] {
 		const normalizedQuery = query?.trim().toLowerCase();
+		const members = this.members;
 		if (!normalizedQuery) {
-			return this._members;
+			return members;
 		}
 
-		return this._members.filter((member) => {
+		return members.filter((member) => {
 			const login = member.login.toLowerCase();
 			const name = member.name?.toLowerCase() ?? '';
 			return login.includes(normalizedQuery) || name.includes(normalizedQuery);
@@ -489,4 +491,17 @@ export class CreatePullRequestDataModel {
 		];
 	}
 
+}
+
+function filterOutUserByLogin(users: readonly GitCodeUser[], excludedLogin?: string): GitCodeUser[] {
+	const normalizedExcludedLogin = normalizeLogin(excludedLogin);
+	if (!normalizedExcludedLogin) {
+		return [...users];
+	}
+
+	return users.filter((user) => normalizeLogin(user.login) !== normalizedExcludedLogin);
+}
+
+function normalizeLogin(login?: string): string {
+	return login?.trim().toLowerCase() ?? '';
 }

@@ -32,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Updated issue and pull request PATCH requests to send only changed fields
   instead of always including the current title in section saves and state
   changes.
+- Excluded the pull request creator from create-flow assignee or tester
+  selections and from pull request overview reviewer or tester add pickers.
 
 ## [0.0.2] - 2026-07-02
 

@@ -1078,7 +1078,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			void vscode.window.showErrorMessage(errorMessage);
 			return [];
 		}
-		const availableReviewers = getAddableReviewers(reviewers, currentLogins);
+		const availableReviewers = getAddableReviewers(reviewers, currentLogins, this.detail?.author.login);
 
 		if (!availableReviewers.length) {
 			await vscode.window.showInformationMessage('No additional reviewers are available for this pull request.');
@@ -1768,9 +1768,18 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 export function getAddableReviewers(
 	reviewers: readonly GitCodeUser[],
 	currentLogins: readonly string[],
+	authorLogin?: string,
 ): GitCodeUser[] {
-	const assigned = new Set(currentLogins);
-	return reviewers.filter((reviewer) => reviewer.login && !assigned.has(reviewer.login));
+	const excluded = new Set(currentLogins.map(normalizeLogin).filter((login) => login.length > 0));
+	const normalizedAuthorLogin = normalizeLogin(authorLogin);
+	if (normalizedAuthorLogin) {
+		excluded.add(normalizedAuthorLogin);
+	}
+
+	return reviewers.filter((reviewer) => {
+		const reviewerLogin = normalizeLogin(reviewer.login);
+		return reviewerLogin.length > 0 && !excluded.has(reviewerLogin);
+	});
 }
 
 export function getAddableTesters(
@@ -1778,12 +1787,20 @@ export function getAddableTesters(
 	currentLogins: readonly string[],
 	authorLogin?: string,
 ): GitCodeUser[] {
-	const excluded = new Set(currentLogins);
-	if (authorLogin) {
-		excluded.add(authorLogin);
+	const excluded = new Set(currentLogins.map(normalizeLogin).filter((login) => login.length > 0));
+	const normalizedAuthorLogin = normalizeLogin(authorLogin);
+	if (normalizedAuthorLogin) {
+		excluded.add(normalizedAuthorLogin);
 	}
 
-	return testers.filter((tester) => tester.login && !excluded.has(tester.login));
+	return testers.filter((tester) => {
+		const testerLogin = normalizeLogin(tester.login);
+		return testerLogin.length > 0 && !excluded.has(testerLogin);
+	});
+}
+
+function normalizeLogin(login?: string): string {
+	return login?.trim().toLowerCase() ?? '';
 }
 
 export function formatReviewerQuickPickItem(reviewer: GitCodeUser): ReviewerQuickPickItem {
