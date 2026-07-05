@@ -11,6 +11,7 @@ import {
 } from '../../common/models';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
+import { buildPullRequestParticipantCandidates } from '../permissions/participantRoleEligibility';
 
 export interface CreatePullRequestDefaults {
 	repository: GitCodeRepository;
@@ -22,7 +23,8 @@ export interface CreatePullRequestDefaults {
 	targetBranches: GitCodeBranch[];
 	labels: GitCodeLabel[];
 	milestones: GitCodeMilestone[];
-	members: GitCodeUser[];
+	assigneeMembers: GitCodeUser[];
+	testerMembers: GitCodeUser[];
 	sourceBranch: string;
 	targetBranch: string;
 	title: string;
@@ -102,8 +104,18 @@ export class CreatePullRequestDataModel {
 		return this._milestones;
 	}
 
-	get members(): GitCodeUser[] {
-		return filterOutUserByLogin(this._members, this.currentUserLogin);
+	get assigneeMembers(): GitCodeUser[] {
+		return filterOutUserByLogin(
+			buildPullRequestParticipantCandidates(this._members).assignees,
+			this.currentUserLogin,
+		);
+	}
+
+	get testerMembers(): GitCodeUser[] {
+		return filterOutUserByLogin(
+			buildPullRequestParticipantCandidates(this._members).testers,
+			this.currentUserLogin,
+		);
 	}
 
 	get sourceBranch(): string {
@@ -202,7 +214,8 @@ export class CreatePullRequestDataModel {
 			targetBranches: this._targetBranches,
 			labels,
 			milestones,
-			members: this.members,
+			assigneeMembers: this.assigneeMembers,
+			testerMembers: this.testerMembers,
 			sourceBranch,
 			targetBranch: defaultTargetBranch,
 			title: this._title,
@@ -332,7 +345,7 @@ export class CreatePullRequestDataModel {
 
 	listMembers(query?: string): GitCodeUser[] {
 		const normalizedQuery = query?.trim().toLowerCase();
-		const members = this.members;
+		const members = this.assigneeMembers;
 		if (!normalizedQuery) {
 			return members;
 		}

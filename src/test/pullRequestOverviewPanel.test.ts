@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { IssueSummary, PullRequestDetail } from '../common/models';
-import { isTrustedGitCodeUrl, validatePullRequestCommentBody, validatePullRequestStateChange, validateIssueNumberInput, parseIssueNumbers, getLinkableIssues, formatRelatedIssueQuickPickItem, getAddableReviewers, getAddableTesters, formatReviewerQuickPickItem } from '../view/overview/pullRequestOverviewPanel';
+import { isTrustedGitCodeUrl, validatePullRequestCommentBody, validatePullRequestStateChange, validateIssueNumberInput, parseIssueNumbers, getLinkableIssues, formatRelatedIssueQuickPickItem, getAddableAssignees, getAddableReviewers, getAddableTesters, formatReviewerQuickPickItem } from '../view/overview/pullRequestOverviewPanel';
 
 suite('PullRequestOverviewPanel', () => {
 	const issue = (number: number, title = `Issue ${number}`): IssueSummary => ({
@@ -158,6 +158,16 @@ suite('PullRequestOverviewPanel', () => {
 		], ['bob'], 'alice');
 
 		assert.deepStrictEqual(testers.map((tester) => tester.login), ['carol']);
+	});
+
+	test('getAddableAssignees filters the pull request author and already assigned assignees', () => {
+		const assignees = getAddableAssignees([
+			{ login: 'alice', name: 'Alice' },
+			{ login: 'bob', name: 'Bob' },
+			{ login: 'carol', name: 'Carol' },
+		], ['bob'], 'alice');
+
+		assert.deepStrictEqual(assignees.map((assignee) => assignee.login), ['carol']);
 	});
 
 	test('formatReviewerQuickPickItem includes reviewer profile metadata', () => {

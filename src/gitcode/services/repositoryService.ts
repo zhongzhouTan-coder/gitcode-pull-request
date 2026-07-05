@@ -6,7 +6,7 @@ import { mapLabels } from '../mappers/labelMapper';
 import { mapMilestones } from '../mappers/milestoneMapper';
 import { mapRepositoryDetail } from '../mappers/repositoryMapper';
 import { mapUsers } from '../mappers/userMapper';
-import { PageOptions, pageQuery } from './pagination';
+import { listPagedRecords, PageOptions, pageQuery } from './pagination';
 
 interface ListBranchesOptions extends PageOptions {
 	search?: string;
@@ -106,14 +106,13 @@ export class RepositoryService {
 	}
 
 	async listMembers(repository: GitCodeRepository, options?: PageOptions): Promise<GitCodeUser[]> {
-		const response = await this.client.get<any[]>(
+		const response = await listPagedRecords<any>(
+			this.client,
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/collaborators`,
-			pageQuery(options),
+			{},
+			options,
+			Number.POSITIVE_INFINITY,
 		);
-
-		if (!Array.isArray(response)) {
-			return [];
-		}
 
 		return mapUsers(response);
 	}

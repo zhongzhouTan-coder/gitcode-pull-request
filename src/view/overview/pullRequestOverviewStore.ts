@@ -5,6 +5,7 @@ import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, GitCod
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { IssueService } from '../../gitcode/services/issueService';
+import { buildPullRequestParticipantCandidates } from '../permissions/participantRoleEligibility';
 
 export class PullRequestOverviewStore {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
@@ -119,13 +120,18 @@ export class PullRequestOverviewStore {
 		return result;
 	}
 
-	async listSelectableReviewers(repository: GitCodeRepository, pullRequestNumber: number): Promise<GitCodeUser[]> {
+	async listSelectableReviewers(repository: GitCodeRepository, _pullRequestNumber: number): Promise<GitCodeUser[]> {
 		const session = await this.authService.getSession();
 		if (!session) {
 			throw new NotSignedInError('Sign in to GitCode first.');
 		}
 
-		return this.pullRequestService.listSelectableReviewers(repository, pullRequestNumber);
+		if (!this.repositoryService) {
+			return [];
+		}
+
+		const members = await this.repositoryService.listMembers(repository, { perPage: 100 });
+		return buildPullRequestParticipantCandidates(members).reviewers;
 	}
 
 	async addReviewers(
@@ -233,7 +239,12 @@ export class PullRequestOverviewStore {
 			throw new NotSignedInError('Sign in to GitCode first.');
 		}
 
-		return this.pullRequestService.listSelectableTesters(repository);
+		if (!this.repositoryService) {
+			return [];
+		}
+
+		const members = await this.repositoryService.listMembers(repository, { perPage: 100 });
+		return buildPullRequestParticipantCandidates(members).testers;
 	}
 
 	async addTesters(
@@ -282,7 +293,8 @@ export class PullRequestOverviewStore {
 			return [];
 		}
 
-		return this.repositoryService.listMembers(repository, { perPage: 100 });
+		const members = await this.repositoryService.listMembers(repository, { perPage: 100 });
+		return buildPullRequestParticipantCandidates(members).assignees;
 	}
 
 	async addAssignees(

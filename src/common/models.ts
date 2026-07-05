@@ -23,6 +23,7 @@ export interface PullRequestParticipant {
 	name?: string;
 	avatarUrl?: string;
 	htmlUrl?: string;
+	role?: GitCodeRoleInfo;
 }
 
 export interface PullRequestLabel {

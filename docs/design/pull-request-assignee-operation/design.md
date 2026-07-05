@@ -68,8 +68,8 @@ Design choices:
 - The cancel flow uses the dedicated DELETE API with only the logins being
   removed.
 - Login payloads should be trimmed, deduplicated, and rejected when empty.
-- The pull request author should be excluded from the add picker, matching the
-  existing create-flow rule that the creator should not be assignable.
+- The pull request author should be excluded from the add picker because the
+  creator cannot approve the same pull request.
 
 ## User Experience
 

@@ -179,7 +179,7 @@ suite('PullRequestOverviewStore', () => {
 		);
 	});
 
-	test('listSelectableReviewers proxies the selectable reviewer API', async () => {
+	test('listSelectableReviewers filters repository collaborators by reviewer role permission', async () => {
 		let calls = 0;
 		const authService = {
 			getSession: async () => ({
@@ -188,18 +188,67 @@ suite('PullRequestOverviewStore', () => {
 				authType: 'pat' as const,
 			}),
 		} as AuthService;
-		const pullRequestService = {
-			listSelectableReviewers: async () => {
+		const pullRequestService = {} as PullRequestService;
+		const repositoryService = {
+			listMembers: async () => {
 				calls += 1;
-				return [{ login: 'carol', name: 'Carol' }];
+				return [
+					{ login: 'carol', name: 'Carol', role: { name: 'Maintainer', accessLevel: 40 } },
+					{ login: 'dave', name: 'Dave', role: { name: 'Reporter', accessLevel: 20 } },
+				];
 			},
-		} as unknown as PullRequestService;
-		const store = new PullRequestOverviewStore(authService, pullRequestService);
+		};
+		const store = new PullRequestOverviewStore(authService, pullRequestService, repositoryService as any);
 
 		const reviewers = await store.listSelectableReviewers(repository, 2);
 
 		assert.strictEqual(calls, 1);
 		assert.deepStrictEqual(reviewers.map((reviewer) => reviewer.login), ['carol']);
+	});
+
+	test('listSelectableTesters filters repository collaborators by tester role permission', async () => {
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {} as PullRequestService;
+		const repositoryService = {
+			listMembers: async () => [
+				{ login: 'carol', name: 'Carol', role: { name: 'Developer', accessLevel: 30 } },
+				{ login: 'dave', name: 'Dave', role: { name: 'Reporter', accessLevel: 20 } },
+				{ login: 'erin', name: 'Erin', role: { name: 'Guest', accessLevel: 10 } },
+			],
+		};
+		const store = new PullRequestOverviewStore(authService, pullRequestService, repositoryService as any);
+
+		const testers = await store.listSelectableTesters(repository);
+
+		assert.deepStrictEqual(testers.map((tester) => tester.login), ['carol', 'dave']);
+	});
+
+	test('listSelectableAssignees filters repository collaborators by assignee role permission', async () => {
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {} as PullRequestService;
+		const repositoryService = {
+			listMembers: async () => [
+				{ login: 'carol', name: 'Carol', role: { name: 'Maintainer', accessLevel: 40 } },
+				{ login: 'dave', name: 'Dave', role: { name: 'Reporter', accessLevel: 20 } },
+			],
+		};
+		const store = new PullRequestOverviewStore(authService, pullRequestService, repositoryService as any);
+
+		const assignees = await store.listSelectableAssignees(repository);
+
+		assert.deepStrictEqual(assignees.map((assignee) => assignee.login), ['carol']);
 	});
 
 	test('addReviewers invalidates cached detail for the pull request', async () => {

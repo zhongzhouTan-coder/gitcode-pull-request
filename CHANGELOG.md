@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Updated create pull request permission checks to use the current source
   repository for cross-repository pull request submission and source-branch
   creation.
+- Switched pull request reviewer, tester, and assignee selectors to use the
+  full paginated repository collaborator list with role-based eligibility, and
+  split create-flow assignee and tester candidates accordingly.
 - Unified permission-denied button tooltips across the create pull request,
   pull request overview, and issue overview webviews with the same
   wrapper-based custom tooltip pattern.

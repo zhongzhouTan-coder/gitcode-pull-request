@@ -25,6 +25,7 @@ export async function listPagedRecords<T>(
 	path: string,
 	query: Record<string, QueryValue> = {},
 	options: PageOptions = {},
+	maxPages = MAX_LIST_PAGES,
 ): Promise<T[]> {
 	const perPage = options.perPage ?? DEFAULT_LIST_PAGE_SIZE;
 	const startPage = options.page ?? DEFAULT_PAGE;
@@ -32,7 +33,7 @@ export async function listPagedRecords<T>(
 	const seenRecordKeys = new Set<string>();
 	let effectivePageSize = perPage;
 
-	for (let page = startPage; page < startPage + MAX_LIST_PAGES; page++) {
+	for (let page = startPage; page < startPage + maxPages; page++) {
 		const response = await client.get<unknown[]>(path, {
 			...query,
 			per_page: perPage,

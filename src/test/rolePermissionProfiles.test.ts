@@ -9,6 +9,7 @@ import {
 	buildPullRequestOverviewPermissions,
 	hasEffectivePermission,
 } from '../view/permissions/permissionHelpers';
+import { buildPullRequestParticipantCandidates } from '../view/permissions/participantRoleEligibility';
 import {
 	getRolePermissionProfile,
 	normalizeRoleKey,
@@ -132,6 +133,20 @@ suite('rolePermissionProfiles', () => {
 		assert.strictEqual(hasEffectivePermission(snapshot, createRequirement('note', 'resolve')), true);
 		assert.strictEqual(hasEffectivePermission(snapshot, createRequirement('pr', 'update')), false);
 		assert.strictEqual(hasEffectivePermission(snapshot, createRequirement('pr', 'update'), true), true);
+	});
+
+	test('participant candidates are derived from collaborator role permissions', () => {
+		const candidates = buildPullRequestParticipantCandidates([
+			{ login: 'owner', role: { name: 'Owner', accessLevel: 50 } },
+			{ login: 'maintainer', role: { name: 'Maintainer', accessLevel: 40 } },
+			{ login: 'developer', role: { name: 'Developer', accessLevel: 30 } },
+			{ login: 'reporter', role: { name: 'Reporter', accessLevel: 20 } },
+			{ login: 'guest', role: { name: 'Guest', accessLevel: 10 } },
+		]);
+
+		assert.deepStrictEqual(candidates.reviewers.map((user) => user.login), ['owner', 'maintainer', 'developer']);
+		assert.deepStrictEqual(candidates.testers.map((user) => user.login), ['owner', 'maintainer', 'developer', 'reporter']);
+		assert.deepStrictEqual(candidates.assignees.map((user) => user.login), ['owner', 'maintainer']);
 	});
 
 	test('overview permission builders apply owner rule only to issue and pull request object actions', () => {

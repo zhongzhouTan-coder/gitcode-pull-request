@@ -978,8 +978,8 @@ export function getCreatePullRequestHtml(): string {
 			}).filter(item => item.value));
 		}
 
-		function renderMembers(members) {
-			const options = (Array.isArray(members) ? members : []).map(member => {
+		function createMemberOptions(members) {
+			return (Array.isArray(members) ? members : []).map(member => {
 				const username = member.login || '';
 				const nickName = member.name || username;
 				return {
@@ -988,15 +988,18 @@ export function getCreatePullRequestHtml(): string {
 					selectedLabel: nickName,
 				};
 			}).filter(item => item.value);
-			assigneePicker.setItems(options);
-			testerPicker.setItems(options);
+		}
+
+		function renderMembers(assigneeMembers, testerMembers) {
+			assigneePicker.setItems(createMemberOptions(assigneeMembers));
+			testerPicker.setItems(createMemberOptions(testerMembers));
 		}
 
 		function applyRepositoryFields(data) {
 			renderBranches(data.sourceBranches, data.targetBranches, data.sourceBranch, data.targetBranch);
 			renderLabels(data.labels);
 			renderMilestones(data.milestones);
-			renderMembers(data.members);
+			renderMembers(data.assigneeMembers, data.testerMembers);
 			if (data.title !== undefined) titleInput.value = data.title;
 			if (data.body !== undefined) bodyInput.value = data.body;
 			if (data.warning) showWarning(data.warning);

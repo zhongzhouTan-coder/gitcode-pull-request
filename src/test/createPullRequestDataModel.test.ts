@@ -52,8 +52,10 @@ function createModel(currentUserLogin?: string): CreatePullRequestDataModel {
 		],
 		listMilestones: async () => [],
 		listMembers: async () => [
-			{ login: 'alice', name: 'Alice' },
-			{ login: 'bob', name: 'Bob' },
+			{ login: 'alice', name: 'Alice', role: { name: 'Maintainer', accessLevel: 40 } },
+			{ login: 'bob', name: 'Bob', role: { name: 'Developer', accessLevel: 30 } },
+			{ login: 'carol', name: 'Carol', role: { name: 'Reporter', accessLevel: 20 } },
+			{ login: 'dave', name: 'Dave', role: { name: 'Guest', accessLevel: 10 } },
 		],
 		compareBranches: async () => ({
 			commits: [],
@@ -83,7 +85,8 @@ suite('CreatePullRequestDataModel', () => {
 		assert.ok(defaults.sourceBranches.length > 0);
 		assert.ok(defaults.targetBranches.length > 0);
 		assert.deepStrictEqual(defaults.labels.map((label) => label.name), ['bug', 'feature']);
-		assert.deepStrictEqual(defaults.members.map((member) => member.login), ['alice', 'bob']);
+		assert.deepStrictEqual(defaults.assigneeMembers.map((member) => member.login), ['alice']);
+		assert.deepStrictEqual(defaults.testerMembers.map((member) => member.login), ['alice', 'bob', 'carol']);
 	});
 
 	test('includes unpublished active branch but requires publishing before create', async () => {
@@ -128,21 +131,23 @@ suite('CreatePullRequestDataModel', () => {
 		assert.strictEqual(model.targetRepository?.remoteName, 'upstream');
 	});
 
-	test('filters loaded repository members for assignee and tester pickers', async () => {
+	test('filters loaded repository members for assignee picker queries', async () => {
 		const model = createModel();
 		await model.initialize(repository, 'feature');
 
 		assert.deepStrictEqual(model.listMembers('ali').map((member) => member.login), ['alice']);
-		assert.deepStrictEqual(model.listMembers('bo').map((member) => member.login), ['bob']);
+		assert.deepStrictEqual(model.listMembers('bo').map((member) => member.login), []);
 	});
 
 	test('excludes the signed-in user from assignee and tester selections', async () => {
 		const model = createModel('ALICE');
 		const defaults = await model.initialize(repository, 'feature');
 
-		assert.deepStrictEqual(defaults.members.map((member) => member.login), ['bob']);
-		assert.deepStrictEqual(model.members.map((member) => member.login), ['bob']);
-		assert.deepStrictEqual(model.listMembers().map((member) => member.login), ['bob']);
+		assert.deepStrictEqual(defaults.assigneeMembers.map((member) => member.login), []);
+		assert.deepStrictEqual(defaults.testerMembers.map((member) => member.login), ['bob', 'carol']);
+		assert.deepStrictEqual(model.assigneeMembers.map((member) => member.login), []);
+		assert.deepStrictEqual(model.testerMembers.map((member) => member.login), ['bob', 'carol']);
+		assert.deepStrictEqual(model.listMembers().map((member) => member.login), []);
 	});
 
 	test('prefills title and body when issue context is provided', async () => {
