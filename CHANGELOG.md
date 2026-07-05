@@ -6,9 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-07-05
+
 ### Added
 
-- Added pull request assignee add and remove actions in the pull request overview.
+- Added pull request approver add and remove actions in the pull request overview.
+- Added pull request reviewer add and remove actions in the pull request overview.
+- Added pull request tester add and remove actions in the pull request overview.
+- Added role- and resource-owner-aware permission evaluation for issue and
+  pull request actions.
 
 ### Changed
 
@@ -39,6 +45,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Fixed cross-repository pull request creation gating so the final create
   action uses the current source repository's `pr:create` permission instead of
   incorrectly requiring that permission on the selected target repository.
+- Allowed issue creation with create-only permission while disabling labels,
+  milestones, and assignees when issue update permission is unavailable.
 - Updated issue and pull request PATCH requests to send only changed fields
   instead of always including the current title in section saves and state
   changes.
