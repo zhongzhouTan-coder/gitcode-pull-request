@@ -238,6 +238,66 @@ function renderTesters(testers: PullRequestParticipant[], options?: TestersSecti
 	return `<div class="participant-list">${testers.map((tester) => renderTesterRow(tester, options)).join('')}</div>`;
 }
 
+// ---- Assignees ----
+
+export interface AssigneesSectionOptions {
+	canAddAssignee: boolean;
+	assigneeMutationInProgress?: boolean;
+	addAssigneeInProgress?: boolean;
+	canRemoveAssignee?: boolean;
+	removeAssigneeInProgress?: boolean;
+	removingAssigneeLogins?: readonly string[];
+}
+
+function renderAddAssigneeButton(options?: AssigneesSectionOptions): string {
+	if (!options) {
+		return '';
+	}
+
+	const disabled = !options.canAddAssignee || options.assigneeMutationInProgress || options.addAssigneeInProgress || options.removeAssigneeInProgress ? 'disabled' : '';
+	const title = options.canAddAssignee
+		? 'Add assignee'
+		: 'You do not have permission to update assignees.';
+	const loadingIndicator = options.addAssigneeInProgress
+		? '<span class="spinner" aria-hidden="true"></span>'
+		: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M7.25 2.5h1.5v4.75h4.75v1.5H8.75v4.75h-1.5V8.75H2.5v-1.5h4.75V2.5Z"/></svg>';
+	const titleAttr = options.canAddAssignee ? `title="${escapeAttr(title)}"` : '';
+	const button = `<button class="icon-button add-assignee-btn" data-action="addAssignee" aria-label="${escapeAttr(title)}" ${titleAttr} ${disabled}>${loadingIndicator}</button>`;
+
+	return options.canAddAssignee
+		? button
+		: `<span class="permission-tooltip-target" data-tooltip="${escapeAttr(title)}" aria-label="${escapeAttr(title)}" tabindex="0">${button}</span>`;
+}
+
+function renderAssigneeRow(assignee: PullRequestParticipant, options?: AssigneesSectionOptions): string {
+	const canRemoveAssignee = options?.canRemoveAssignee ?? false;
+	const isRemoving = Boolean(options?.removeAssigneeInProgress && options.removingAssigneeLogins?.includes(assignee.login));
+	const title = canRemoveAssignee
+		? 'Remove assignee'
+		: 'You do not have permission to update assignees.';
+	const titleAttr = canRemoveAssignee ? ` title="${escapeAttr(title)}"` : '';
+	const disabled = !canRemoveAssignee || options?.assigneeMutationInProgress || options?.addAssigneeInProgress || options?.removeAssigneeInProgress ? 'disabled' : '';
+	const removeButtonMarkup = `<button class="icon-button remove-assignee-btn" data-action="removeAssignee" data-login="${escapeAttr(assignee.login)}" aria-label="${escapeAttr(title)}"${titleAttr} ${disabled}>${isRemoving ? '<span class="spinner" aria-hidden="true"></span>' : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 7.25h10v1.5H3v-1.5Z"/></svg>'}</button>`;
+	const removeButton = options
+		? canRemoveAssignee
+			? removeButtonMarkup
+			: `<span class="permission-tooltip-target" data-tooltip="${escapeAttr(title)}" aria-label="${escapeAttr(title)}" tabindex="0">${removeButtonMarkup}</span>`
+		: '';
+
+	return `<div class="participant-item">
+		${renderParticipantIdentity(assignee, true)}
+		${removeButton}
+	</div>`;
+}
+
+function renderAssignees(assignees: PullRequestParticipant[], options?: AssigneesSectionOptions): string {
+	if (!assignees.length) {
+		return '<div class="empty">None</div>';
+	}
+
+	return `<div class="participant-list">${assignees.map((assignee) => renderAssigneeRow(assignee, options)).join('')}</div>`;
+}
+
 function renderLabels(labels: PullRequestLabel[]): string {
 	if (!labels.length) {
 		return '<div class="empty">None</div>';
@@ -888,6 +948,7 @@ export function getOverviewHtml(
 	permissions?: PullRequestOverviewPermissions,
 	reviewerOptions?: ReviewersSectionOptions,
 	testerOptions?: TestersSectionOptions,
+	assigneeOptions?: AssigneesSectionOptions,
 ): string {
 	const descriptionHtml = renderMarkdown(detail.body);
 	const draftBadge = detail.isDraft ? '<span class="badge badge-draft">Draft</span>' : '';
@@ -2213,8 +2274,11 @@ export function getOverviewHtml(
 					${renderReviewers(detail.reviewers, reviewerOptions)}
 				</div>
 				<div class="meta-group">
-					<h3>Assignees</h3>
-					${renderParticipants(detail.assignees)}
+					<div class="section-heading-row">
+						<h3>Assignees</h3>
+						${renderAddAssigneeButton(assigneeOptions)}
+					</div>
+					${renderAssignees(detail.assignees, assigneeOptions)}
 				</div>
 				<div class="meta-group">
 					<div class="section-heading-row">
@@ -3528,6 +3592,25 @@ export function getOverviewHtml(
 				});
 			});
 		});
+		document.querySelectorAll('[data-action="addAssignee"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				if (el.disabled || !hasOverviewPermission('canUpdateAssignees')) {
+					return;
+				}
+				vscode.postMessage({ command: 'addAssignee' });
+			});
+		});
+		document.querySelectorAll('[data-action="removeAssignee"]').forEach((el) => {
+			el.addEventListener('click', () => {
+				if (el.disabled || !hasOverviewPermission('canUpdateAssignees')) {
+					return;
+				}
+				vscode.postMessage({
+					command: 'removeAssignee',
+					login: el.dataset.login,
+				});
+			});
+		});
 		document.querySelectorAll('[data-action="addRelatedIssue"]').forEach((el) => {
 			el.addEventListener('click', () => {
 				if (el.disabled || !hasOverviewPermission('canUpdateRelatedIssues')) {
@@ -3615,8 +3698,9 @@ export function getOverviewWithCommentsHtml(
 	permissions?: PullRequestOverviewPermissions,
 	reviewerOptions?: ReviewersSectionOptions,
 	testerOptions?: TestersSectionOptions,
+	assigneeOptions?: AssigneesSectionOptions,
 ): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(detail, snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions);
+	return getOverviewHtml(detail, nonce, renderConversationSection(detail, snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions, assigneeOptions);
 }
 
 export function getOverviewWithTimelineHtml(
@@ -3631,6 +3715,7 @@ export function getOverviewWithTimelineHtml(
 	permissions?: PullRequestOverviewPermissions,
 	reviewerOptions?: ReviewersSectionOptions,
 	testerOptions?: TestersSectionOptions,
+	assigneeOptions?: AssigneesSectionOptions,
 ): string {
 	return getOverviewHtml(
 		detail,
@@ -3643,15 +3728,16 @@ export function getOverviewWithTimelineHtml(
 		permissions,
 		reviewerOptions,
 		testerOptions,
+		assigneeOptions,
 	);
 }
 
-export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions, testerOptions?: TestersSectionOptions): string {
-	return getOverviewHtml(detail, nonce, renderTimelineLoading(detail), relatedIssuesHtml, editOptions, false, activityHtml, permissions, reviewerOptions, testerOptions);
+export function getOverviewWithCommentsLoadingHtml(detail: PullRequestDetail, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions, testerOptions?: TestersSectionOptions, assigneeOptions?: AssigneesSectionOptions): string {
+	return getOverviewHtml(detail, nonce, renderTimelineLoading(detail), relatedIssuesHtml, editOptions, false, activityHtml, permissions, reviewerOptions, testerOptions, assigneeOptions);
 }
 
-export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions, testerOptions?: TestersSectionOptions): string {
-	return getOverviewHtml(detail, nonce, renderTimelineError(detail, errorMessage), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions);
+export function getOverviewWithCommentsErrorHtml(detail: PullRequestDetail, errorMessage: string, nonce: string, relatedIssuesHtml?: string, editOptions?: EditPullRequestOptions, activityHtml?: string, permissions?: PullRequestOverviewPermissions, reviewerOptions?: ReviewersSectionOptions, testerOptions?: TestersSectionOptions, assigneeOptions?: AssigneesSectionOptions): string {
+	return getOverviewHtml(detail, nonce, renderTimelineError(detail, errorMessage), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions, assigneeOptions);
 }
 
 export function getOverviewLoadingHtml(title: string, description: string, nonce: string): string {

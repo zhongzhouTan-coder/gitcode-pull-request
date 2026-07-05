@@ -29,6 +29,15 @@ function normalizeTesterLogins(logins: readonly string[]): string[] {
 	return normalized;
 }
 
+function normalizeAssigneeLogins(logins: readonly string[]): string[] {
+	const normalized = [...new Set(logins.map((login) => login.trim()).filter((login) => login.length > 0))];
+	if (!normalized.length) {
+		throw new Error('At least one assignee login is required.');
+	}
+
+	return normalized;
+}
+
 async function assignParticipants(
 	client: GitCodeDeleteClient,
 	path: string,
@@ -261,6 +270,35 @@ export class PullRequestService {
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/testers`,
 			{
 				testers: testers.join(','),
+			},
+		);
+	}
+
+	async addAssignees(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<any> {
+		const assignees = normalizeAssigneeLogins(logins);
+		return this.client.post<any>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/assignees`,
+			{
+				assignees: assignees.join(','),
+			},
+		);
+	}
+
+	async removeAssignees(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<void> {
+		const assignees = normalizeAssigneeLogins(logins);
+		await this.client.delete(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/assignees`,
+			undefined,
+			{
+				assignees: assignees.join(','),
 			},
 		);
 	}

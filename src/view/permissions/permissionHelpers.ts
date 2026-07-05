@@ -41,8 +41,7 @@ export function buildPullRequestOverviewPermissions(
 			canEditComment: false,
 			canResolveComment: false,
 			canUpdateReviewers: false,
-			canUpdateTesters: false,
-			canUpdateRelatedIssues: false,
+			canUpdateTesters: false,		canUpdateAssignees: false,			canUpdateRelatedIssues: false,
 		};
 	}
 
@@ -59,6 +58,7 @@ export function buildPullRequestOverviewPermissions(
 		canResolveComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'resolve', message: () => '' }),
 		canUpdateReviewers: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
 		canUpdateTesters: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
+		canUpdateAssignees: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
 		canUpdateRelatedIssues: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
 	};
 }
@@ -75,6 +75,7 @@ export function buildUnknownPullRequestOverviewPermissions(): PullRequestOvervie
 		canResolveComment: true,
 		canUpdateReviewers: true,
 		canUpdateTesters: true,
+		canUpdateAssignees: true,
 		canUpdateRelatedIssues: true,
 	};
 }

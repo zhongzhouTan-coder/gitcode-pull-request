@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- Added pull request assignee add and remove actions in the pull request overview.
+
 ### Changed
 
 - Refreshed repository permission snapshots on pull request tree refresh and

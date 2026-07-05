@@ -102,6 +102,33 @@ suite('PullRequestOverviewStore', () => {
 		assert.strictEqual(calls, 2);
 	});
 
+	test('getDetail can bypass cached pull request detail', async () => {
+		let calls = 0;
+		const authService = {
+			getSession: async () => ({
+				accessToken: 'token',
+				accountName: 'alice',
+				authType: 'pat' as const,
+			}),
+		} as AuthService;
+		const pullRequestService = {
+			getPullRequest: async () => {
+				calls += 1;
+				return {
+					...detail,
+					title: calls === 1 ? 'Cached detail' : 'Fresh detail',
+				};
+			},
+		} as unknown as PullRequestService;
+
+		const store = new PullRequestOverviewStore(authService, pullRequestService);
+		await store.getDetail(repository, 2);
+		const refreshed = await store.getDetail(repository, 2, true);
+
+		assert.strictEqual(calls, 2);
+		assert.strictEqual(refreshed.title, 'Fresh detail');
+	});
+
 	test('edit invalidates cached detail for the pull request', async () => {
 		let getCalls = 0;
 		let editCalls = 0;

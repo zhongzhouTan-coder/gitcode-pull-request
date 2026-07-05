@@ -203,6 +203,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private addTesterInProgress: boolean = false;
 	private removeTesterInProgress: boolean = false;
 	private removingTesterLogins: readonly string[] = [];
+	private assigneeMutationInProgress: boolean = false;
+	private addAssigneeInProgress: boolean = false;
+	private removeAssigneeInProgress: boolean = false;
+	private removingAssigneeLogins: readonly string[] = [];
 	private addRelatedIssueInProgress: boolean = false;
 	private removeRelatedIssueInProgress: boolean = false;
 	private removingRelatedIssueNumbers: readonly number[] = [];
@@ -217,6 +221,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		canResolveComment: false,
 		canUpdateReviewers: false,
 		canUpdateTesters: false,
+		canUpdateAssignees: false,
 		canUpdateRelatedIssues: false,
 	};
 
@@ -314,6 +319,19 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					return;
 				}
 				await this.handleRemoveTesters([message.login]);
+				return;
+			}
+
+			if (message.command === 'addAssignee') {
+				await this.handleAddAssignees();
+				return;
+			}
+
+			if (message.command === 'removeAssignee' && typeof message.login === 'string') {
+				if (!message.login.trim()) {
+					return;
+				}
+				await this.handleRemoveAssignees([message.login]);
 				return;
 			}
 
@@ -417,7 +435,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Render detail with loading timeline and related issues.
 		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading(this.buildRelatedIssuesOptions());
-		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, undefined, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions());
+		this.panel.webview.html = getOverviewWithCommentsLoadingHtml(this.detail, createNonce(), relatedIssuesLoadingHtml, undefined, undefined, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions(), this.buildAssigneeOptions());
 
 		// Phase 2: Load comments, operation logs, related issues, and edit options independently in parallel
 		const commentsPromise = this.commentsStore.getOrFetch(
@@ -542,10 +560,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 			}
 
-			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions());
+			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions(), this.buildAssigneeOptions());
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
-			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions());
+			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions(), this.buildAssigneeOptions());
 		}
 	}
 
@@ -1424,6 +1442,254 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 	}
 
+	// ---- Assignees ----
+
+	static async addAssigneeToCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before adding an assignee.');
+			return false;
+		}
+
+		await activePanel.handleAddAssignees();
+		return true;
+	}
+
+	static async removeAssigneeFromCurrent(): Promise<boolean> {
+		const activePanel = PullRequestOverviewPanel.activePanel;
+		if (!activePanel) {
+			await vscode.window.showInformationMessage('Open a pull request before removing an assignee.');
+			return false;
+		}
+
+		await activePanel.handleRemoveAssignees();
+		return true;
+	}
+
+	private async handleAddAssignees(): Promise<void> {
+		if (this.assigneeMutationInProgress) {
+			return;
+		}
+
+		this.assigneeMutationInProgress = true;
+		await this.reloadOverviewHtml();
+
+		try {
+			if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
+				return;
+			}
+
+			const latestDetail = await this.loadLatestAssigneeDetail();
+			if (!latestDetail) {
+				return;
+			}
+
+			const currentLogins = latestDetail.assignees.map((assignee) => assignee.login);
+			const selectedLogins = await this.promptAssigneeLoginsToAdd(currentLogins, latestDetail.author.login);
+			if (!selectedLogins.length) {
+				return;
+			}
+
+			this.addAssigneeInProgress = true;
+			await this.reloadOverviewHtml();
+
+			try {
+				const refreshedDetail = await this.loadLatestAssigneeDetail();
+				if (!refreshedDetail) {
+					return;
+				}
+
+				// POST API sets the full assignee list, so merge with fresh server state.
+				const latestLogins = refreshedDetail.assignees.map((assignee) => assignee.login);
+				const unionLogins = [...new Set([...latestLogins, ...selectedLogins])];
+				await this.store.addAssignees(
+					this.context.repository,
+					this.context.pullRequestNumber,
+					unionLogins,
+				);
+
+				if (PullRequestOverviewPanel.operationLogsStore) {
+					await PullRequestOverviewPanel.operationLogsStore.refresh(
+						this.context.repository.fullName,
+						this.context.pullRequestNumber,
+					);
+				}
+
+				const message = selectedLogins.length === 1
+					? `Assignee added to pull request #${this.context.pullRequestNumber}`
+					: `Assignees added to pull request #${this.context.pullRequestNumber}`;
+				void vscode.window.showInformationMessage(message);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Failed to add assignees.';
+				this.logger.error(
+					`Failed to add assignees to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+				);
+				void vscode.window.showErrorMessage(errorMessage);
+			} finally {
+				this.addAssigneeInProgress = false;
+			}
+
+			await this.load(true);
+		} finally {
+			this.assigneeMutationInProgress = false;
+			await this.reloadOverviewHtml();
+		}
+	}
+
+	private async loadLatestAssigneeDetail(): Promise<PullRequestDetail | undefined> {
+		try {
+			const detail = await this.store.getDetail(this.context.repository, this.context.pullRequestNumber, true);
+			this.detail = detail;
+			return detail;
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to load current assignees.';
+			this.logger.error(
+				`Failed to refresh pull request detail for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+			);
+			void vscode.window.showErrorMessage(errorMessage);
+			return undefined;
+		}
+	}
+
+	private async promptAssigneeLoginsToAdd(currentLogins: readonly string[], authorLogin?: string): Promise<string[]> {
+		let assignees: GitCodeUser[];
+		try {
+			assignees = await this.store.listSelectableAssignees(
+				this.context.repository,
+			);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to load assignees.';
+			this.logger.error(
+				`Failed to list selectable assignees for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+			);
+			void vscode.window.showErrorMessage(errorMessage);
+			return [];
+		}
+		const availableAssignees = getAddableAssignees(assignees, currentLogins, authorLogin);
+
+		if (!availableAssignees.length) {
+			await vscode.window.showInformationMessage('No additional assignees are available for this pull request.');
+			return [];
+		}
+
+		const picked = await vscode.window.showQuickPick(
+			availableAssignees.map(formatReviewerQuickPickItem),
+			{
+				title: `Select assignees for PR #${this.context.pullRequestNumber}`,
+				placeHolder: 'Choose one or more assignees to add',
+				canPickMany: true,
+			},
+		);
+
+		if (!picked?.length) {
+			return [];
+		}
+
+		return [...new Set(picked.map((item) => item.login).filter((login) => login.trim().length > 0))];
+	}
+
+	private async handleRemoveAssignees(logins?: readonly string[]): Promise<void> {
+		if (this.assigneeMutationInProgress) {
+			return;
+		}
+
+		this.assigneeMutationInProgress = true;
+		await this.reloadOverviewHtml();
+
+		try {
+			if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`)) {
+				return;
+			}
+
+			const currentAssignees = this.detail?.assignees ?? [];
+			if (!currentAssignees.length) {
+				await vscode.window.showInformationMessage('No assignees to remove.');
+				return;
+			}
+
+			let selectedLogins: string[];
+			if (logins?.length) {
+				const currentLogins = new Set(currentAssignees.map((assignee) => assignee.login));
+				selectedLogins = [...new Set(logins.map((login) => login.trim()))].filter((login) => currentLogins.has(login));
+				if (!selectedLogins.length) {
+					await vscode.window.showInformationMessage('Selected assignees are no longer assigned to this pull request.');
+					return;
+				}
+			} else {
+				const picked = await vscode.window.showQuickPick(
+					currentAssignees.map(formatReviewerQuickPickItem),
+					{
+						title: `Select assignees to remove from PR #${this.context.pullRequestNumber}`,
+						placeHolder: 'Choose one or more assignees to remove',
+						canPickMany: true,
+					},
+				);
+
+				if (!picked?.length) {
+					return;
+				}
+
+				selectedLogins = [...new Set(picked.map((item) => item.login).filter((login) => login.trim().length > 0))];
+			}
+
+			if (!selectedLogins.length) {
+				return;
+			}
+
+			const assigneeList = selectedLogins.map((login) => `@${login}`).join(', ');
+			const confirmMessage = selectedLogins.length === 1
+				? `Remove assignee ${assigneeList} from PR #${this.context.pullRequestNumber}?`
+				: `Remove assignees ${assigneeList} from PR #${this.context.pullRequestNumber}?`;
+			const choice = await vscode.window.showWarningMessage(
+				confirmMessage,
+				{ modal: true },
+				'Remove assignee',
+			);
+
+			if (choice !== 'Remove assignee') {
+				return;
+			}
+
+			this.removeAssigneeInProgress = true;
+			this.removingAssigneeLogins = selectedLogins;
+			await this.reloadOverviewHtml();
+
+			try {
+				await this.store.removeAssignees(
+					this.context.repository,
+					this.context.pullRequestNumber,
+					selectedLogins,
+				);
+
+				if (PullRequestOverviewPanel.operationLogsStore) {
+					await PullRequestOverviewPanel.operationLogsStore.refresh(
+						this.context.repository.fullName,
+						this.context.pullRequestNumber,
+					);
+				}
+
+				const message = selectedLogins.length === 1
+					? `Assignee removed from pull request #${this.context.pullRequestNumber}`
+					: `Assignees removed from pull request #${this.context.pullRequestNumber}`;
+				void vscode.window.showInformationMessage(message);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Failed to remove assignees.';
+				this.logger.error(
+					`Failed to remove assignees from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
+				);
+				void vscode.window.showErrorMessage(errorMessage);
+			} finally {
+				this.removeAssigneeInProgress = false;
+				this.removingAssigneeLogins = [];
+			}
+
+			await this.load(true);
+		} finally {
+			this.assigneeMutationInProgress = false;
+			await this.reloadOverviewHtml();
+		}
+	}
+
 	// ---- Add Related Issue ----
 
 	static async addRelatedIssueToCurrent(): Promise<boolean> {
@@ -1717,6 +1983,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.permissions,
 				this.buildReviewerOptions(),
 				this.buildTesterOptions(),
+				this.buildAssigneeOptions(),
 			);
 		} else {
 			this.panel.webview.html = getOverviewWithCommentsLoadingHtml(
@@ -1728,6 +1995,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.permissions,
 				this.buildReviewerOptions(),
 				this.buildTesterOptions(),
+				this.buildAssigneeOptions(),
 			);
 		}
 	}
@@ -1751,6 +2019,17 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			canRemoveTester: this.permissions.canUpdateTesters,
 			removeTesterInProgress: this.removeTesterInProgress,
 			removingTesterLogins: this.removingTesterLogins,
+		};
+	}
+
+	private buildAssigneeOptions() {
+		return {
+			canAddAssignee: this.permissions.canUpdateAssignees,
+			assigneeMutationInProgress: this.assigneeMutationInProgress,
+			addAssigneeInProgress: this.addAssigneeInProgress,
+			canRemoveAssignee: this.permissions.canUpdateAssignees,
+			removeAssigneeInProgress: this.removeAssigneeInProgress,
+			removingAssigneeLogins: this.removingAssigneeLogins,
 		};
 	}
 
@@ -1796,6 +2075,23 @@ export function getAddableTesters(
 	return testers.filter((tester) => {
 		const testerLogin = normalizeLogin(tester.login);
 		return testerLogin.length > 0 && !excluded.has(testerLogin);
+	});
+}
+
+export function getAddableAssignees(
+	assignees: readonly GitCodeUser[],
+	currentLogins: readonly string[],
+	authorLogin?: string,
+): GitCodeUser[] {
+	const excluded = new Set(currentLogins.map(normalizeLogin).filter((login) => login.length > 0));
+	const normalizedAuthorLogin = normalizeLogin(authorLogin);
+	if (normalizedAuthorLogin) {
+		excluded.add(normalizedAuthorLogin);
+	}
+
+	return assignees.filter((assignee) => {
+		const assigneeLogin = normalizeLogin(assignee.login);
+		return assigneeLogin.length > 0 && !excluded.has(assigneeLogin);
 	});
 }
 

@@ -33,6 +33,8 @@ export const COMMAND_ID = {
 	removePullRequestReviewer: 'gitcode.pullRequest.removeReviewer',
 	addPullRequestTester: 'gitcode.pullRequest.addTester',
 	removePullRequestTester: 'gitcode.pullRequest.removeTester',
+	addPullRequestAssignee: 'gitcode.pullRequest.addAssignee',
+	removePullRequestAssignee: 'gitcode.pullRequest.removeAssignee',
 	addRelatedIssue: 'gitcode.pullRequest.addRelatedIssue',
 	removeRelatedIssue: 'gitcode.pullRequest.removeRelatedIssue',
 };

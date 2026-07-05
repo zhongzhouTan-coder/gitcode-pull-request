@@ -64,4 +64,30 @@ suite('PullRequestService', () => {
 		]);
 		assert.deepStrictEqual(result.map((user) => user.login), ['carol']);
 	});
+
+	test('removeAssignees sends assignee logins as query parameters', async () => {
+		const requests: Array<{ path: string; body: unknown; query: unknown }> = [];
+		const service = new PullRequestService({
+			get: async () => undefined as never,
+			post: async () => undefined as never,
+			put: async () => undefined as never,
+			patch: async () => undefined as never,
+			delete: async (path: string, body?: unknown, query?: unknown) => {
+				requests.push({ path, body, query });
+				return undefined as never;
+			},
+		} as any);
+
+		await service.removeAssignees(repository, 7, [' alice ', 'alice']);
+
+		assert.deepStrictEqual(requests, [
+			{
+				path: '/api/v5/repos/org/repo/pulls/7/assignees',
+				body: undefined,
+				query: {
+					assignees: 'alice',
+				},
+			},
+		]);
+	});
 });

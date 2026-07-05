@@ -758,6 +758,7 @@ export interface PullRequestOverviewPermissions {
 	canResolveComment: boolean;
 	canUpdateReviewers: boolean;
 	canUpdateTesters: boolean;
+	canUpdateAssignees: boolean;
 	canUpdateRelatedIssues: boolean;
 }
 

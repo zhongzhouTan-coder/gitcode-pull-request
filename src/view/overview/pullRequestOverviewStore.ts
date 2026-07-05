@@ -25,13 +25,17 @@ export class PullRequestOverviewStore {
 		return (await this.authService.getSession())?.accountName;
 	}
 
-	async getDetail(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestDetail> {
+	async getDetail(repository: GitCodeRepository, pullRequestNumber: number, forceRefresh = false): Promise<PullRequestDetail> {
 		const session = await this.authService.getSession();
 		if (!session) {
 			throw new NotSignedInError('Sign in to GitCode first.');
 		}
 
 		const key = this.getKey(repository, pullRequestNumber);
+		if (forceRefresh) {
+			this.detailPromises.delete(key);
+		}
+
 		const existingPromise = this.detailPromises.get(key);
 		if (existingPromise) {
 			return existingPromise;
@@ -262,6 +266,53 @@ export class PullRequestOverviewStore {
 		}
 
 		await this.pullRequestService.removeTesters(repository, pullRequestNumber, logins);
+
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+	}
+
+	async listSelectableAssignees(repository: GitCodeRepository): Promise<GitCodeUser[]> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		if (!this.repositoryService) {
+			return [];
+		}
+
+		return this.repositoryService.listMembers(repository, { perPage: 100 });
+	}
+
+	async addAssignees(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<void> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		await this.pullRequestService.addAssignees(repository, pullRequestNumber, logins);
+
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+	}
+
+	async removeAssignees(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		logins: readonly string[],
+	): Promise<void> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		await this.pullRequestService.removeAssignees(repository, pullRequestNumber, logins);
 
 		const key = this.getKey(repository, pullRequestNumber);
 		this.detailPromises.delete(key);

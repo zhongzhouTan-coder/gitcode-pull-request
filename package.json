@@ -183,6 +183,14 @@
         "title": "GitCode: Remove Tester from Pull Request"
       },
       {
+        "command": "gitcode.pullRequest.addAssignee",
+        "title": "GitCode: Add Assignee to Pull Request"
+      },
+      {
+        "command": "gitcode.pullRequest.removeAssignee",
+        "title": "GitCode: Remove Assignee from Pull Request"
+      },
+      {
         "command": "gitcode.submitPullRequestDiffComment",
         "title": "Submit Pull Request Comment"
       },
