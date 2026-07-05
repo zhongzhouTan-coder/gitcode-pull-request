@@ -172,6 +172,10 @@ export function getCreatePullRequestHtml(): string {
 			background: transparent;
 		}
 
+		.selected-items.is-disabled {
+			opacity: 0.7;
+		}
+
 		.selected-chip {
 			display: inline-flex;
 			align-items: center;
@@ -623,6 +627,7 @@ export function getCreatePullRequestHtml(): string {
 		let isSubmitting = false;
 		let createPermissions = {
 			canCreatePullRequest: true,
+			canEditPullRequest: true,
 			canCreateBranch: false,
 		};
 
@@ -723,9 +728,39 @@ export function getCreatePullRequestHtml(): string {
 			}
 		}
 
+		function setDisabledWithTooltip(element, disabled, message) {
+			if (!element) {
+				return;
+			}
+
+			element.disabled = disabled;
+			if (disabled && message) {
+				element.removeAttribute('title');
+				element.setAttribute('aria-label', message);
+				wrapPermissionTooltip(element, message);
+				return;
+			}
+
+			unwrapPermissionTooltip(element);
+			element.removeAttribute('aria-label');
+		}
+
+		function updateMetadataPermissions() {
+			const allowed = createPermissions.canEditPullRequest !== false;
+			const deniedMessage = 'You do not have permission to update pull requests in the target repository.';
+			labelPicker.setDisabled(!allowed);
+			assigneePicker.setDisabled(!allowed);
+			testerPicker.setDisabled(!allowed);
+			setDisabledWithTooltip(labelsInput, !allowed, deniedMessage);
+			setDisabledWithTooltip(milestoneSelect, !allowed, deniedMessage);
+			setDisabledWithTooltip(assigneesInput, !allowed, deniedMessage);
+			setDisabledWithTooltip(testersInput, !allowed, deniedMessage);
+		}
+
 		function applyPermissions(permissions) {
 			createPermissions = Object.assign({}, createPermissions, permissions || {});
 			updateSubmitButton();
+			updateMetadataPermissions();
 		}
 
 		// Toggle squash message visibility
@@ -752,10 +787,11 @@ export function getCreatePullRequestHtml(): string {
 			let items = [];
 			let selected = [];
 			let isOpen = false;
+			let isDisabled = false;
 
 			function renderOptions() {
 				optionsContainer.classList.toggle('hidden', !isOpen);
-				if (!isOpen) {
+				if (!isOpen || isDisabled) {
 					return;
 				}
 
@@ -786,9 +822,10 @@ export function getCreatePullRequestHtml(): string {
 					const label = item ? item.selectedLabel || item.label : value;
 					return '<div class="selected-chip" data-value="' + escapeHtml(value) + '">' +
 						'<span title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>' +
-						'<button type="button" title="Remove" aria-label="Remove ' + escapeHtml(label) + '">&times;</button>' +
+						'<button type="button" title="Remove" aria-label="Remove ' + escapeHtml(label) + '"' + (isDisabled ? ' disabled' : '') + '>&times;</button>' +
 					'</div>';
 				}).join('');
+				selectedContainer.classList.toggle('is-disabled', isDisabled);
 			}
 
 			function render() {
@@ -797,6 +834,9 @@ export function getCreatePullRequestHtml(): string {
 			}
 
 			function addValue(value) {
+				if (isDisabled) {
+					return;
+				}
 				if (!value || selected.includes(value)) {
 					return;
 				}
@@ -855,6 +895,9 @@ export function getCreatePullRequestHtml(): string {
 			});
 
 			selectedContainer.addEventListener('click', event => {
+				if (isDisabled) {
+					return;
+				}
 				const button = event.target.closest('button');
 				if (!button) {
 					return;
@@ -888,6 +931,14 @@ export function getCreatePullRequestHtml(): string {
 					selected = [];
 					isOpen = false;
 					input.value = '';
+					render();
+				},
+				setDisabled(disabled) {
+					isDisabled = disabled;
+					input.disabled = disabled;
+					if (disabled) {
+						isOpen = false;
+					}
 					render();
 				},
 				values() {
@@ -1009,9 +1060,11 @@ export function getCreatePullRequestHtml(): string {
 			isSubmitting = false;
 			createPermissions = {
 				canCreatePullRequest: true,
+				canEditPullRequest: true,
 				canCreateBranch: false,
 			};
 			updateSubmitButton();
+			updateMetadataPermissions();
 			squashMessageGroup.classList.add('hidden');
 			loadingState.classList.add('hidden');
 			errorState.classList.add('hidden');
@@ -1079,16 +1132,17 @@ export function getCreatePullRequestHtml(): string {
 			const labels = labelPicker.values().join(',');
 			const assignees = assigneePicker.values().join(',');
 			const testers = testerPicker.values().join(',');
+			const canEditPullRequest = createPermissions.canEditPullRequest !== false;
 			return {
 				title: titleInput.value.trim(),
 				head: sourceSelect.value,
 				base: targetSelect.value,
 				body: bodyInput.value.trim() || undefined,
-				milestoneNumber: milestoneValue ? parseInt(milestoneValue) : undefined,
-				labels: labels || undefined,
+				milestoneNumber: canEditPullRequest && milestoneValue ? parseInt(milestoneValue) : undefined,
+				labels: canEditPullRequest ? (labels || undefined) : undefined,
 				issue: undefined,
-				assignees: assignees || undefined,
-				testers: testers || undefined,
+				assignees: canEditPullRequest ? (assignees || undefined) : undefined,
+				testers: canEditPullRequest ? (testers || undefined) : undefined,
 				pruneSourceBranch: pruneCheckbox.checked,
 				draft: draftCheckbox.checked,
 				squash: squashCheckbox.checked,
@@ -1122,6 +1176,9 @@ export function getCreatePullRequestHtml(): string {
 					if (msg.sourceRepository) sourceRepoSelect.value = msg.sourceRepository.fullName;
 					if (msg.targetRepository) targetRepoSelect.value = msg.targetRepository.fullName;
 					applyRepositoryFields(msg);
+					applyPermissions(msg.permissions);
+					break;
+				case 'permissions':
 					applyPermissions(msg.permissions);
 					break;
 				case 'validationErrors':

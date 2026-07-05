@@ -86,6 +86,7 @@ export class CreateIssueHelper {
 			repositoryService: this.repositoryService,
 			rawContentService: this.rawContentService,
 			issueService: this.issueService,
+			permissionStore: this.permissionStore,
 			logger: this.logger,
 			callbacks: {
 				onCreateSuccess: (repo, issueNumber, url) => this.handleCreateSuccess(repo, issueNumber, url),

@@ -89,6 +89,9 @@ export function getCreateIssueHtml(): string {
 			border-radius: 8px;
 			background: transparent;
 		}
+		.selected-items.is-disabled {
+			opacity: 0.7;
+		}
 		.selected-chip {
 			display: inline-flex;
 			align-items: center;
@@ -194,6 +197,38 @@ export function getCreateIssueHtml(): string {
 			opacity: 0.6;
 			cursor: default;
 		}
+		.permission-tooltip-target {
+			display: inline-flex;
+			position: relative;
+			cursor: not-allowed;
+		}
+		.permission-tooltip-target::after {
+			content: attr(data-tooltip);
+			position: absolute;
+			z-index: 20;
+			right: 0;
+			bottom: calc(100% + 6px);
+			display: none;
+			width: max-content;
+			max-width: 240px;
+			padding: 6px 8px;
+			border: 1px solid var(--border);
+			border-radius: 6px;
+			background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+			color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+			font-size: 12px;
+			line-height: 1.35;
+			white-space: normal;
+			pointer-events: none;
+		}
+		.permission-tooltip-target:hover::after,
+		.permission-tooltip-target:focus-visible::after {
+			display: block;
+		}
+		.permission-tooltip-target :disabled {
+			pointer-events: none;
+		}
 		.inline-row {
 			display: flex;
 			align-items: center;
@@ -282,17 +317,26 @@ export function getCreateIssueHtml(): string {
 	<script>
 		const vscode = acquireVsCodeApi();
 		let currentDefaults = null;
+		let isBusy = false;
+		let createPermissions = {
+			canCreateIssue: true,
+			canEditIssue: true,
+		};
 		const labelsInput = document.getElementById('labels');
 		const labelOptions = document.getElementById('label-options');
 		const selectedLabels = document.getElementById('selected-labels');
 		const assigneesInput = document.getElementById('assignees');
 		const assigneeOptions = document.getElementById('assignee-options');
 		const selectedAssignees = document.getElementById('selected-assignees');
+		const milestoneSelect = document.getElementById('milestone');
+		const submitButton = document.getElementById('submit-button');
+		const cancelButton = document.getElementById('cancel-button');
 
-		function setBusy(isBusy) {
-			document.getElementById('submit-button').disabled = isBusy;
-			document.getElementById('cancel-button').disabled = isBusy;
-			document.getElementById('submit-state').textContent = isBusy ? 'Creating issue…' : '';
+		function setBusy(nextBusy) {
+			isBusy = nextBusy;
+			cancelButton.disabled = nextBusy;
+			document.getElementById('submit-state').textContent = nextBusy ? 'Creating issue…' : '';
+			updateSubmitButton();
 		}
 
 		function escapeHtml(value) {
@@ -304,10 +348,101 @@ export function getCreateIssueHtml(): string {
 				.replace(/'/g, '&#39;');
 		}
 
+		function isPermissionTooltipWrapper(element) {
+			return Boolean(
+				element &&
+				element.classList &&
+				element.classList.contains('permission-tooltip-target')
+			);
+		}
+
+		function unwrapPermissionTooltip(element) {
+			if (!element || !element.parentElement || !isPermissionTooltipWrapper(element.parentElement)) {
+				return;
+			}
+
+			const wrapper = element.parentElement;
+			const parent = wrapper.parentElement;
+			if (!parent) {
+				return;
+			}
+
+			parent.insertBefore(element, wrapper);
+			wrapper.remove();
+		}
+
+		function wrapPermissionTooltip(element, message) {
+			if (!element || !element.parentElement) {
+				return;
+			}
+
+			const wrapper = isPermissionTooltipWrapper(element.parentElement)
+				? element.parentElement
+				: document.createElement('span');
+
+			wrapper.className = 'permission-tooltip-target';
+			wrapper.setAttribute('data-tooltip', message);
+			wrapper.setAttribute('aria-label', message);
+			wrapper.setAttribute('tabindex', '0');
+
+			if (wrapper !== element.parentElement) {
+				element.parentElement.insertBefore(wrapper, element);
+				wrapper.appendChild(element);
+			}
+		}
+
+		function setDisabledWithTooltip(element, disabled, message) {
+			if (!element) {
+				return;
+			}
+
+			element.disabled = disabled;
+			if (disabled && message) {
+				element.removeAttribute('title');
+				element.setAttribute('aria-label', message);
+				wrapPermissionTooltip(element, message);
+				return;
+			}
+
+			unwrapPermissionTooltip(element);
+			element.removeAttribute('aria-label');
+		}
+
+		function updateSubmitButton() {
+			const allowed = createPermissions.canCreateIssue !== false;
+			const deniedMessage = 'You do not have permission to create issues in this repository.';
+			submitButton.disabled = isBusy || !allowed;
+			if (!allowed && !isBusy) {
+				wrapPermissionTooltip(submitButton, deniedMessage);
+				submitButton.setAttribute('aria-label', deniedMessage);
+				return;
+			}
+
+			unwrapPermissionTooltip(submitButton);
+			submitButton.setAttribute('aria-label', 'Create Issue');
+		}
+
+		function updateMetadataPermissions() {
+			const allowed = createPermissions.canEditIssue !== false;
+			const deniedMessage = 'You do not have permission to update issues in this repository.';
+			labelPicker.setDisabled(!allowed);
+			assigneePicker.setDisabled(!allowed);
+			setDisabledWithTooltip(labelsInput, !allowed, deniedMessage);
+			setDisabledWithTooltip(milestoneSelect, !allowed, deniedMessage);
+			setDisabledWithTooltip(assigneesInput, !allowed, deniedMessage);
+		}
+
+		function applyPermissions(permissions) {
+			createPermissions = Object.assign({}, createPermissions, permissions || {});
+			updateSubmitButton();
+			updateMetadataPermissions();
+		}
+
 		function createMultiPicker(input, optionsContainer, selectedContainer, options = {}) {
 			let items = [];
 			let selected = [];
 			let isOpen = false;
+			let isDisabled = false;
 
 			function splitInput(value) {
 				return String(value || '')
@@ -322,7 +457,7 @@ export function getCreateIssueHtml(): string {
 
 			function renderOptions() {
 				optionsContainer.classList.toggle('hidden', !isOpen);
-				if (!isOpen) {
+				if (!isOpen || isDisabled) {
 					return;
 				}
 
@@ -353,9 +488,10 @@ export function getCreateIssueHtml(): string {
 					const label = item ? item.selectedLabel || item.label : value;
 					return '<div class="selected-chip" data-value="' + escapeHtml(value) + '">' +
 						'<span title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>' +
-						'<button type="button" title="Remove" aria-label="Remove ' + escapeHtml(label) + '">&times;</button>' +
+						'<button type="button" title="Remove" aria-label="Remove ' + escapeHtml(label) + '"' + (isDisabled ? ' disabled' : '') + '>&times;</button>' +
 					'</div>';
 				}).join('');
+				selectedContainer.classList.toggle('is-disabled', isDisabled);
 			}
 
 			function render() {
@@ -364,6 +500,9 @@ export function getCreateIssueHtml(): string {
 			}
 
 			function addValue(value) {
+				if (isDisabled) {
+					return;
+				}
 				const normalizedValue = String(value || '').trim();
 				if (!normalizedValue) {
 					return;
@@ -468,6 +607,9 @@ export function getCreateIssueHtml(): string {
 			});
 
 			selectedContainer.addEventListener('click', event => {
+				if (isDisabled) {
+					return;
+				}
 				const button = event.target.closest('button');
 				if (!button) {
 					return;
@@ -490,6 +632,14 @@ export function getCreateIssueHtml(): string {
 				},
 				setValues(nextValues) {
 					selected = nextValues.map(value => String(value || '').trim()).filter(Boolean);
+					render();
+				},
+				setDisabled(disabled) {
+					isDisabled = disabled;
+					input.disabled = disabled;
+					if (disabled) {
+						isOpen = false;
+					}
 					render();
 				},
 				values() {
@@ -602,14 +752,15 @@ export function getCreateIssueHtml(): string {
 		document.getElementById('submit-button').addEventListener('click', () => {
 			showError('');
 			setBusy(true);
+			const canEditIssue = createPermissions.canEditIssue !== false;
 			vscode.postMessage({
 				command: 'submit',
 				input: {
 					title: document.getElementById('title').value,
 					body: document.getElementById('body').value,
-					labels: labelPicker.values(),
-					assignees: assigneePicker.values(),
-					milestoneNumber: document.getElementById('milestone').value ? Number(document.getElementById('milestone').value) : undefined,
+					labels: canEditIssue ? labelPicker.values() : [],
+					assignees: canEditIssue ? assigneePicker.values() : [],
+					milestoneNumber: canEditIssue && document.getElementById('milestone').value ? Number(document.getElementById('milestone').value) : undefined,
 					securityHole: document.getElementById('securityHole').checked,
 					templatePath: document.getElementById('templatePath').value,
 				},
@@ -628,6 +779,10 @@ export function getCreateIssueHtml(): string {
 					break;
 				case 'initialize':
 					populateDefaults(message.defaults);
+					applyPermissions(message.permissions);
+					break;
+				case 'permissions':
+					applyPermissions(message.permissions);
 					break;
 				case 'validationError':
 				case 'error':

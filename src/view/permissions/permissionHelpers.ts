@@ -1,6 +1,7 @@
 import {
 	GitCodePermissionSnapshot,
 	IssueOverviewPermissions,
+	CreateIssuePermissions,
 	PullRequestOverviewPermissions,
 	CreatePullRequestPermissions,
 	GitCodeRoleKey,
@@ -116,18 +117,36 @@ export function buildUnknownIssueOverviewPermissions(): IssueOverviewPermissions
 	};
 }
 
+export function buildCreateIssuePermissions(
+	snapshot: GitCodePermissionSnapshot | undefined,
+): CreateIssuePermissions {
+	if (!snapshot) {
+		return {
+			canCreateIssue: false,
+			canEditIssue: false,
+		};
+	}
+
+	return {
+		canCreateIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'create', message: () => '' }),
+		canEditIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'update', message: () => '' }),
+	};
+}
+
 export function buildCreatePullRequestPermissions(
 	snapshot: GitCodePermissionSnapshot | undefined,
 ): CreatePullRequestPermissions {
 	if (!snapshot) {
 		return {
 			canCreatePullRequest: false,
+			canEditPullRequest: false,
 			canCreateBranch: false,
 		};
 	}
 
 	return {
 		canCreatePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'create', message: () => '' }),
+		canEditPullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
 		canCreateBranch: hasEffectivePermission(snapshot, { scope: 'branch', action: 'create', message: () => '' }),
 	};
 }

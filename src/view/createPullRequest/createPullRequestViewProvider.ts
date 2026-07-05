@@ -6,7 +6,7 @@ import { VIEW_ID_CREATE_PULL_REQUEST } from '../../common/constants';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { checkPermission } from '../permissions/permissionChecks';
-import { createBranchDeniedMessage, createPullRequestDeniedMessage } from '../permissions/permissionMessages';
+import { createBranchDeniedMessage, createPullRequestDeniedMessage, updatePullRequestDeniedMessage } from '../permissions/permissionMessages';
 import { PermissionStore } from '../state/permissionStore';
 import { CreatePullRequestDataModel, CreatePullRequestDefaults } from './createPullRequestDataModel';
 import { getCreatePullRequestHtml } from './createPullRequestHtml';
@@ -33,6 +33,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 	private activeLocalBranch?: string;
 	private permissions: CreatePullRequestPermissions = {
 		canCreatePullRequest: false,
+		canEditPullRequest: false,
 		canCreateBranch: false,
 	};
 	private pendingInitialize?: {
@@ -97,6 +98,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		this.activeLocalBranch = sourceBranch;
 		this.permissions = permissions ?? {
 			canCreatePullRequest: false,
+			canEditPullRequest: false,
 			canCreateBranch: false,
 		};
 
@@ -112,7 +114,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		);
 
 		const defaults = await this.dataModel.initialize(repositories, repository, sourceBranch, issueContext);
-		this.permissions = await this.buildPermissions(defaults.sourceRepository);
+		this.permissions = await this.buildPermissions(defaults.sourceRepository, defaults.targetRepository);
 		this.postMessage({ command: 'initialize', defaults, permissions: this.permissions });
 	}
 
@@ -182,7 +184,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 
 		this.publishRemoteName = repository.remoteName;
 		await this.dataModel.setSourceRepository(repository);
-		this.permissions = await this.buildPermissions(repository);
+		this.permissions = await this.buildPermissions(repository, this.dataModel.targetRepository);
 
 		this.postMessage({
 			command: 'updateRepositoryFields',
@@ -213,6 +215,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		}
 
 		await this.dataModel.setTargetRepository(repository);
+		this.permissions = await this.buildPermissions(this.dataModel.sourceRepository, repository);
 
 		this.postMessage({
 			command: 'updateRepositoryFields',
@@ -232,12 +235,28 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		});
 	}
 
-	private async buildPermissions(sourceRepository: GitCodeRepository): Promise<CreatePullRequestPermissions> {
-		const [canCreatePullRequest, canCreateBranch] = await Promise.all([
+	private async buildPermissions(
+		sourceRepository: GitCodeRepository | undefined,
+		targetRepository: GitCodeRepository | undefined,
+	): Promise<CreatePullRequestPermissions> {
+		if (!sourceRepository || !targetRepository) {
+			return {
+				canCreatePullRequest: false,
+				canEditPullRequest: false,
+				canCreateBranch: false,
+			};
+		}
+
+		const [canCreatePullRequest, canEditPullRequest, canCreateBranch] = await Promise.all([
 			checkPermission(this.permissionStore, sourceRepository, {
 				scope: 'pr',
 				action: 'create',
 				message: createPullRequestDeniedMessage,
+			}),
+			checkPermission(this.permissionStore, targetRepository, {
+				scope: 'pr',
+				action: 'update',
+				message: updatePullRequestDeniedMessage,
 			}),
 			checkPermission(this.permissionStore, sourceRepository, {
 				scope: 'branch',
@@ -246,7 +265,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			}),
 		]);
 
-		return { canCreatePullRequest, canCreateBranch };
+		return { canCreatePullRequest, canEditPullRequest, canCreateBranch };
 	}
 
 	private async handleSourceBranchChange(branch: string): Promise<void> {
@@ -299,20 +318,34 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			return;
 		}
 
+		const canEditPullRequest = await checkPermission(this.permissionStore, repo, {
+			scope: 'pr',
+			action: 'update',
+			message: updatePullRequestDeniedMessage,
+		});
+		this.permissions = {
+			canCreatePullRequest,
+			canEditPullRequest,
+			canCreateBranch: this.permissions.canCreateBranch,
+		};
+		this.postMessage({ command: 'permissions', permissions: this.permissions });
+
+		const sanitizedInput = this.sanitizeInput(input, canEditPullRequest);
+
 		// Validate
-		const errors = this.dataModel.validate(input);
+		const errors = this.dataModel.validate(sanitizedInput);
 		if (errors.length > 0) {
 			this.postMessage({ command: 'validationErrors', errors });
 			return;
 		}
 
 		// Check if source branch exists remotely, or ask about publishing
-		const branchPublished = await this.dataModel.ensureSourceBranchPublished(input);
+		const branchPublished = await this.dataModel.ensureSourceBranchPublished(sanitizedInput);
 		if (!branchPublished) {
-			const canPublishLocalBranch = input.head === this.activeLocalBranch;
+			const canPublishLocalBranch = sanitizedInput.head === this.activeLocalBranch;
 			const branchReady = canPublishLocalBranch
-				? await this.promptAndPublishLocalBranch(input.head)
-				: await this.promptAndCreateRemoteBranch(input.base, input.head);
+				? await this.promptAndPublishLocalBranch(sanitizedInput.head)
+				: await this.promptAndCreateRemoteBranch(sanitizedInput.base, sanitizedInput.head);
 
 			if (!branchReady) {
 				this.postMessage({ command: 'submitDone' });
@@ -320,7 +353,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			}
 		}
 
-		const createInput = this.createApiInput(input);
+		const createInput = this.createApiInput(sanitizedInput);
 
 		// Create the pull request
 		await vscode.window.withProgress(
@@ -365,6 +398,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		this.activeLocalBranch = undefined;
 		this.permissions = {
 			canCreatePullRequest: false,
+			canEditPullRequest: false,
 			canCreateBranch: false,
 		};
 		this.postMessage({ command: 'reset' });
@@ -496,11 +530,26 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		);
 	}
 
+	private sanitizeInput(input: CreatePullRequestInput, canEditPullRequest: boolean): CreatePullRequestInput {
+		if (canEditPullRequest) {
+			return input;
+		}
+
+		return {
+			...input,
+			milestoneNumber: undefined,
+			labels: undefined,
+			assignees: undefined,
+			testers: undefined,
+		};
+	}
+
 	dispose(): void {
 		this.view = undefined;
 		this.dataModel = undefined;
 		this.permissions = {
 			canCreatePullRequest: false,
+			canEditPullRequest: false,
 			canCreateBranch: false,
 		};
 		for (const d of this.disposables) {

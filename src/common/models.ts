@@ -769,8 +769,14 @@ export interface IssueOverviewPermissions {
 	canCreateComment: boolean;
 }
 
+export interface CreateIssuePermissions {
+	canCreateIssue: boolean;
+	canEditIssue: boolean;
+}
+
 export interface CreatePullRequestPermissions {
 	canCreatePullRequest: boolean;
+	canEditPullRequest: boolean;
 	canCreateBranch: boolean;
 }
 

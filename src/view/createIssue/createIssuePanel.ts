@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
-import { CreateIssueInput, GitCodeRepository } from '../../common/models';
+import { CreateIssueInput, CreateIssuePermissions, GitCodeRepository } from '../../common/models';
 import { Logger } from '../../common/logger';
 import { IssueService } from '../../gitcode/services/issueService';
 import { RawContentService } from '../../gitcode/services/rawContentService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
+import { checkPermission } from '../permissions/permissionChecks';
+import { createIssueDeniedMessage, updateIssueDeniedMessage } from '../permissions/permissionMessages';
+import { PermissionStore } from '../state/permissionStore';
 import { CreateIssueDataModel } from './createIssueDataModel';
 import { getCreateIssueHtml } from './createIssueHtml';
 import { CreateIssueTemplateService } from './createIssueTemplateService';
@@ -21,6 +24,7 @@ interface CreateIssuePanelDependencies {
 	repositoryService: RepositoryService;
 	rawContentService: RawContentService;
 	issueService: IssueService;
+	permissionStore: PermissionStore;
 	logger: Logger;
 	callbacks: CreateIssuePanelCallbacks;
 }
@@ -50,6 +54,10 @@ export class CreateIssuePanel implements vscode.Disposable {
 	private dataModel: CreateIssueDataModel;
 	private defaultsLoaded = false;
 	private pendingRepository?: GitCodeRepository;
+	private permissions: CreateIssuePermissions = {
+		canCreateIssue: false,
+		canEditIssue: false,
+	};
 	private webviewReady = false;
 
 	private constructor(
@@ -75,7 +83,11 @@ export class CreateIssuePanel implements vscode.Disposable {
 				case 'ready':
 					this.webviewReady = true;
 					if (this.defaultsLoaded && this.dataModel.getDefaults()) {
-						this.postMessage({ command: 'initialize', defaults: this.dataModel.getDefaults() });
+						this.postMessage({
+							command: 'initialize',
+							defaults: this.dataModel.getDefaults(),
+							permissions: this.permissions,
+						});
 						break;
 					}
 
@@ -110,11 +122,15 @@ export class CreateIssuePanel implements vscode.Disposable {
 		}
 
 		try {
-			const defaults = await this.dataModel.initialize(repository);
+			const [defaults, permissions] = await Promise.all([
+				this.dataModel.initialize(repository),
+				this.buildPermissions(repository),
+			]);
 			this.defaultsLoaded = true;
 			this.pendingRepository = undefined;
+			this.permissions = permissions;
 			if (this.webviewReady) {
-				this.postMessage({ command: 'initialize', defaults });
+				this.postMessage({ command: 'initialize', defaults, permissions });
 			}
 		} catch (error) {
 			this.dependencies.logger.error(`Create issue initialization failed for ${repository.fullName}: ${error instanceof Error ? error.message : String(error)}`);
@@ -128,7 +144,37 @@ export class CreateIssuePanel implements vscode.Disposable {
 	}
 
 	private async handleSubmit(input: CreateIssueInput): Promise<void> {
-		const errors = this.dataModel.validate(input);
+		const repository = this.dataModel.currentRepository;
+		if (!repository) {
+			this.postMessage({ command: 'error', message: 'No repository selected.' });
+			return;
+		}
+
+		const canCreateIssue = await checkPermission(this.dependencies.permissionStore, repository, {
+			scope: 'issue',
+			action: 'create',
+			message: createIssueDeniedMessage,
+		});
+		if (!canCreateIssue) {
+			this.postMessage({ command: 'error', message: createIssueDeniedMessage(repository) });
+			vscode.window.showWarningMessage(createIssueDeniedMessage(repository));
+			return;
+		}
+
+		const canEditIssue = await checkPermission(this.dependencies.permissionStore, repository, {
+			scope: 'issue',
+			action: 'update',
+			message: updateIssueDeniedMessage,
+		});
+
+		this.permissions = {
+			canCreateIssue,
+			canEditIssue,
+		};
+		this.postMessage({ command: 'permissions', permissions: this.permissions });
+
+		const sanitizedInput = this.sanitizeInput(input, canEditIssue);
+		const errors = this.dataModel.validate(sanitizedInput);
 		if (errors.length > 0) {
 			this.postMessage({ command: 'validationError', message: errors.join('\n') });
 			return;
@@ -141,7 +187,7 @@ export class CreateIssuePanel implements vscode.Disposable {
 					title: 'Creating issue...',
 					cancellable: false,
 				},
-				() => this.dataModel.createIssue(input),
+				() => this.dataModel.createIssue(sanitizedInput),
 			);
 
 			vscode.window.showInformationMessage(`GitCode issue #${result.number} created.`);
@@ -158,5 +204,38 @@ export class CreateIssuePanel implements vscode.Disposable {
 
 	private postMessage(message: unknown): void {
 		void this.panel.webview.postMessage(message);
+	}
+
+	private async buildPermissions(repository: GitCodeRepository): Promise<CreateIssuePermissions> {
+		const [canCreateIssue, canEditIssue] = await Promise.all([
+			checkPermission(this.dependencies.permissionStore, repository, {
+				scope: 'issue',
+				action: 'create',
+				message: createIssueDeniedMessage,
+			}),
+			checkPermission(this.dependencies.permissionStore, repository, {
+				scope: 'issue',
+				action: 'update',
+				message: updateIssueDeniedMessage,
+			}),
+		]);
+
+		return {
+			canCreateIssue,
+			canEditIssue,
+		};
+	}
+
+	private sanitizeInput(input: CreateIssueInput, canEditIssue: boolean): CreateIssueInput {
+		if (canEditIssue) {
+			return input;
+		}
+
+		return {
+			...input,
+			assignees: [],
+			labels: [],
+			milestoneNumber: undefined,
+		};
 	}
 }

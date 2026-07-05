@@ -11,7 +11,7 @@ import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { CopilotIssueContextStore } from '../copilot/copilotIssueContextStore';
 import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
-import { createBranchDeniedMessage } from '../permissions/permissionMessages';
+import { createBranchDeniedMessage, createPullRequestDeniedMessage, updatePullRequestDeniedMessage } from '../permissions/permissionMessages';
 import { CreatePullRequestViewProvider } from './createPullRequestViewProvider';
 
 export class CreatePullRequestHelper implements vscode.Disposable {
@@ -95,14 +95,30 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 		const sourceRepository = repositories.find((r) => r.remoteName === 'origin') ?? repository;
 
 		// Build permission view model for the provider
-		let permissions: CreatePullRequestPermissions = { canCreatePullRequest: true, canCreateBranch: false };
+		let permissions: CreatePullRequestPermissions = {
+			canCreatePullRequest: true,
+			canEditPullRequest: true,
+			canCreateBranch: false,
+		};
 		try {
-			const canCreateBranch = await checkPermission(this.permissionStore, sourceRepository, {
-				scope: 'branch',
-				action: 'create',
-				message: createBranchDeniedMessage,
-			});
-			permissions = { canCreatePullRequest: true, canCreateBranch };
+			const [canCreatePullRequest, canEditPullRequest, canCreateBranch] = await Promise.all([
+				checkPermission(this.permissionStore, sourceRepository, {
+					scope: 'pr',
+					action: 'create',
+					message: createPullRequestDeniedMessage,
+				}),
+				checkPermission(this.permissionStore, repository, {
+					scope: 'pr',
+					action: 'update',
+					message: updatePullRequestDeniedMessage,
+				}),
+				checkPermission(this.permissionStore, sourceRepository, {
+					scope: 'branch',
+					action: 'create',
+					message: createBranchDeniedMessage,
+				}),
+			]);
+			permissions = { canCreatePullRequest, canEditPullRequest, canCreateBranch };
 		} catch {
 			// If we can't check branch permission, default to disabled
 		}

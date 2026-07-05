@@ -26,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Fixed
 
 - Made `Sign in to GitCode` tree empty states clickable so they run the existing sign-in command.
+- Fixed cross-repository pull request creation gating so the final create
+  action uses the current source repository's `pr:create` permission instead of
+  incorrectly requiring that permission on the selected target repository.
 - Updated issue and pull request PATCH requests to send only changed fields
   instead of always including the current title in section saves and state
   changes.
