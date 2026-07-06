@@ -45,6 +45,29 @@ function normalizeTimestamp(value: unknown): string | undefined {
 	return trimmed ? trimmed : undefined;
 }
 
+function normalizeBooleanFlag(value: unknown): boolean | undefined {
+	if (typeof value === 'boolean') {
+		return value;
+	}
+
+	if (typeof value === 'number') {
+		return value !== 0;
+	}
+
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase();
+		if (normalized === 'true' || normalized === '1') {
+			return true;
+		}
+
+		if (normalized === 'false' || normalized === '0') {
+			return false;
+		}
+	}
+
+	return undefined;
+}
+
 function mapBranchRef(dto: any): PullRequestBranchRef {
 	const repo = dto?.repo as RepoLike | undefined;
 	return {
@@ -159,6 +182,7 @@ export function mapPullRequestDetail(dto: any): PullRequestDetail {
 		url: typeof dto?.url === 'string' ? dto.url : undefined,
 		htmlUrl: typeof dto?.html_url === 'string' ? dto.html_url : undefined,
 		isDraft: Boolean(dto?.draft),
+		closeRelatedIssue: normalizeBooleanFlag(dto?.close_related_issue),
 		createdAt: String(dto?.created_at ?? ''),
 		updatedAt: String(dto?.updated_at ?? ''),
 		closedAt: normalizeTimestamp(dto?.closed_at),

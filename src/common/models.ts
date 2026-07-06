@@ -59,6 +59,7 @@ export interface PullRequestDetail {
 	url?: string;
 	htmlUrl?: string;
 	isDraft: boolean;
+	closeRelatedIssue?: boolean;
 	createdAt: string;
 	updatedAt: string;
 	closedAt?: string;

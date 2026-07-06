@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Preferred specific pull request merge blockers such as conflicts, failed CI,
   missing approvals, or API-provided reasons over the generic non-mergeable
   fallback message in merge validation and tooltips.
+- Fixed the pull request overview `Close related issues after merge` checkbox
+  so it reflects the saved PR setting when the value is enabled.
 
 ## [0.0.3] - 2026-07-05
 

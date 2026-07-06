@@ -1000,6 +1000,7 @@ export function getOverviewHtml(
 		body: detail.body,
 		state: detail.state === 'closed' ? 'closed' : 'open',
 		draft: detail.isDraft,
+		closeRelatedIssue: Boolean(detail.closeRelatedIssue),
 		labels: detail.labels,
 		milestone: detail.milestone ?? null,
 	});
@@ -2366,7 +2367,7 @@ export function getOverviewHtml(
 						</div>
 						<div class="preference-item" data-section-edit="closeRelatedIssue">
 							<label class="preference-row">
-								<input type="checkbox" data-section-input="closeRelatedIssue">
+								<input type="checkbox" data-section-input="closeRelatedIssue" ${detail.closeRelatedIssue ? 'checked' : ''}>
 								<span class="preference-copy">
 									<span class="preference-title">Close related issues after merge</span>
 									<span class="preference-description">When enabled, linked issues are closed after this pull request is merged.</span>
@@ -2544,7 +2545,7 @@ export function getOverviewHtml(
 			if (section === 'closeRelatedIssue') {
 				const closeRelatedIssueInput = document.querySelector('[data-section-input="closeRelatedIssue"]');
 				if (closeRelatedIssueInput) {
-					closeRelatedIssueInput.checked = false;
+					closeRelatedIssueInput.checked = Boolean(detailSnapshot.closeRelatedIssue);
 				}
 			}
 		}
