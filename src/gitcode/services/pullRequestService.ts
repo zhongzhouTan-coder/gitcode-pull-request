@@ -1,4 +1,4 @@
-import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, GitCodeUser, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestOperationLog, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
+import { CreatePullRequestInput, CreatedPullRequestSummary, EditPullRequestInput, GitCodeRepository, GitCodeUser, PullRequestDetail, PullRequestDiffSnapshot, PullRequestFileChange, PullRequestFilesJsonDto, PullRequestMergeResult, PullRequestOperationLog, PullRequestRelatedIssue, PullRequestSummary } from '../../common/models';
 import { GitCodeDeleteClient } from '../client/gitcodeClient';
 import { mapDiffSnapshot } from '../mappers/pullRequestDiffSnapshotMapper';
 import { mapPullRequestDetail } from '../mappers/pullRequestDetailMapper';
@@ -301,5 +301,14 @@ export class PullRequestService {
 				assignees: assignees.join(','),
 			},
 		);
+	}
+
+	async mergePullRequest(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestMergeResult> {
+		const response = await this.client.put<PullRequestMergeResult>(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${pullRequestNumber}/merge`,
+			{ merge_method: 'merge' },
+		);
+
+		return response;
 	}
 }

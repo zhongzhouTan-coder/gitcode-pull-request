@@ -37,11 +37,14 @@ export function buildPullRequestOverviewPermissions(
 			canEditPullRequestDraft: false,
 			canClosePullRequest: false,
 			canReopenPullRequest: false,
+			canMergePullRequest: false,
 			canCreateComment: false,
 			canEditComment: false,
 			canResolveComment: false,
 			canUpdateReviewers: false,
-			canUpdateTesters: false,		canUpdateAssignees: false,			canUpdateRelatedIssues: false,
+			canUpdateTesters: false,
+			canUpdateAssignees: false,
+			canUpdateRelatedIssues: false,
 		};
 	}
 
@@ -53,6 +56,7 @@ export function buildPullRequestOverviewPermissions(
 		canEditPullRequestDraft: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }, isAuthor),
 		canClosePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'close', message: () => '' }, isAuthor),
 		canReopenPullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'reopen', message: () => '' }, isAuthor),
+		canMergePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'merge', message: () => '' }),
 		canCreateComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }),
 		canEditComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }), // note:update is not exposed by API
 		canResolveComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'resolve', message: () => '' }),
@@ -70,6 +74,7 @@ export function buildUnknownPullRequestOverviewPermissions(): PullRequestOvervie
 		canEditPullRequestDraft: true,
 		canClosePullRequest: true,
 		canReopenPullRequest: true,
+		canMergePullRequest: true,
 		canCreateComment: true,
 		canEditComment: true,
 		canResolveComment: true,

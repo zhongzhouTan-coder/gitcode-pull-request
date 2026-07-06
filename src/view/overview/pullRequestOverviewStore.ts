@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, GitCodeUser, PullRequestDetail, PullRequestRelatedIssue, AddedPullRequestRelatedIssue, IssueSummary } from '../../common/models';
+import { EditPullRequestInput, EditPullRequestOptions, GitCodeRepository, GitCodeUser, PullRequestDetail, PullRequestMergeResult, PullRequestRelatedIssue, AddedPullRequestRelatedIssue, IssueSummary } from '../../common/models';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
 import { RepositoryService } from '../../gitcode/services/repositoryService';
 import { IssueService } from '../../gitcode/services/issueService';
@@ -329,6 +329,22 @@ export class PullRequestOverviewStore {
 		const key = this.getKey(repository, pullRequestNumber);
 		this.detailPromises.delete(key);
 		this.onDidChangeEmitter.fire();
+	}
+
+	async mergePullRequest(repository: GitCodeRepository, pullRequestNumber: number): Promise<PullRequestMergeResult> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			throw new NotSignedInError('Sign in to GitCode first.');
+		}
+
+		const result = await this.pullRequestService.mergePullRequest(repository, pullRequestNumber);
+
+		// Invalidate cached detail so the overview reloads fresh data
+		const key = this.getKey(repository, pullRequestNumber);
+		this.detailPromises.delete(key);
+		this.onDidChangeEmitter.fire();
+
+		return result;
 	}
 
 	private getKey(repository: GitCodeRepository, pullRequestNumber: number): string {

@@ -754,6 +754,7 @@ export interface PullRequestOverviewPermissions {
 	canEditPullRequestDraft: boolean;
 	canClosePullRequest: boolean;
 	canReopenPullRequest: boolean;
+	canMergePullRequest: boolean;
 	canCreateComment: boolean;
 	canEditComment: boolean;
 	canResolveComment: boolean;
@@ -761,6 +762,12 @@ export interface PullRequestOverviewPermissions {
 	canUpdateTesters: boolean;
 	canUpdateAssignees: boolean;
 	canUpdateRelatedIssues: boolean;
+}
+
+export interface PullRequestMergeResult {
+	sha: string;
+	merged: boolean;
+	message: string;
 }
 
 export interface IssueOverviewPermissions {

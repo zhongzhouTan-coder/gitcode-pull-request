@@ -828,4 +828,27 @@ suite('OverviewHtml', () => {
 		assert.match(html, /&lt;script&gt;alert/);
 		assert.match(html, /data-action="addRelatedIssue"/);
 	});
+
+	test('prefers specific merge blockers and spaces the close and merge buttons', () => {
+		const html = getOverviewWithTimelineHtml(
+			{
+				...detail,
+				mergeability: {
+					mergeable: false,
+					ciPassed: false,
+					reasons: [],
+				},
+			},
+			{
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				comments: [],
+			},
+			'nonce',
+		);
+
+		assert.match(html, /data-merge-disabled-reason="Required CI checks have not passed\."/);
+		assert.match(html, /\.main-state-actions \{[\s\S]*gap: 8px;/);
+	});
 });

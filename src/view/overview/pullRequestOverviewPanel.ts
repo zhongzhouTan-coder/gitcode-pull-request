@@ -13,6 +13,7 @@ import { getOverviewErrorHtml, getOverviewLoadingHtml, getOverviewWithTimelineHt
 import { PullRequestOverviewStore } from './pullRequestOverviewStore';
 import { PullRequestOperationLogsStore } from './pullRequestOperationLogsStore';
 import { buildDiffCommentContexts, DiffCommentContext } from './diffCommentContext';
+import { getPullRequestMergeBlockedReason } from './mergeability';
 import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
 import { buildPullRequestOverviewPermissions, buildUnknownPullRequestOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
@@ -210,12 +211,14 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private addRelatedIssueInProgress: boolean = false;
 	private removeRelatedIssueInProgress: boolean = false;
 	private removingRelatedIssueNumbers: readonly number[] = [];
+	private mergePullRequestInProgress: boolean = false;
 	private permissions: PullRequestOverviewPermissions = {
 		canEditPullRequest: false,
 		canEditPullRequestTitleAndBody: false,
 		canEditPullRequestDraft: false,
 		canClosePullRequest: false,
 		canReopenPullRequest: false,
+		canMergePullRequest: false,
 		canCreateComment: false,
 		canEditComment: false,
 		canResolveComment: false,
@@ -356,6 +359,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'changePullRequestState' && message.state) {
 				await this.handleChangePullRequestState(message.state);
+				return;
+			}
+
+			if (message.command === 'mergePullRequest') {
+				await this.handleMergePullRequest();
 				return;
 			}
 
@@ -796,6 +804,81 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				command: 'pullRequestStateChangeError',
 				message: errorMessage,
 			});
+		}
+	}
+
+	private isMergeable(): { mergeable: boolean; reason: string } {
+		if (!this.detail) {
+			return { mergeable: false, reason: 'Pull request details are not available.' };
+		}
+
+		const reason = getPullRequestMergeBlockedReason(this.detail);
+		return { mergeable: reason === '', reason };
+	}
+
+	private async handleMergePullRequest(): Promise<void> {
+		if (!this.detail) {
+			return;
+		}
+
+		const { mergeable, reason } = this.isMergeable();
+		if (!mergeable) {
+			this.panel.webview.postMessage({
+				command: 'mergePullRequestError',
+				message: reason,
+			});
+			return;
+		}
+
+		const deniedMessage = `You do not have permission to merge pull requests in ${this.context.repository.fullName}.`;
+		if (!await this.checkWritePermission('pr', 'merge', deniedMessage)) {
+			this.panel.webview.postMessage({
+				command: 'mergePullRequestError',
+				message: deniedMessage,
+			});
+			return;
+		}
+
+		this.mergePullRequestInProgress = true;
+		try {
+			const result = await this.store.mergePullRequest(
+				this.context.repository,
+				this.context.pullRequestNumber,
+			);
+
+			if (!result.merged) {
+				throw new Error(result.message || 'Merge was not completed.');
+			}
+
+			vscode.window.showInformationMessage(
+				`GitCode pull request #${this.context.pullRequestNumber} merged successfully.`,
+			);
+
+			await this.commentsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			if (PullRequestOverviewPanel.operationLogsStore) {
+				await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+			}
+			const treeStore = PullRequestOverviewPanel.treeStore;
+			if (treeStore) {
+				treeStore.refreshRepository(this.context.repository.fullName).catch(() => {
+					treeStore.refreshAll();
+				});
+			}
+
+			this.commentsSnapshot = undefined;
+			this.relatedIssuesSnapshot = undefined;
+			this.operationLogsSnapshot = undefined;
+			this.editOptions = undefined;
+			await this.load(true);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to merge pull request.';
+			this.logger.error(`Failed to merge PR #${this.context.pullRequestNumber}: ${errorMessage}`);
+			this.panel.webview.postMessage({
+				command: 'mergePullRequestError',
+				message: errorMessage,
+			});
+		} finally {
+			this.mergePullRequestInProgress = false;
 		}
 	}
 

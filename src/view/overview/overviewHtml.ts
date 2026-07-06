@@ -16,6 +16,7 @@ import {
 	PullRequestRelatedIssuesSnapshot,
 } from '../../common/models';
 import { DiffCommentContext } from './diffCommentContext';
+import { getPullRequestMergeBlockedReason, isPullRequestMergeAllowed } from './mergeability';
 import { renderMarkdown } from '../webview/markdown';
 
 function escapeHtml(value: string): string {
@@ -584,6 +585,23 @@ function renderStateActionButton(detail: PullRequestDetail): string {
 	return `<button id="state-action-button" type="button" class="secondary" data-state-action="${stateAction}" ${stateActionDisabled}>${stateActionLabel}</button>`;
 }
 
+function getMergeDisabledReason(detail: PullRequestDetail): string {
+	return getPullRequestMergeBlockedReason(detail);
+}
+
+function isMergeAllowedByChecks(detail: PullRequestDetail): boolean {
+	return isPullRequestMergeAllowed(detail);
+}
+
+function renderMergeButton(detail: PullRequestDetail): string {
+	const checksAllowMerge = isMergeAllowedByChecks(detail);
+	const openState = detail.state === 'open';
+	const disabledReason = getMergeDisabledReason(detail);
+	const disabled = !openState || !checksAllowMerge ? 'disabled' : '';
+	const label = 'Merge pull request';
+	return `<button id="merge-action-button" type="button" class="primary" data-action="mergePullRequest" ${disabled} data-merge-disabled-reason="${escapeAttr(disabledReason)}">${label}</button>`;
+}
+
 function renderConversationComposer(detail: PullRequestDetail): string {
 	return `
 		<div class="conversation-composer">
@@ -592,6 +610,7 @@ function renderConversationComposer(detail: PullRequestDetail): string {
 			<div class="conversation-action-row">
 				<div class="main-state-actions">
 					${renderStateActionButton(detail)}
+					${renderMergeButton(detail)}
 				</div>
 				<div class="conversation-actions">
 					<button id="conversation-comment-submit" type="button">Comment</button>
@@ -1034,6 +1053,7 @@ export function getOverviewHtml(
 			display: flex;
 			align-items: center;
 			justify-content: flex-start;
+			gap: 8px;
 			flex: 0 0 auto;
 		}
 		.action-error { margin-top: 8px; color: var(--vscode-errorForeground); font-size: 13px; min-height: 18px; }
@@ -2788,6 +2808,18 @@ export function getOverviewHtml(
 				}
 			}
 
+			var mergeButton = document.getElementById('merge-action-button');
+			if (mergeButton) {
+				if (!overviewPermissions.canMergePullRequest) {
+					setDisabledWithTooltip(mergeButton, true, 'You do not have permission to merge pull requests in this repository.');
+				} else {
+					var mergeReason = mergeButton.getAttribute('data-merge-disabled-reason');
+					if (mergeReason) {
+						setDisabledWithTooltip(mergeButton, true, mergeReason);
+					}
+				}
+			}
+
 			if (!overviewPermissions.canCreateComment) {
 				setDisabledWithTooltip(document.getElementById('conversation-comment-input'), true, 'You do not have permission to comment in this repository.');
 				setDisabledWithTooltip(document.getElementById('conversation-comment-submit'), true, 'You do not have permission to comment in this repository.');
@@ -3452,6 +3484,20 @@ export function getOverviewHtml(
 				}
 				pendingStateAction = null;
 			}
+			if (msg.command === 'mergePullRequestError') {
+				var mergeButton = document.getElementById('merge-action-button');
+				if (mergeButton) {
+					mergeButton.disabled = false;
+					mergeButton.classList.remove('danger');
+					mergeButton.classList.add('primary');
+					mergeButton.textContent = 'Merge pull request';
+					mergeButton.removeAttribute('data-confirming-merge');
+				}
+				var errorEl = document.getElementById('state-action-error');
+				if (errorEl) {
+					errorEl.textContent = msg.message || 'Unable to merge pull request.';
+				}
+			}
 			if (msg.command === 'pullRequestCommentSubmitError') {
 				setConversationCommentSubmitting(false);
 				showConversationCommentError(msg.message || 'Unable to submit comment.');
@@ -3537,6 +3583,33 @@ export function getOverviewHtml(
 			vscode.postMessage({
 				command: 'changePullRequestState',
 				state: pendingStateAction,
+			});
+		});
+		document.getElementById('merge-action-button')?.addEventListener('click', () => {
+			var button = document.getElementById('merge-action-button');
+			if (!button || button.disabled) {
+				return;
+			}
+			var errorEl = document.getElementById('state-action-error');
+			if (errorEl) {
+				errorEl.textContent = '';
+			}
+			if (button.getAttribute('data-confirming-merge') !== 'true') {
+				button.setAttribute('data-confirming-merge', 'true');
+				button.textContent = 'Confirm merge';
+				button.classList.add('danger');
+				if (errorEl) {
+					errorEl.textContent = 'Click again to confirm merging this pull request.';
+				}
+				return;
+			}
+			button.removeAttribute('data-confirming-merge');
+			button.disabled = true;
+			button.classList.remove('danger');
+			button.classList.add('secondary');
+			button.textContent = 'Merging pull request...';
+			vscode.postMessage({
+				command: 'mergePullRequest',
 			});
 		});
 		document.querySelectorAll('[data-action="openUrl"]').forEach((el) => {

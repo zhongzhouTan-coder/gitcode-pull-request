@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- Added spacing between the pull request close or reopen button and the merge
+  button in the overview composer footer.
+
+### Fixed
+
+- Reset the pull request merge button when a runtime merge permission check is
+  denied after confirmation so the overview does not remain stuck in a loading
+  state.
+- Preferred specific pull request merge blockers such as conflicts, failed CI,
+  missing approvals, or API-provided reasons over the generic non-mergeable
+  fallback message in merge validation and tooltips.
+
 ## [0.0.3] - 2026-07-05
 
 ### Added
