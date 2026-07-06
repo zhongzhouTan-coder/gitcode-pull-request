@@ -182,6 +182,8 @@ export function mapPullRequestDetail(dto: any): PullRequestDetail {
 		url: typeof dto?.url === 'string' ? dto.url : undefined,
 		htmlUrl: typeof dto?.html_url === 'string' ? dto.html_url : undefined,
 		isDraft: Boolean(dto?.draft),
+		pruneBranch: normalizeBooleanFlag(dto?.prune_branch ?? dto?.purne_branch ?? dto?.should_remove_source_branch),
+		squashMerge: normalizeBooleanFlag(dto?.squash_merge),
 		closeRelatedIssue: normalizeBooleanFlag(dto?.close_related_issue),
 		createdAt: String(dto?.created_at ?? ''),
 		updatedAt: String(dto?.updated_at ?? ''),

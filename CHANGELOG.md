@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - Added spacing between the pull request close or reopen button and the merge
   button in the overview composer footer.
+- Added `Delete source branch after merge` and `Squash commits on merge`
+  options to pull request editing, with inline descriptions in the overview
+  preferences card.
 
 ### Fixed
 

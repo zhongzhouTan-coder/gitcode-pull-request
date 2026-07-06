@@ -23,4 +23,27 @@ suite('PullRequestMapper', () => {
 			close_related_issue: false,
 		});
 	});
+
+	test('maps pruneBranch and squashMerge to the API request body', () => {
+		const body = mapEditPullRequestInput({
+			title: 'Enable prune and squash',
+			pruneBranch: true,
+			squashMerge: false,
+		});
+
+		assert.deepStrictEqual(body, {
+			title: 'Enable prune and squash',
+			prune_branch: true,
+			squash_merge: false,
+		});
+	});
+
+	test('omits pruneBranch and squashMerge when undefined', () => {
+		const body = mapEditPullRequestInput({
+			title: 'No preferences',
+		});
+
+		assert.strictEqual('prune_branch' in body, false);
+		assert.strictEqual('squash_merge' in body, false);
+	});
 });

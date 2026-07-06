@@ -204,6 +204,14 @@ suite('OverviewHtml', () => {
 		assert.match(html, /<option value="">No milestone<\/option>/);
 	});
 
+	test('maps author-editable pull request option toggles to their own permission key and keeps preference rows visible on cancel', () => {
+		const html = getOverviewHtml(detail, 'nonce');
+
+		assert.match(html, /case 'pruneBranch':[\s\S]*case 'squashMerge':[\s\S]*case 'closeRelatedIssue':[\s\S]*return 'canEditPullRequestOptions';/);
+		assert.match(html, /function isAlwaysVisibleSection\(section\)/);
+		assert.match(html, /if \(edit && !alwaysVisible\) edit\.style\.display = 'none';/);
+	});
+
 	test('escapes inline script JSON for repository-controlled strings', () => {
 		const html = getOverviewHtml(
 			{
@@ -234,7 +242,9 @@ suite('OverviewHtml', () => {
 		assert.match(html, /titleInput\.value = detailSnapshot\.title \|\| ''/);
 		assert.match(html, /bodyInput\.value = detailSnapshot\.body \|\| ''/);
 		assert.match(html, /draftInput\.checked = Boolean\(detailSnapshot\.draft\)/);
-		assert.match(html, /if \(section === 'closeRelatedIssue'\) \{[\s\S]*closeRelatedIssueInput\.checked = false;/);
+		assert.match(html, /if \(section === 'pruneBranch'\) \{[\s\S]*pruneBranchInput\.checked = Boolean\(detailSnapshot\.pruneBranch\);/);
+		assert.match(html, /if \(section === 'squashMerge'\) \{[\s\S]*squashMergeInput\.checked = Boolean\(detailSnapshot\.squashMerge\);/);
+		assert.match(html, /if \(section === 'closeRelatedIssue'\) \{[\s\S]*closeRelatedIssueInput\.checked = Boolean\(detailSnapshot\.closeRelatedIssue\);/);
 		assert.match(html, /resetSectionState\(section\);[\s\S]*if \(section === 'labels'\)/);
 	});
 
@@ -263,7 +273,7 @@ suite('OverviewHtml', () => {
 		assert.doesNotMatch(openHtml, /section-view-state/);
 	});
 
-	test('renders draft and close related issue settings as checkbox actions', () => {
+	test('renders pull request option settings as checkbox actions', () => {
 		const html = getOverviewHtml(detail, 'nonce');
 		const optionsCardStart = html.indexOf('<div class="card preference-card">');
 
@@ -271,7 +281,11 @@ suite('OverviewHtml', () => {
 		assert.match(html, /<div class="card preference-card">[\s\S]*<h3>Pull Request Options<\/h3>[\s\S]*<input type="checkbox" data-section-input="draft"/);
 		assert.match(html, /<span class="preference-title">Mark as draft<\/span>/);
 		assert.doesNotMatch(html, /<button class="btn-primary btn-save-section" data-section="draft">Save<\/button>/);
-		assert.match(html, /<div class="card preference-card">[\s\S]*<input type="checkbox" data-section-input="closeRelatedIssue">/);
+		assert.match(html, /<div class="card preference-card">[\s\S]*<input type="checkbox" data-section-input="pruneBranch"[^>]*>/);
+		assert.match(html, /<span class="preference-title">Delete source branch after merge<\/span>/);
+		assert.match(html, /<div class="card preference-card">[\s\S]*<input type="checkbox" data-section-input="squashMerge"[^>]*>/);
+		assert.match(html, /<span class="preference-title">Squash commits on merge<\/span>/);
+		assert.match(html, /<div class="card preference-card">[\s\S]*<input type="checkbox" data-section-input="closeRelatedIssue"[^>]*>/);
 		assert.match(html, /<span class="preference-title">Close related issues after merge<\/span>/);
 		assert.doesNotMatch(html, /<button class="btn-primary btn-save-section" data-section="closeRelatedIssue">Save<\/button>/);
 		assert.match(html, /document\.querySelectorAll\('\.preference-card \[data-section-input\]'\)\.forEach/);

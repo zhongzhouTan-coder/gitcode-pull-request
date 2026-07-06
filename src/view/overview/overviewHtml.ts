@@ -1000,6 +1000,8 @@ export function getOverviewHtml(
 		body: detail.body,
 		state: detail.state === 'closed' ? 'closed' : 'open',
 		draft: detail.isDraft,
+		pruneBranch: Boolean(detail.pruneBranch),
+		squashMerge: Boolean(detail.squashMerge),
 		closeRelatedIssue: Boolean(detail.closeRelatedIssue),
 		labels: detail.labels,
 		milestone: detail.milestone ?? null,
@@ -2365,6 +2367,32 @@ export function getOverviewHtml(
 								<div class="section-edit-error" style="display:none"></div>
 							</div>
 						</div>
+						<div class="preference-item" data-section-edit="pruneBranch">
+							<label class="preference-row">
+								<input type="checkbox" data-section-input="pruneBranch" ${detail.pruneBranch ? 'checked' : ''}>
+								<span class="preference-copy">
+									<span class="preference-title">Delete source branch after merge</span>
+									<span class="preference-description">When enabled, GitCode deletes the source branch automatically after this pull request is merged.</span>
+								</span>
+							</label>
+							<div class="preference-status">
+								<span class="section-edit-saving" style="display:none">Saving...</span>
+								<div class="section-edit-error" style="display:none"></div>
+							</div>
+						</div>
+						<div class="preference-item" data-section-edit="squashMerge">
+							<label class="preference-row">
+								<input type="checkbox" data-section-input="squashMerge" ${detail.squashMerge ? 'checked' : ''}>
+								<span class="preference-copy">
+									<span class="preference-title">Squash commits on merge</span>
+									<span class="preference-description">When enabled, GitCode merges this pull request as a single squashed commit.</span>
+								</span>
+							</label>
+							<div class="preference-status">
+								<span class="section-edit-saving" style="display:none">Saving...</span>
+								<div class="section-edit-error" style="display:none"></div>
+							</div>
+						</div>
 						<div class="preference-item" data-section-edit="closeRelatedIssue">
 							<label class="preference-row">
 								<input type="checkbox" data-section-input="closeRelatedIssue" ${detail.closeRelatedIssue ? 'checked' : ''}>
@@ -2521,6 +2549,22 @@ export function getOverviewHtml(
 				const draftInput = document.querySelector('[data-section-input="draft"]');
 				if (draftInput) {
 					draftInput.checked = Boolean(detailSnapshot.draft);
+				}
+				return;
+			}
+
+			if (section === 'pruneBranch') {
+				const pruneBranchInput = document.querySelector('[data-section-input="pruneBranch"]');
+				if (pruneBranchInput) {
+					pruneBranchInput.checked = Boolean(detailSnapshot.pruneBranch);
+				}
+				return;
+			}
+
+			if (section === 'squashMerge') {
+				const squashMergeInput = document.querySelector('[data-section-input="squashMerge"]');
+				if (squashMergeInput) {
+					squashMergeInput.checked = Boolean(detailSnapshot.squashMerge);
 				}
 				return;
 			}
@@ -2758,6 +2802,10 @@ export function getOverviewHtml(
 					return 'canEditPullRequestTitleAndBody';
 				case 'draft':
 					return 'canEditPullRequestDraft';
+				case 'pruneBranch':
+				case 'squashMerge':
+				case 'closeRelatedIssue':
+					return 'canEditPullRequestOptions';
 				default:
 					return 'canEditPullRequest';
 			}
@@ -2770,9 +2818,18 @@ export function getOverviewHtml(
 					return 'You do not have permission to edit this pull request title or description.';
 				case 'draft':
 					return 'You do not have permission to change this pull request draft status.';
+				case 'pruneBranch':
+				case 'squashMerge':
+				case 'closeRelatedIssue':
+					return 'You do not have permission to change these pull request options.';
 				default:
 					return 'You do not have permission to update pull requests in this repository.';
 			}
+		}
+
+		function isAlwaysVisibleSection(section) {
+			const edit = getSectionEdit(section);
+			return Boolean(edit && edit.classList.contains('preference-item'));
 		}
 
 		function applyPermissionControls() {
@@ -2860,9 +2917,10 @@ export function getOverviewHtml(
 			const edit = getSectionEdit(section);
 			const titleView = document.querySelector('.section-view-title');
 			const titleEdit = document.querySelector('[data-section-edit="title"]');
+			const alwaysVisible = isAlwaysVisibleSection(section);
 
 			if (view) view.style.display = 'none';
-			if (edit) edit.style.display = 'block';
+			if (edit && !alwaysVisible) edit.style.display = 'block';
 
 			// For title section, also toggle the title view
 			if (section === 'title' && titleView && titleEdit) {
@@ -2893,9 +2951,10 @@ export function getOverviewHtml(
 			const edit = getSectionEdit(section);
 			const titleView = document.querySelector('.section-view-title');
 			const titleEdit = document.querySelector('[data-section-edit="title"]');
+			const alwaysVisible = isAlwaysVisibleSection(section);
 
 			if (view) view.style.display = '';
-			if (edit) edit.style.display = 'none';
+			if (edit && !alwaysVisible) edit.style.display = 'none';
 
 			if (section === 'title' && titleView && titleEdit) {
 				titleView.style.display = '';
@@ -3242,6 +3301,10 @@ export function getOverviewHtml(
 					return { milestoneNumber: selectedMilestone ? Number(selectedMilestone.number) : undefined };
 				case 'draft':
 					return { draft: getSectionInput('draft') };
+				case 'pruneBranch':
+					return { pruneBranch: getSectionInput('pruneBranch') };
+				case 'squashMerge':
+					return { squashMerge: getSectionInput('squashMerge') };
 				case 'closeRelatedIssue':
 					return { closeRelatedIssue: getSectionInput('closeRelatedIssue') };
 				default:

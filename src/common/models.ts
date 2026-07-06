@@ -59,6 +59,8 @@ export interface PullRequestDetail {
 	url?: string;
 	htmlUrl?: string;
 	isDraft: boolean;
+	pruneBranch?: boolean;
+	squashMerge?: boolean;
 	closeRelatedIssue?: boolean;
 	createdAt: string;
 	updatedAt: string;
@@ -526,6 +528,8 @@ export interface EditPullRequestInput {
 	milestoneNumber?: number;
 	labels?: string;
 	draft?: boolean;
+	pruneBranch?: boolean;
+	squashMerge?: boolean;
 	closeRelatedIssue?: boolean;
 }
 
@@ -546,6 +550,8 @@ export type EditPullRequestSection =
 	| 'milestone'
 	| 'state'
 	| 'draft'
+	| 'pruneBranch'
+	| 'squashMerge'
 	| 'closeRelatedIssue';
 
 export interface CreatedPullRequestSummary {
@@ -753,6 +759,7 @@ export interface PullRequestOverviewPermissions {
 	canEditPullRequest: boolean;
 	canEditPullRequestTitleAndBody: boolean;
 	canEditPullRequestDraft: boolean;
+	canEditPullRequestOptions: boolean;
 	canClosePullRequest: boolean;
 	canReopenPullRequest: boolean;
 	canMergePullRequest: boolean;

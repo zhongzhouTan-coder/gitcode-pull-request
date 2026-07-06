@@ -124,6 +124,12 @@ export function mapEditPullRequestInput(input: EditPullRequestInput): Record<str
 	if (input.draft !== undefined) {
 		body.draft = input.draft;
 	}
+	if (input.pruneBranch !== undefined) {
+		body.prune_branch = input.pruneBranch;
+	}
+	if (input.squashMerge !== undefined) {
+		body.squash_merge = input.squashMerge;
+	}
 	if (input.closeRelatedIssue !== undefined) {
 		body.close_related_issue = input.closeRelatedIssue;
 	}

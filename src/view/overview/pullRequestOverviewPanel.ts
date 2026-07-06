@@ -216,6 +216,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		canEditPullRequest: false,
 		canEditPullRequestTitleAndBody: false,
 		canEditPullRequestDraft: false,
+		canEditPullRequestOptions: false,
 		canClosePullRequest: false,
 		canReopenPullRequest: false,
 		canMergePullRequest: false,
@@ -702,7 +703,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		const authorCanEditSection = section === 'title' || section === 'body' || section === 'draft';
+		// The PR author can edit all supported sections; other collaborators
+		// require the repository-level write permission.
+		const authorCanEditSection = section === 'title' || section === 'body' || section === 'draft'
+			|| section === 'pruneBranch' || section === 'squashMerge' || section === 'closeRelatedIssue';
 		if (!await this.checkWritePermission('pr', 'update', `You do not have permission to update pull requests in ${this.context.repository.fullName}.`, authorCanEditSection && await this.isCurrentUserPullRequestAuthor())) {
 			return;
 		}

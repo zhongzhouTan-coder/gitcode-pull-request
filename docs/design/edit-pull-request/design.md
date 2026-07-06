@@ -9,7 +9,8 @@ The feature must:
 
 - call the GitCode edit pull request API documented in [api.md](api.md)
 - let users update pull request title, description, labels, milestone, draft
-  state, and close-related-issue preference
+  state, source-branch deletion, squash-merge, and close-related-issue
+  preferences
 - let users close or reopen the pull request with a dedicated state action
   button, matching the issue overview state management style
 - expose edit icons in each editable overview section, similar to GitHub pull
@@ -35,6 +36,8 @@ does not include source or target branch fields.
   - milestone selected from the repository milestone list API
   - labels selected from the repository label list API
   - draft flag
+  - source-branch deletion flag
+  - squash-merge flag
   - close-related-issue flag
 - Support changing pull request state through a dedicated action button:
   - open pull requests show `Close pull request`
@@ -53,8 +56,7 @@ does not include source or target branch fields.
 ### Out of Scope
 
 - Editing source or target branch.
-- Editing reviewers, testers, assignees, squash options, or source branch
-  deletion behavior.
+- Editing reviewers, testers, assignees, or squash commit messages.
 - Editing files, commits, comments, or inline review threads.
 - Merge actions.
 - Bulk editing multiple pull requests.
@@ -155,12 +157,9 @@ State            Open
 
 ```text
 Draft            [ ]
-[Save] [Cancel]
-```
-
-```text
-Close issues     [x]
-[Save] [Cancel]
+Delete source branch after merge   [ ]
+Squash commits on merge            [ ]
+Close issues                       [x]
 ```
 
 Behavior:
@@ -178,10 +177,15 @@ Behavior:
   current value and disable save until option loading finishes.
 - Cancel should restore that section's read-only rendering without refreshing.
 - Save should disable the submit button and show an inline saving state.
+- Pull-request preference toggles should submit immediately on change and show
+  inline saving or error feedback beside the changed option.
 - On success, show `GitCode pull request #123 updated`, close the section edit
   mode, refresh the overview, and refresh the pull request tree.
 - On failure, keep that section in edit mode and show the API error message near
   the section.
+- Pull-request preference toggles should include short inline descriptions rather
+  than tooltip-only help because their meaning affects repository behavior and
+  should stay visible without hover.
 - Section edit icons should be visible on hover and keyboard focus, with stable
   space reserved so the layout does not shift.
 - Icons must be real buttons with accessible labels and keyboard activation.
@@ -197,7 +201,8 @@ Validation rules:
 - milestone is stored in the view state as `GitCodeMilestone | undefined` and
   converted to `milestoneNumber` only when building `EditPullRequestInput`
 - milestone must be omitted when `No milestone` is selected
-- draft and close-related-issue values must be sent as booleans when present
+- draft, prune-branch, squash-merge, and close-related-issue values must be
+  sent as booleans when present
 - unchanged submissions should be allowed only if the user explicitly presses
   save; the API response still becomes the refreshed source of truth
 
@@ -217,6 +222,9 @@ Section submit behavior:
 - Milestone section sends the current title plus the number from the selected
   milestone option, or omits milestone when `No milestone` is selected.
 - Draft section sends the current title plus the draft value.
+- Source-branch deletion section sends the current title plus the prune-branch
+  value.
+- Squash-merge section sends the current title plus the squash-merge value.
 - Close-related-issue section sends the current title plus the
   close-related-issue value.
 
@@ -238,7 +246,7 @@ current title even when the title section is not being edited.
 Use the endpoint from [api.md](api.md):
 
 ```text
-POST /api/v5/repos/:owner/:repo/pulls/:number
+PATCH /api/v5/repos/:owner/:repo/pulls/:number
 ```
 
 The service call should be:
@@ -257,6 +265,8 @@ export interface EditPullRequestInput {
   milestoneNumber?: number;
   labels?: string;
   draft?: boolean;
+  pruneBranch?: boolean;
+  squashMerge?: boolean;
   closeRelatedIssue?: boolean;
 }
 ```
@@ -269,6 +279,8 @@ Mapping rules:
 - `milestoneNumber` -> `milestone_number`
 - `labels` -> `labels`
 - `draft` -> `draft`
+- `pruneBranch` -> `prune_branch`
+- `squashMerge` -> `squash_merge`
 - `closeRelatedIssue` -> `close_related_issue`
 
 `EditPullRequestInput` is the service/API input, not the webview editing state.
@@ -315,7 +327,8 @@ Label and milestone controls should be option-driven:
 Add an edit input model to `src/common/models.ts` rather than reusing
 `CreatePullRequestInput`. Create and edit have different API contracts, and
 reusing the create input would accidentally expose branch, assignee, tester,
-squash, and fork fields that the edit endpoint does not support.
+squash-commit-message, issue-link, and fork fields that the edit endpoint does
+not support.
 
 Suggested supporting state:
 
