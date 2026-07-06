@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { getApiRequestErrorMessage } from '../../common/errors';
 import { CreateIssueInput, CreateIssuePermissions, GitCodeRepository } from '../../common/models';
 import { Logger } from '../../common/logger';
 import { IssueService } from '../../gitcode/services/issueService';
@@ -133,11 +134,11 @@ export class CreateIssuePanel implements vscode.Disposable {
 				this.postMessage({ command: 'initialize', defaults, permissions });
 			}
 		} catch (error) {
-			this.dependencies.logger.error(`Create issue initialization failed for ${repository.fullName}: ${error instanceof Error ? error.message : String(error)}`);
+			this.dependencies.logger.error(`Create issue initialization failed for ${repository.fullName}: ${getApiRequestErrorMessage(error)}`);
 			if (this.webviewReady) {
 				this.postMessage({
 					command: 'error',
-					message: error instanceof Error ? error.message : 'Failed to initialize the create issue form.',
+					message: getApiRequestErrorMessage(error) || 'Failed to initialize the create issue form.',
 				});
 			}
 		}
@@ -195,7 +196,7 @@ export class CreateIssuePanel implements vscode.Disposable {
 			this.postMessage({ command: 'submitDone' });
 			this.dispose();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to create issue.';
+			const message = getApiRequestErrorMessage(error) || 'Failed to create issue.';
 			this.dependencies.logger.error(`Create issue submit failed: ${message}`);
 			this.postMessage({ command: 'error', message });
 			vscode.window.showErrorMessage(`Failed to create issue: ${message}`);

@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
-import { ApiRequestError, NotSignedInError } from '../../common/errors';
+import { ApiRequestError, getApiRequestErrorMessage, NotSignedInError } from '../../common/errors';
 import { COMMAND_ID } from '../../common/constants';
 import { Logger } from '../../common/logger';
 import { EditPullRequestInput, EditPullRequestOptions, EditPullRequestSection, GitCodeRepository, GitCodeUser, IssueSummary, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestOverviewPermissions, PullRequestRelatedIssuesSnapshot } from '../../common/models';
@@ -432,7 +432,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		try {
 			this.detail = await this.store.getDetail(this.context.repository, this.context.pullRequestNumber);
 		} catch (error) {
-			this.logger.error(`Failed to load pull request #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`);
+			this.logger.error(`Failed to load pull request #${this.context.pullRequestNumber}: ${getApiRequestErrorMessage(error)}`);
 			this.panel.webview.html = this.renderError(error);
 			return;
 		}
@@ -481,9 +481,9 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		} else {
 			const error = commentsResult.reason;
 			this.logger.error(
-				`Failed to load comments for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load comments for PR #${this.context.pullRequestNumber}: ${getApiRequestErrorMessage(error)}`,
 			);
-			commentsError = error instanceof Error ? error.message : 'Unable to load comments.';
+			commentsError = getApiRequestErrorMessage(error) || 'Unable to load comments.';
 		}
 
 		if (operationLogsResult.status === 'fulfilled' && operationLogsResult.value) {
@@ -492,9 +492,9 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		} else if (operationLogsResult.status === 'rejected') {
 			const error = operationLogsResult.reason;
 			this.logger.error(
-				`Failed to load operation logs for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load operation logs for PR #${this.context.pullRequestNumber}: ${getApiRequestErrorMessage(error)}`,
 			);
-			activityError = error instanceof Error ? error.message : 'Unable to load activity.';
+			activityError = getApiRequestErrorMessage(error) || 'Unable to load activity.';
 		}
 
 		if (relatedIssuesResult.status === 'fulfilled') {
@@ -508,9 +508,9 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		} else {
 			const error = relatedIssuesResult.reason;
 			this.logger.error(
-				`Failed to load related issues for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load related issues for PR #${this.context.pullRequestNumber}: ${getApiRequestErrorMessage(error)}`,
 			);
-			relatedIssuesError = error instanceof Error ? error.message : 'Unable to load related issues.';
+			relatedIssuesError = getApiRequestErrorMessage(error) || 'Unable to load related issues.';
 		}
 
 		if (commentsSnapshot) {
@@ -521,7 +521,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.editOptions = editOptionsResult.value;
 		} else {
 			const error = editOptionsResult.reason;
-			this.logger.debug(`Failed to load edit options for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`);
+			this.logger.debug(`Failed to load edit options for PR #${this.context.pullRequestNumber}: ${getApiRequestErrorMessage(error)}`);
 			this.editOptions = undefined;
 		}
 
@@ -546,7 +546,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					diffContexts = buildDiffCommentContexts(commentsSnapshot, files);
 				} catch (error) {
 					this.logger.debug(
-						`Failed to load diff context for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+						`Failed to load diff context for PR #${this.context.pullRequestNumber}: ${getApiRequestErrorMessage(error)}`,
 					);
 				}
 			}
@@ -562,7 +562,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					);
 				} catch (error) {
 					this.logger.debug(
-						`Failed to load structured diff context for PR #${this.context.pullRequestNumber}: ${error instanceof Error ? error.message : String(error)}`,
+						`Failed to load structured diff context for PR #${this.context.pullRequestNumber}: ${getApiRequestErrorMessage(error)}`,
 					);
 				}
 			}
@@ -604,7 +604,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			});
 		} catch (error) {
 			this.logger.debug(
-				`Failed to load permissions for ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load permissions for ${this.context.repository.fullName}: ${getApiRequestErrorMessage(error)}`,
 			);
 			this.permissions = buildUnknownPullRequestOverviewPermissions();
 		}
@@ -654,9 +654,10 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		if (error instanceof ApiRequestError) {
+			const apiMessage = getApiRequestErrorMessage(error);
 			const description = error.statusCode === 401 || error.statusCode === 403
 				? 'Your GitCode session is not authorized to read this pull request.'
-				: `GitCode returned HTTP ${error.statusCode}.`;
+				: apiMessage;
 			return getOverviewErrorHtml('Unable to load pull request', description, createNonce());
 		}
 
@@ -736,7 +737,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 			await this.load(true);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to update pull request.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to update pull request.';
 			this.logger.error(`Failed to save section "${section}" for PR #${this.context.pullRequestNumber}: ${errorMessage}`);
 
 			// Send the error back to the webview so the section stays in edit mode
@@ -800,7 +801,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 			await this.load(true);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to update pull request state.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to update pull request state.';
 			this.logger.error(`Failed to change state for PR #${this.context.pullRequestNumber}: ${errorMessage}`);
 			this.panel.webview.postMessage({
 				command: 'pullRequestStateChangeError',
@@ -873,7 +874,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 			await this.load(true);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to merge pull request.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to merge pull request.';
 			this.logger.error(`Failed to merge PR #${this.context.pullRequestNumber}: ${errorMessage}`);
 			this.panel.webview.postMessage({
 				command: 'mergePullRequestError',
@@ -924,7 +925,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.operationLogsSnapshot = undefined;
 			await this.load(true);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to submit pull request comment.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to submit pull request comment.';
 			this.logger.error(`Failed to submit comment for PR #${this.context.pullRequestNumber}: ${errorMessage}`);
 			this.panel.webview.postMessage({
 				command: 'pullRequestCommentSubmitError',
@@ -1078,7 +1079,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				{ line: Number.isFinite(line) ? line : undefined },
 			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to open pull request diff.';
+			const message = getApiRequestErrorMessage(error) || 'Failed to open pull request diff.';
 			this.logger.error(`Failed to open diff comment location for PR #${this.context.pullRequestNumber}: ${message}`);
 			await vscode.window.showErrorMessage(message);
 		}
@@ -1150,7 +1151,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					: `Reviewers added to pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to add reviewers.';
+				const errorMessage = getApiRequestErrorMessage(error) || 'Failed to add reviewers.';
 				this.logger.error(
 					`Failed to add reviewers to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);
@@ -1174,7 +1175,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.context.pullRequestNumber,
 			);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to load reviewers.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to load reviewers.';
 			this.logger.error(
 				`Failed to list selectable reviewers for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
@@ -1289,7 +1290,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					: `Reviewers removed from pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to remove reviewers.';
+				const errorMessage = getApiRequestErrorMessage(error) || 'Failed to remove reviewers.';
 				this.logger.error(
 					`Failed to remove reviewers from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);
@@ -1372,7 +1373,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					: `Testers added to pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to add testers.';
+				const errorMessage = getApiRequestErrorMessage(error) || 'Failed to add testers.';
 				this.logger.error(
 					`Failed to add testers to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);
@@ -1395,7 +1396,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.context.repository,
 			);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to load testers.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to load testers.';
 			this.logger.error(
 				`Failed to list selectable testers for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
@@ -1510,7 +1511,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					: `Testers removed from pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to remove testers.';
+				const errorMessage = getApiRequestErrorMessage(error) || 'Failed to remove testers.';
 				this.logger.error(
 					`Failed to remove testers from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);
@@ -1605,7 +1606,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					: `Approvers added to pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to add approvers.';
+				const errorMessage = getApiRequestErrorMessage(error) || 'Failed to add approvers.';
 				this.logger.error(
 					`Failed to add assignees to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);
@@ -1627,7 +1628,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.detail = detail;
 			return detail;
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to load current approvers.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to load current approvers.';
 			this.logger.error(
 				`Failed to refresh pull request detail for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
@@ -1643,7 +1644,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.context.repository,
 			);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to load approvers.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to load approvers.';
 			this.logger.error(
 				`Failed to list selectable assignees for PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
@@ -1758,7 +1759,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 					: `Approvers removed from pull request #${this.context.pullRequestNumber}`;
 				void vscode.window.showInformationMessage(message);
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Failed to remove approvers.';
+				const errorMessage = getApiRequestErrorMessage(error) || 'Failed to remove approvers.';
 				this.logger.error(
 					`Failed to remove assignees from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 				);
@@ -1844,7 +1845,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 		} catch (error) {
 			this.addRelatedIssueInProgress = false;
-			const errorMessage = error instanceof Error ? error.message : 'Failed to add related issues.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to add related issues.';
 			this.logger.error(
 				`Failed to add related issues to PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);
@@ -1863,7 +1864,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			issues = await this.store.listLinkableIssues(this.context.repository);
 		} catch (error) {
 			this.logger.debug(
-				`Failed to list issues for related issue picker in ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to list issues for related issue picker in ${this.context.repository.fullName}: ${getApiRequestErrorMessage(error)}`,
 			);
 		}
 
@@ -2025,7 +2026,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		} catch (error) {
 			this.removeRelatedIssueInProgress = false;
 			this.removingRelatedIssueNumbers = [];
-			const errorMessage = error instanceof Error ? error.message : 'Failed to unlink related issues.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to unlink related issues.';
 			this.logger.error(
 				`Failed to unlink related issues from PR #${this.context.pullRequestNumber}: ${errorMessage}`,
 			);

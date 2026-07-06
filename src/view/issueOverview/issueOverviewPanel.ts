@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../common/constants';
-import { ApiRequestError, NotSignedInError } from '../../common/errors';
+import { ApiRequestError, getApiRequestErrorMessage, NotSignedInError } from '../../common/errors';
 import { Logger } from '../../common/logger';
 import { EditIssueInput, EditIssueOptions, EditIssueSection, GitCodeRepository, IssueCommentsSnapshot, IssueDetail, IssueOperationLogsSnapshot, IssueOverviewPermissions, IssueRelatedPullRequestsSnapshot } from '../../common/models';
 import { getIssueErrorHtml, getIssueLoadingHtml, getIssueOverviewHtml } from './issueOverviewHtml';
@@ -384,7 +384,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.detail = await this.store.getDetail(this.context.repository, this.context.issueNumber);
 		} catch (error) {
 			this.logger.error(
-				`Failed to load issue #${this.context.issueNumber}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load issue #${this.context.issueNumber}: ${getApiRequestErrorMessage(error)}`,
 			);
 			this.panel.webview.html = this.renderError(error);
 			return;
@@ -531,7 +531,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 			await this.load(true);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to update issue.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to update issue.';
 			this.logger.error(`Failed to save section "${section}" for issue #${this.context.issueNumber}: ${errorMessage}`);
 			this.panel.webview.postMessage({
 				command: 'sectionSaveError',
@@ -580,7 +580,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 				command: 'issueCommentSubmitted',
 			});
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to create comment.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to create comment.';
 			this.logger.error(
 				`Failed to submit comment on issue #${this.context.issueNumber}: ${errorMessage}`,
 			);
@@ -641,7 +641,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 			await this.load(true);
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Failed to update issue state.';
+			const errorMessage = getApiRequestErrorMessage(error) || 'Failed to update issue state.';
 			this.logger.error(`Failed to change state for issue #${this.context.issueNumber}: ${errorMessage}`);
 			this.panel.webview.postMessage({
 				command: 'issueStateChangeError',
@@ -669,7 +669,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			);
 		} catch (error) {
 			this.logger.error(
-				`Failed to open related PR #${prNumber}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to open related PR #${prNumber}: ${getApiRequestErrorMessage(error)}`,
 			);
 		}
 	}
@@ -701,10 +701,11 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		}
 
 		if (error instanceof ApiRequestError) {
+			const apiMessage = getApiRequestErrorMessage(error);
 			const description =
 				error.statusCode === 401 || error.statusCode === 403
 					? 'Your GitCode session is not authorized to read this issue.'
-					: `GitCode returned HTTP ${error.statusCode}.`;
+					: apiMessage;
 			return getIssueErrorHtml('Unable to load issue', description, createNonce());
 		}
 
@@ -728,7 +729,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			});
 		} catch (error) {
 			this.logger.debug(
-				`Failed to load permissions for ${this.context.repository.fullName}: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load permissions for ${this.context.repository.fullName}: ${getApiRequestErrorMessage(error)}`,
 			);
 			this.permissions = buildUnknownIssueOverviewPermissions();
 		}

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
+import { getApiRequestErrorMessage } from '../../common/errors';
 import { CreatePullRequestInput, CreatePullRequestInitialIssueContext, CreatePullRequestPermissions, GitCodeRepository } from '../../common/models';
 import { Logger } from '../../common/logger';
 import { GitRepository } from '../../common/git/gitTypes';
@@ -165,13 +166,13 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			}
 		} catch (error) {
 			this.logger.error(
-				`Create PR provider error: ${error instanceof Error ? error.message : String(error)}`,
+				`Create PR provider error: ${getApiRequestErrorMessage(error)}`,
 			);
 			this.postMessage({
 				command: 'submitDone',
 			});
 			vscode.window.showErrorMessage(
-				`Failed to create pull request: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to create pull request: ${getApiRequestErrorMessage(error)}`,
 			);
 		}
 	}
@@ -478,7 +479,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			return true;
 		} catch (error) {
 			vscode.window.showErrorMessage(
-				`Failed to publish source branch: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to publish source branch: ${getApiRequestErrorMessage(error)}`,
 			);
 			return false;
 		}
@@ -522,7 +523,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			return true;
 		} catch (error) {
 			vscode.window.showErrorMessage(
-				`Failed to create remote branch: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to create remote branch: ${getApiRequestErrorMessage(error)}`,
 			);
 			return false;
 		}
