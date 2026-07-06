@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-07-06
+
 ### Changed
 
 - Added spacing between the pull request close or reopen button and the merge
@@ -17,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   a single `canEditPullRequestAuthorSections` flag for title, body, draft, and
   merge-preference toggles while keeping close and reopen action permissions
   separate.
+- Renamed issue overview author-editable permission from
+  `canEditIssueTitleAndBody` to `canEditIssueAuthorSections` to match the
+  pull request naming convention.
+- Improved API error messages across the pull request and issue overviews,
+  comment threads, and create flows by extracting the structured
+  `error_message` from `ApiRequestError` responses instead of showing generic
+  HTTP status descriptions.
 
 ### Fixed
 

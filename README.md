@@ -2,23 +2,28 @@
 
 GitCode pull request and issue integration for Visual Studio Code.
 
-This extension adds a GitCode activity bar view for browsing pull requests, opening changed files, reviewing inline diff comments, creating pull requests, and working with issues without leaving VS Code.
+This extension adds a GitCode activity bar for reviewing pull requests,
+triaging issues, and sending repository context into Copilot chat without
+leaving VS Code.
 
 ## Features
 
 - Sign in to GitCode with a Personal Access Token.
-- Detect GitCode repositories from VS Code git remotes.
-- Override repository detection with an explicit `owner/repo` setting.
-- Browse pull requests by repository.
-- Browse issues by repository.
-- Open pull request and issue overview webviews.
-- Open pull request files from the tree.
-- Toggle pull request files between tree and flat layouts.
-- View pull request patch content and read-only file content through virtual documents.
-- Create and edit pull requests.
-- Create issues and create branches for issues.
-- Add, resolve, and unresolve pull request diff comments.
-- Send selected pull request or issue context to the contributed Copilot chat participants.
+- Detect GitCode repositories from workspace remotes, with optional
+  `owner/repo` override support.
+- Browse repository pull requests and issues from a dedicated activity bar.
+- Open pull request and issue overview webviews with comments, timelines, and
+  related content.
+- Inspect pull request files in tree or flat mode, open virtual read-only file
+  content, and review patch content inside VS Code.
+- Create and edit pull requests, including draft state, close or reopen state,
+  merge preferences, and related issue links.
+- Manage pull request participants, including reviewers, testers, and
+  approvers, with permission-aware UI gating.
+- Create issues and create branches directly from issues.
+- Add, reply to, resolve, and unresolve pull request diff comments.
+- Send the selected pull request or issue into the contributed Copilot chat
+  participants for review, explanation, and planning help.
 
 ## Requirements
 
@@ -69,6 +74,14 @@ Issue tree categories:
 - `Created Issues`
 - `Recent Issues`
 
+Overview pages support:
+
+- Pull request comments, diff comment navigation, related issues, and operation
+  logs.
+- Issue comments, related pull requests, and operation logs.
+- Permission-aware action buttons so unsupported edits stay visible but clearly
+  disabled.
+
 ## Commands
 
 Common commands:
@@ -87,6 +100,10 @@ Common commands:
 - `GitCode: Create Branch for Issue`
 - `GitCode: Use Pull Request as Copilot Context`
 - `GitCode: Use Issue as Copilot Context`
+
+Contextual commands are also available from tree items and pull request comment
+threads, including file open actions, issue URL copy, diff comment submit, and
+resolve or unresolve actions.
 
 ## Extension Settings
 
@@ -111,6 +128,13 @@ Settings:
 - `gitcode.pullRequests.fileListLayout` - `tree` or `flat`.
 - `gitcode.issues.pageSize` - maximum issues loaded per category.
 - `gitcode.trace.server` - set to `verbose` to log outgoing GitCode API requests.
+
+## Permissions
+
+The extension evaluates repository roles and ownership before enabling write
+flows. In practice this means create, edit, merge, reviewer, tester, approver,
+and branch actions stay aligned with the current repository permissions instead
+of failing only after submission.
 
 ## Development
 
