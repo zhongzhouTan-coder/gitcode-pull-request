@@ -92,7 +92,7 @@ export function buildIssueOverviewPermissions(
 	if (!snapshot) {
 		return {
 			canEditIssue: false,
-			canEditIssueTitleAndBody: false,
+			canEditIssueAuthorSections: false,
 			canCloseIssue: false,
 			canReopenIssue: false,
 			canCreateComment: false,
@@ -103,7 +103,7 @@ export function buildIssueOverviewPermissions(
 
 	return {
 		canEditIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'update', message: () => '' }),
-		canEditIssueTitleAndBody: hasEffectivePermission(snapshot, { scope: 'issue', action: 'update', message: () => '' }, isAuthor),
+		canEditIssueAuthorSections: hasEffectivePermission(snapshot, { scope: 'issue', action: 'update', message: () => '' }, isAuthor),
 		canCloseIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'reopen', message: () => '' }, isAuthor),
 		canReopenIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'reopen', message: () => '' }, isAuthor),
 		canCreateComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }),
@@ -113,7 +113,7 @@ export function buildIssueOverviewPermissions(
 export function buildUnknownIssueOverviewPermissions(): IssueOverviewPermissions {
 	return {
 		canEditIssue: true,
-		canEditIssueTitleAndBody: true,
+		canEditIssueAuthorSections: true,
 		canCloseIssue: true,
 		canReopenIssue: true,
 		canCreateComment: true,

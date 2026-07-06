@@ -778,7 +778,7 @@ export interface PullRequestMergeResult {
 
 export interface IssueOverviewPermissions {
 	canEditIssue: boolean;
-	canEditIssueTitleAndBody: boolean;
+	canEditIssueAuthorSections: boolean;
 	canCloseIssue: boolean;
 	canReopenIssue: boolean;
 	canCreateComment: boolean;

@@ -1497,7 +1497,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				switch (section) {
 					case 'title':
 					case 'body':
-						return 'canEditIssueTitleAndBody';
+						return 'canEditIssueAuthorSections';
 					default:
 						return 'canEditIssue';
 				}

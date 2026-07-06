@@ -258,7 +258,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private editOptions?: EditIssueOptions;
 	private permissions: IssueOverviewPermissions = {
 		canEditIssue: false,
-		canEditIssueTitleAndBody: false,
+		canEditIssueAuthorSections: false,
 		canCloseIssue: false,
 		canReopenIssue: false,
 		canCreateComment: false,

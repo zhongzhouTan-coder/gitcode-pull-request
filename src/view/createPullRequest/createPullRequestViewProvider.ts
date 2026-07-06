@@ -324,6 +324,13 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			return;
 		}
 
+		// Validate required user input before checking optional target-repository edit fields.
+		const initialErrors = this.dataModel.validate(input);
+		if (initialErrors.length > 0) {
+			this.postMessage({ command: 'validationErrors', errors: initialErrors });
+			return;
+		}
+
 		const canEditPullRequest = await checkPermission(this.permissionStore, repo, {
 			scope: 'pr',
 			action: 'update',
@@ -337,13 +344,6 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		this.postMessage({ command: 'permissions', permissions: this.permissions });
 
 		const sanitizedInput = this.sanitizeInput(input, canEditPullRequest);
-
-		// Validate
-		const errors = this.dataModel.validate(sanitizedInput);
-		if (errors.length > 0) {
-			this.postMessage({ command: 'validationErrors', errors });
-			return;
-		}
 
 		// Check if source branch exists remotely, or ask about publishing
 		const branchPublished = await this.dataModel.ensureSourceBranchPublished(sanitizedInput);

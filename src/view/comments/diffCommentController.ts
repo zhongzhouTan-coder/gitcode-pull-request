@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { COMMAND_ID } from '../../common/constants';
+import { getApiRequestErrorMessage } from '../../common/errors';
 import { Logger } from '../../common/logger';
 import { CreatePullRequestCommentInput, EditPullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot } from '../../common/models';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
@@ -279,7 +280,7 @@ export class DiffCommentController implements vscode.Disposable {
 		} catch (error) {
 			reply.thread.canReply = previousCanReply;
 			reply.thread.label = previousLabel;
-			const message = error instanceof Error ? error.message : 'Failed to submit pull request comment.';
+			const message = getApiRequestErrorMessage(error) || 'Failed to submit pull request comment.';
 			this.logger.error(`Failed to submit diff comment for PR #${parsed.pullRequestNumber}: ${message}`);
 			await vscode.window.showErrorMessage(message);
 		}
@@ -320,7 +321,7 @@ export class DiffCommentController implements vscode.Disposable {
 		} catch (error) {
 			reply.thread.canReply = previousCanReply;
 			reply.thread.label = previousLabel;
-			const message = error instanceof Error ? error.message : 'Failed to submit reply.';
+			const message = getApiRequestErrorMessage(error) || 'Failed to submit reply.';
 			this.logger.error(`Failed to reply to discussion ${meta.discussionId} on PR #${meta.pullRequestNumber}: ${message}`);
 			await vscode.window.showErrorMessage(message);
 		}
@@ -371,7 +372,7 @@ export class DiffCommentController implements vscode.Disposable {
 		} catch (error) {
 			thread.state = previousState;
 			thread.label = previousLabel;
-			const message = error instanceof Error ? error.message : 'Failed to revise comment status.';
+			const message = getApiRequestErrorMessage(error) || 'Failed to revise comment status.';
 			await vscode.window.showErrorMessage(message);
 		}
 	}
@@ -441,7 +442,7 @@ export class DiffCommentController implements vscode.Disposable {
 			return snapshot.refs.headSha || undefined;
 		} catch (error) {
 			this.logger.debug(
-				`Failed to load diff snapshot for PR #${pullRequestNumber} (${repository.fullName}): ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to load diff snapshot for PR #${pullRequestNumber} (${repository.fullName}): ${getApiRequestErrorMessage(error)}`,
 			);
 			return undefined;
 		}
@@ -509,7 +510,7 @@ export class DiffCommentController implements vscode.Disposable {
 				);
 			} catch (error) {
 				this.logger.debug(
-					`Failed to fetch comments for PR #${editor.pr} (${repoKey}): ${error instanceof Error ? error.message : String(error)}`,
+					`Failed to fetch comments for PR #${editor.pr} (${repoKey}): ${getApiRequestErrorMessage(error)}`,
 				);
 				continue;
 			}

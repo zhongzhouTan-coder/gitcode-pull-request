@@ -149,7 +149,7 @@ suite('rolePermissionProfiles', () => {
 		assert.deepStrictEqual(candidates.assignees.map((user) => user.login), ['owner', 'maintainer']);
 	});
 
-	test('overview permission builders apply owner rule only to issue and pull request object actions', () => {
+	test('overview permission builders keep owner rules scoped to author-edit and state actions', () => {
 		const repo = createRepo();
 		const snapshot = mapPermissionSnapshot(repo, {
 			role_info: {
@@ -172,7 +172,8 @@ suite('rolePermissionProfiles', () => {
 			authorLogin: 'alice',
 			currentUserLogin: 'ALICE',
 		});
-		assert.strictEqual(issuePermissions.canEditIssue, true);
+		assert.strictEqual(issuePermissions.canEditIssue, false);
+		assert.strictEqual(issuePermissions.canEditIssueAuthorSections, true);
 		assert.strictEqual(issuePermissions.canCloseIssue, true);
 		assert.strictEqual(issuePermissions.canReopenIssue, true);
 
@@ -180,7 +181,7 @@ suite('rolePermissionProfiles', () => {
 			authorLogin: 'alice',
 			currentUserLogin: 'ALICE',
 		});
-		assert.strictEqual(pullRequestPermissions.canEditPullRequest, true);
+		assert.strictEqual(pullRequestPermissions.canEditPullRequest, false);
 		assert.strictEqual(pullRequestPermissions.canEditPullRequestAuthorSections, true);
 		assert.strictEqual(pullRequestPermissions.canClosePullRequest, true);
 		assert.strictEqual(pullRequestPermissions.canReopenPullRequest, true);
