@@ -2799,13 +2799,11 @@ export function getOverviewHtml(
 			switch (section) {
 				case 'title':
 				case 'body':
-					return 'canEditPullRequestTitleAndBody';
 				case 'draft':
-					return 'canEditPullRequestDraft';
 				case 'pruneBranch':
 				case 'squashMerge':
 				case 'closeRelatedIssue':
-					return 'canEditPullRequestOptions';
+					return 'canEditPullRequestAuthorSections';
 				default:
 					return 'canEditPullRequest';
 			}

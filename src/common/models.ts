@@ -757,9 +757,7 @@ export interface PermissionRequirement {
 
 export interface PullRequestOverviewPermissions {
 	canEditPullRequest: boolean;
-	canEditPullRequestTitleAndBody: boolean;
-	canEditPullRequestDraft: boolean;
-	canEditPullRequestOptions: boolean;
+	canEditPullRequestAuthorSections: boolean;
 	canClosePullRequest: boolean;
 	canReopenPullRequest: boolean;
 	canMergePullRequest: boolean;

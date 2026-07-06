@@ -207,7 +207,7 @@ suite('OverviewHtml', () => {
 	test('maps author-editable pull request option toggles to their own permission key and keeps preference rows visible on cancel', () => {
 		const html = getOverviewHtml(detail, 'nonce');
 
-		assert.match(html, /case 'pruneBranch':[\s\S]*case 'squashMerge':[\s\S]*case 'closeRelatedIssue':[\s\S]*return 'canEditPullRequestOptions';/);
+		assert.match(html, /case 'title':[\s\S]*case 'body':[\s\S]*case 'draft':[\s\S]*case 'pruneBranch':[\s\S]*case 'squashMerge':[\s\S]*case 'closeRelatedIssue':[\s\S]*return 'canEditPullRequestAuthorSections';/);
 		assert.match(html, /function isAlwaysVisibleSection\(section\)/);
 		assert.match(html, /if \(edit && !alwaysVisible\) edit\.style\.display = 'none';/);
 	});

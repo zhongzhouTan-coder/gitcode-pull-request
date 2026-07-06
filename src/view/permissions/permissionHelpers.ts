@@ -33,9 +33,7 @@ export function buildPullRequestOverviewPermissions(
 	if (!snapshot) {
 		return {
 			canEditPullRequest: false,
-			canEditPullRequestTitleAndBody: false,
-			canEditPullRequestDraft: false,
-			canEditPullRequestOptions: false,
+			canEditPullRequestAuthorSections: false,
 			canClosePullRequest: false,
 			canReopenPullRequest: false,
 			canMergePullRequest: false,
@@ -53,9 +51,7 @@ export function buildPullRequestOverviewPermissions(
 
 	return {
 		canEditPullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
-		canEditPullRequestTitleAndBody: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }, isAuthor),
-		canEditPullRequestDraft: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }, isAuthor),
-		canEditPullRequestOptions: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }, isAuthor),
+		canEditPullRequestAuthorSections: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }, isAuthor),
 		canClosePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'close', message: () => '' }, isAuthor),
 		canReopenPullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'reopen', message: () => '' }, isAuthor),
 		canMergePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'merge', message: () => '' }),
@@ -72,9 +68,7 @@ export function buildPullRequestOverviewPermissions(
 export function buildUnknownPullRequestOverviewPermissions(): PullRequestOverviewPermissions {
 	return {
 		canEditPullRequest: true,
-		canEditPullRequestTitleAndBody: true,
-		canEditPullRequestDraft: true,
-		canEditPullRequestOptions: true,
+		canEditPullRequestAuthorSections: true,
 		canClosePullRequest: true,
 		canReopenPullRequest: true,
 		canMergePullRequest: true,

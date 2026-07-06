@@ -214,9 +214,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 	private mergePullRequestInProgress: boolean = false;
 	private permissions: PullRequestOverviewPermissions = {
 		canEditPullRequest: false,
-		canEditPullRequestTitleAndBody: false,
-		canEditPullRequestDraft: false,
-		canEditPullRequestOptions: false,
+		canEditPullRequestAuthorSections: false,
 		canClosePullRequest: false,
 		canReopenPullRequest: false,
 		canMergePullRequest: false,

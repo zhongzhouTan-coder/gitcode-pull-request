@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Added `Delete source branch after merge` and `Squash commits on merge`
   options to pull request editing, with inline descriptions in the overview
   preferences card.
+- Refactored pull request overview author-editable section permissions to use
+  a single `canEditPullRequestAuthorSections` flag for title, body, draft, and
+  merge-preference toggles while keeping close and reopen action permissions
+  separate.
 
 ### Fixed
 

@@ -181,7 +181,7 @@ suite('rolePermissionProfiles', () => {
 			currentUserLogin: 'ALICE',
 		});
 		assert.strictEqual(pullRequestPermissions.canEditPullRequest, true);
-		assert.strictEqual(pullRequestPermissions.canEditPullRequestOptions, true);
+		assert.strictEqual(pullRequestPermissions.canEditPullRequestAuthorSections, true);
 		assert.strictEqual(pullRequestPermissions.canClosePullRequest, true);
 		assert.strictEqual(pullRequestPermissions.canReopenPullRequest, true);
 		assert.strictEqual(pullRequestPermissions.canUpdateRelatedIssues, false);
