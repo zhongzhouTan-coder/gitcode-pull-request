@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { NotSignedInError } from '../../common/errors';
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestCommentsSnapshot, PullRequestCommentEditOperation, PullRequestCommentReplyOperation, PullRequestCommentStatusOperation, ReplyPullRequestCommentInput, RevisePullRequestCommentStatusInput } from '../../common/models';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, DeletePullRequestCommentInput, EditPullRequestCommentInput, GitCodeRepository, PullRequestCommentDeleteOperation, PullRequestCommentsSnapshot, PullRequestCommentEditOperation, PullRequestCommentReplyOperation, PullRequestCommentStatusOperation, ReplyPullRequestCommentInput, RevisePullRequestCommentStatusInput } from '../../common/models';
 import { CommentService } from '../../gitcode/services/commentService';
 
 export interface CommentChangeEvent {
@@ -24,6 +24,7 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 	private readonly pendingOperations = new Map<string, Promise<PullRequestCommentStatusOperation>>();
 	private readonly pendingEditOperations = new Map<string, Promise<PullRequestCommentEditOperation>>();
 	private readonly pendingReplyOperations = new Map<string, Promise<PullRequestCommentReplyOperation>>();
+	private readonly pendingDeleteOperations = new Map<string, Promise<PullRequestCommentDeleteOperation>>();
 
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -186,6 +187,36 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 			return await operationPromise;
 		} finally {
 			this.pendingReplyOperations.delete(input.discussionId);
+		}
+	}
+
+	/**
+	 * Delete an existing pull request comment.
+	 *
+	 * Serializes concurrent delete operations per commentId so that duplicate
+	 * requests are ignored while one is already running.
+	 *
+	 * Returns the operation result for UI feedback. On success the store
+	 * is refreshed from the API; on failure the previous snapshot is kept.
+	 */
+	async deleteComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: DeletePullRequestCommentInput,
+	): Promise<PullRequestCommentDeleteOperation> {
+		// Serialize concurrent deletes per commentId
+		const existing = this.pendingDeleteOperations.get(input.commentId);
+		if (existing) {
+			return existing;
+		}
+
+		const operationPromise = this.executeDeleteComment(repository, pullRequestNumber, input);
+		this.pendingDeleteOperations.set(input.commentId, operationPromise);
+
+		try {
+			return await operationPromise;
+		} finally {
+			this.pendingDeleteOperations.delete(input.commentId);
 		}
 	}
 
@@ -375,6 +406,56 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		};
 	}
 
+	private async executeDeleteComment(
+		repository: GitCodeRepository,
+		pullRequestNumber: number,
+		input: DeletePullRequestCommentInput,
+	): Promise<PullRequestCommentDeleteOperation> {
+		const session = await this.authService.getSession();
+		if (!session) {
+			return {
+				commentId: input.commentId,
+				status: 'failed',
+				error: 'Sign in to GitCode first.',
+			};
+		}
+
+		// Validate that the target comment exists in the current snapshot
+		const snapshot = await this.getOrFetch(repository, pullRequestNumber);
+		const comment = snapshot.comments.find((c) => c.id === input.commentId);
+
+		if (!comment) {
+			return {
+				commentId: input.commentId,
+				status: 'failed',
+				error: 'Comment not found.',
+			};
+		}
+
+		try {
+			await this.commentService.deletePullRequestComment(repository, input);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to delete comment.';
+			return {
+				commentId: input.commentId,
+				status: 'failed',
+				error: message,
+			};
+		}
+
+		// On success, refresh the store so consumers re-render from API state
+		try {
+			await this.refresh(repository.fullName, pullRequestNumber);
+		} catch {
+			// Comment deleted but refresh failed — still report success to the caller
+		}
+
+		return {
+			commentId: input.commentId,
+			status: 'pending',
+		};
+	}
+
 	/**
 	 * Invalidate without emitting a change event (used when clearing all state).
 	 */
@@ -396,6 +477,7 @@ export class PullRequestCommentsStore implements vscode.Disposable {
 		this.pendingOperations.clear();
 		this.pendingEditOperations.clear();
 		this.pendingReplyOperations.clear();
+		this.pendingDeleteOperations.clear();
 		this.onDidChangeEmitter.dispose();
 	}
 

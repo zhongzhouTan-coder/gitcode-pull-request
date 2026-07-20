@@ -181,6 +181,9 @@ export class DiffCommentController implements vscode.Disposable {
 			vscode.commands.registerCommand(COMMAND_ID.unresolveDiffComment, async (thread?: vscode.CommentThread) => {
 				await this.handleUnresolveThread(thread);
 			}),
+			vscode.commands.registerCommand(COMMAND_ID.deletePullRequestComment, async (thread?: vscode.CommentThread) => {
+				await this.handleDeleteComment(thread);
+			}),
 			vscode.window.onDidChangeVisibleTextEditors(() => {
 				void this.updateThreads();
 			}),
@@ -427,6 +430,52 @@ export class DiffCommentController implements vscode.Disposable {
 		}
 
 		// On success the store refreshes via editComment
+		await this.updateThreads();
+	}
+
+	private async handleDeleteComment(thread?: vscode.CommentThread): Promise<void> {
+		if (!thread) {
+			await vscode.window.showWarningMessage('No comment thread is active.');
+			return;
+		}
+
+		const metadata = this.threadMetadata.get(thread);
+		if (!metadata) {
+			await vscode.window.showWarningMessage('Unable to identify the pull request comment thread.');
+			return;
+		}
+
+		// Confirm before deleting
+		const confirmResult = await vscode.window.showWarningMessage(
+			'Delete this comment?',
+			{ modal: true },
+			'Delete',
+		);
+
+		if (confirmResult !== 'Delete') {
+			return;
+		}
+
+		const previousCanReply = thread.canReply;
+		const previousLabel = thread.label;
+
+		thread.canReply = false;
+		thread.label = 'Deleting...';
+
+		const result = await this.commentsStore.deleteComment(
+			metadata.repository,
+			metadata.pullRequestNumber,
+			{ commentId: metadata.commentId },
+		);
+
+		if (result.status === 'failed') {
+			thread.canReply = previousCanReply;
+			thread.label = previousLabel;
+			await vscode.window.showErrorMessage(result.error ?? 'Failed to delete comment.');
+			return;
+		}
+
+		// On success the store refreshes; update threads
 		await this.updateThreads();
 	}
 

@@ -203,6 +203,10 @@
         "title": "Mark as Unresolved"
       },
       {
+        "command": "gitcode.deletePullRequestComment",
+        "title": "Delete Comment"
+      },
+      {
         "command": "gitcode.pullRequest.addRelatedIssue",
         "title": "GitCode: Add Related Issue to Pull Request"
       },
@@ -321,6 +325,11 @@
           "command": "gitcode.unresolveDiffComment",
           "when": "commentController == gitcode-pull-request-comments && commentThread == gitcode.diffComment.resolved",
           "group": "navigation@1"
+        },
+        {
+          "command": "gitcode.deletePullRequestComment",
+          "when": "commentController == gitcode-pull-request-comments && commentThread =~ /gitcode.diffComment/",
+          "group": "navigation@2"
         }
       ]
     },

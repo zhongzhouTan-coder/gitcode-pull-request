@@ -28,6 +28,9 @@ suite('CommentService — revisePullRequestCommentStatus', () => {
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
 		};
 		const logger = { debug: () => undefined, error: () => undefined } as unknown as Logger;
 		const service = new CommentService(client, logger);
@@ -56,6 +59,9 @@ suite('CommentService — revisePullRequestCommentStatus', () => {
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
 		};
 		const logger = { debug: () => undefined, error: () => undefined } as unknown as Logger;
 		const service = new CommentService(client, logger);
@@ -79,6 +85,9 @@ suite('CommentService — revisePullRequestCommentStatus', () => {
 				throw new Error('Should not be called');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
 		};

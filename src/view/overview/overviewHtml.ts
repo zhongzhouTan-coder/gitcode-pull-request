@@ -94,6 +94,11 @@ const PENCIL_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="curre
 	<path d="M11.01 1.427a1.75 1.75 0 0 1 2.475 0l1.088 1.088a1.75 1.75 0 0 1 0 2.475l-8.5 8.5a1.75 1.75 0 0 1-.78.448l-3.08.88a.75.75 0 0 1-.927-.927l.88-3.08a1.75 1.75 0 0 1 .448-.78l8.5-8.5Zm1.414 1.06a.25.25 0 0 0-.353 0l-1.057 1.056 1.44 1.44 1.056-1.057a.25.25 0 0 0 0-.353l-1.086-1.086Zm-2.47 2.117L3.675 10.88a.25.25 0 0 0-.064.112l-.533 1.866 1.866-.533a.25.25 0 0 0 .112-.064l6.278-6.278-1.44-1.44Z"/>
 </svg>`;
 
+/** Compact trash/delete icon for comment actions. */
+const TRASH_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+	<path d="M11 1.75V2h2.25a.75.75 0 0 1 0 1.5h-.154l-.816 9.96A1.75 1.75 0 0 1 10.53 15H5.47a1.75 1.75 0 0 1-1.732-1.54L2.904 3.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM6.5 1.75V2h3v-.25a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25ZM4.405 3.5l.815 9.89a.25.25 0 0 0 .247.22h5.066a.25.25 0 0 0 .247-.22l.815-9.89H4.405ZM6.75 6h1.5v5.25h-1.5V6Zm-2.25 0h1.5v5.25h-1.5V6Z"/>
+</svg>`;
+
 function renderParticipantIdentity(participant: PullRequestParticipant, interactive: boolean): string {
 	const avatar = renderSvgAvatar(participant.login, participant.name);
 	const displayName = participant.name && participant.name !== participant.login
@@ -492,6 +497,20 @@ function renderCommentEditIcon(commentId: string): string {
 	return `<button class="edit-icon-btn edit-comment-btn" data-comment-id="${escapeAttr(commentId)}" title="Edit comment" aria-label="Edit comment">${PENCIL_ICON}</button>`;
 }
 
+function renderCommentDeleteIcon(commentId: string): string {
+	return `<button class="edit-icon-btn delete-comment-btn" data-action="deletePullRequestComment" data-comment-id="${escapeAttr(commentId)}" title="Delete comment" aria-label="Delete comment">${TRASH_ICON}</button>`;
+}
+
+function renderCommentDeleteConfirmation(commentId: string): string {
+	return `<div class="comment-delete-confirm" data-delete-confirm="${escapeAttr(commentId)}" style="display:none">
+		<span class="comment-delete-confirm-text">Delete this comment?</span>
+		<button class="danger btn-confirm-delete" data-comment-id="${escapeAttr(commentId)}">Delete</button>
+		<button class="secondary btn-cancel-delete" data-comment-id="${escapeAttr(commentId)}">Cancel</button>
+		<span class="comment-delete-saving" data-delete-saving="${escapeAttr(commentId)}" style="display:none">Deleting...</span>
+	</div>
+	<div class="comment-delete-error" data-delete-error="${escapeAttr(commentId)}" style="display:none"></div>`;
+}
+
 function renderCommentEditArea(commentId: string, body: string): string {
 	return `<div class="comment-edit-area" data-comment-edit="${escapeAttr(commentId)}" style="display:none">
 		<textarea data-comment-input="${escapeAttr(commentId)}" class="comment-edit-input" rows="4">${escapeHtml(body)}</textarea>
@@ -514,11 +533,13 @@ function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
 					<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
 					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
 					${renderCommentEditIcon(comment.id)}
+					${renderCommentDeleteIcon(comment.id)}
 				</div>
 				<div class="comment-top-actions">
 					${renderReplyAction(comment.discussionId)}
 				</div>
 			</div>
+			${renderCommentDeleteConfirmation(comment.id)}
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
 			${renderCommentEditArea(comment.id, comment.body)}
 			${renderConversationReplies(comment.replies)}
@@ -559,12 +580,14 @@ function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: Di
 					<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
 					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
 					${renderCommentEditIcon(comment.id)}
+					${renderCommentDeleteIcon(comment.id)}
 				</div>
 				<div class="comment-top-actions">
 					${renderDiffCommentReviewStatus(comment)}
 					${renderReplyAction(comment.discussionId)}
 				</div>
 			</div>
+			${renderCommentDeleteConfirmation(comment.id)}
 			<div class="comment-meta">
 				<span class="comment-location">${renderDiffCommentLocation(comment)}</span>
 				${badges}
@@ -1709,6 +1732,37 @@ export function getOverviewHtml(
 			color: var(--vscode-errorForeground);
 			font-size: 13px;
 			margin-top: 8px;
+		}
+		.comment-delete-confirm {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-top: 8px;
+			padding: 8px 0;
+		}
+		.comment-delete-confirm-text {
+			color: var(--vscode-foreground);
+			font-size: 13px;
+			font-weight: 500;
+		}
+		.comment-delete-saving {
+			color: var(--muted);
+			font-size: 13px;
+			font-style: italic;
+		}
+		.comment-delete-error {
+			color: var(--vscode-errorForeground);
+			font-size: 13px;
+			margin-top: 4px;
+		}
+		.delete-comment-btn {
+			opacity: 0;
+			transition: opacity 0.15s, background 0.15s;
+		}
+		.comment-card:hover .delete-comment-btn,
+		.comment-card:focus-within .delete-comment-btn,
+		.delete-comment-btn:focus-visible {
+			opacity: 1;
 		}
 		.comment-review-status {
 			display: inline-flex;
@@ -3185,6 +3239,99 @@ export function getOverviewHtml(
 			});
 		}
 
+		// ---- Comment Deletion ----
+
+		function showCommentDeleteConfirmation(commentId) {
+			if (!commentId) {
+				return;
+			}
+
+			var deleteBtn = document.querySelector('.delete-comment-btn[data-comment-id="' + CSS.escape(commentId) + '"]');
+			var confirmEl = document.querySelector('[data-delete-confirm="' + CSS.escape(commentId) + '"]');
+			var errorEl = document.querySelector('[data-delete-error="' + CSS.escape(commentId) + '"]');
+
+			if (deleteBtn) {
+				deleteBtn.style.display = 'none';
+			}
+			if (confirmEl) {
+				confirmEl.style.display = 'flex';
+			}
+			if (errorEl) {
+				errorEl.textContent = '';
+				errorEl.style.display = 'none';
+			}
+		}
+
+		function hideCommentDeleteConfirmation(commentId) {
+			if (!commentId) {
+				return;
+			}
+
+			var deleteBtn = document.querySelector('.delete-comment-btn[data-comment-id="' + CSS.escape(commentId) + '"]');
+			var confirmEl = document.querySelector('[data-delete-confirm="' + CSS.escape(commentId) + '"]');
+			var errorEl = document.querySelector('[data-delete-error="' + CSS.escape(commentId) + '"]');
+
+			if (confirmEl) {
+				confirmEl.style.display = 'none';
+			}
+			if (deleteBtn) {
+				deleteBtn.style.display = '';
+			}
+			if (errorEl) {
+				errorEl.textContent = '';
+				errorEl.style.display = 'none';
+			}
+		}
+
+		function setCommentDeleteSaving(commentId, saving) {
+			var confirmBtn = document.querySelector('.btn-confirm-delete[data-comment-id="' + CSS.escape(commentId) + '"]');
+			var cancelBtn = document.querySelector('.btn-cancel-delete[data-comment-id="' + CSS.escape(commentId) + '"]');
+			var deleteBtn = document.querySelector('.delete-comment-btn[data-comment-id="' + CSS.escape(commentId) + '"]');
+			var savingEl = document.querySelector('[data-delete-saving="' + CSS.escape(commentId) + '"]');
+
+			if (confirmBtn) {
+				confirmBtn.disabled = saving;
+			}
+			if (cancelBtn) {
+				cancelBtn.disabled = saving;
+			}
+			if (deleteBtn) {
+				deleteBtn.disabled = saving;
+			}
+			if (savingEl) {
+				savingEl.style.display = saving ? 'inline' : 'none';
+			}
+		}
+
+		function showCommentDeleteError(commentId, message) {
+			var errorEl = document.querySelector('[data-delete-error="' + CSS.escape(commentId) + '"]');
+			if (errorEl) {
+				errorEl.textContent = message || 'Failed to delete comment.';
+				errorEl.style.display = 'block';
+			}
+		}
+
+		function hideCommentDeleteError(commentId) {
+			var errorEl = document.querySelector('[data-delete-error="' + CSS.escape(commentId) + '"]');
+			if (errorEl) {
+				errorEl.textContent = '';
+				errorEl.style.display = 'none';
+			}
+		}
+
+		function confirmCommentDelete(commentId) {
+			if (!commentId) {
+				return;
+			}
+
+			setCommentDeleteSaving(commentId, true);
+			hideCommentDeleteError(commentId);
+			vscode.postMessage({
+				command: 'deletePullRequestComment',
+				commentId: commentId,
+			});
+		}
+
 		// ---- Reply Composer ----
 
 		function openReplyComposer(discussionId) {
@@ -3483,6 +3630,34 @@ export function getOverviewHtml(
 			});
 		});
 
+		// Comment delete button handlers
+		document.querySelectorAll('.delete-comment-btn').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				if (btn.disabled) {
+					return;
+				}
+				showCommentDeleteConfirmation(btn.dataset.commentId);
+			});
+		});
+
+		document.querySelectorAll('.btn-confirm-delete').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				if (btn.disabled) {
+					return;
+				}
+				confirmCommentDelete(btn.dataset.commentId);
+			});
+		});
+
+		document.querySelectorAll('.btn-cancel-delete').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				if (btn.disabled) {
+					return;
+				}
+				hideCommentDeleteConfirmation(btn.dataset.commentId);
+			});
+		});
+
 		// Handle Ctrl+Enter in comment edit textareas
 		document.querySelectorAll('[data-comment-input]').forEach(function(el) {
 			el.addEventListener('keydown', function(e) {
@@ -3580,6 +3755,10 @@ export function getOverviewHtml(
 			if (msg.command === 'replyPullRequestCommentError' && msg.discussionId) {
 				setReplySubmitting(msg.discussionId, false);
 				showReplyError(msg.discussionId, msg.message || 'Failed to submit reply.');
+			}
+			if (msg.command === 'deletePullRequestCommentError' && msg.commentId) {
+				setCommentDeleteSaving(msg.commentId, false);
+				showCommentDeleteError(msg.commentId, msg.message || 'Failed to delete comment.');
 			}
 		});
 

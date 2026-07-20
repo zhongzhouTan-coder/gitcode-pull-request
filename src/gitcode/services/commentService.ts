@@ -1,5 +1,5 @@
-import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, EditPullRequestCommentInput, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail, ReplyPullRequestCommentInput, ReplyPullRequestCommentResult, RevisePullRequestCommentStatusInput } from '../../common/models';
-import { GitCodeWriteClient } from '../client/gitcodeClient';
+import { CreatePullRequestCommentInput, CreatePullRequestCommentResult, DeletePullRequestCommentInput, EditPullRequestCommentInput, GitCodeRepository, PullRequestComment, PullRequestDiffComment, PullRequestDiffCommentDetail, ReplyPullRequestCommentInput, ReplyPullRequestCommentResult, RevisePullRequestCommentStatusInput } from '../../common/models';
+import { GitCodeDeleteClient } from '../client/gitcodeClient';
 import { mapCreatePullRequestCommentInput, mapCreatePullRequestCommentResult, mapListComment, mapCommentDetail, mapReplyPullRequestCommentResult, mergeCommentDetail } from '../mappers/commentMapper';
 import { Logger } from '../../common/logger';
 import { listPagedRecords } from './pagination';
@@ -18,7 +18,7 @@ export interface ListPullRequestCommentsOptions {
  */
 export class CommentService {
 	constructor(
-		private readonly client: GitCodeWriteClient,
+		private readonly client: GitCodeDeleteClient,
 		private readonly logger: Logger,
 	) {}
 
@@ -230,6 +230,27 @@ export class CommentService {
 		const body = { body: input.body };
 
 		await this.client.patch<unknown>(path, body);
+	}
+
+	/**
+	 * Delete an existing pull request comment.
+	 *
+	 * DELETE /api/v5/repos/:owner/:repo/pulls/comments/:id
+	 *
+	 * The API returns 200 OK. Treat a successful response as confirmation
+	 * and refresh the comments store afterward.
+	 */
+	async deletePullRequestComment(
+		repository: GitCodeRepository,
+		input: DeletePullRequestCommentInput,
+	): Promise<void> {
+		if (!input.commentId) {
+			throw new Error('commentId is required.');
+		}
+
+		const path = `/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/comments/${encodeURIComponent(input.commentId)}`;
+
+		await this.client.delete<unknown>(path);
 	}
 
 	/**

@@ -59,3 +59,11 @@ export function canEditOwnComment(
 ): boolean {
 	return isSameLogin(currentUserLogin, commentAuthorLogin);
 }
+
+/** Comment author may delete their own comment. */
+export function canDeleteOwnComment(
+	currentUserLogin: string | undefined,
+	commentAuthorLogin: string | undefined,
+): boolean {
+	return isSameLogin(currentUserLogin, commentAuthorLogin);
+}

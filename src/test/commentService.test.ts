@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { CreatePullRequestCommentInput, GitCodeRepository } from '../common/models';
 import { Logger } from '../common/logger';
-import { GitCodeWriteClient } from '../gitcode/client/gitcodeClient';
+import { GitCodeDeleteClient } from '../gitcode/client/gitcodeClient';
 import { CommentService } from '../gitcode/services/commentService';
 
 suite('CommentService', () => {
@@ -15,7 +15,7 @@ suite('CommentService', () => {
 
 	test('limits comments before enriching diff comment details', async () => {
 		const detailCalls: string[] = [];
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(path: string): Promise<T> => {
 				if (path.includes('/pulls/comments/')) {
 					const id = path.split('/').pop() ?? '';
@@ -48,6 +48,10 @@ suite('CommentService', () => {
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+				throw new Error('Not implemented');
+			},
 		};
 		const logger = { debug: () => undefined, error: () => undefined } as unknown as Logger;
 		const service = new CommentService(client, logger);
@@ -66,7 +70,7 @@ suite('CommentService', () => {
 	});
 
 	test('preserves resolved state when enriching diff comments', async () => {
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(path: string): Promise<T> => {
 				if (path.includes('/pulls/comments/')) {
 					return {
@@ -93,6 +97,10 @@ suite('CommentService', () => {
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+				throw new Error('Not implemented');
+			},
 		};
 		const logger = { debug: () => undefined, error: () => undefined } as unknown as Logger;
 		const service = new CommentService(client, logger);
@@ -110,7 +118,7 @@ suite('CommentService', () => {
 
 	test('loads pull request comments across paginated result pages', async () => {
 		const listCalls: Array<{ path: string; query?: Record<string, string | number | boolean | undefined> }> = [];
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<T> => {
 				if (path.includes('/pulls/comments/')) {
 					const id = path.split('/').pop() ?? '';
@@ -141,6 +149,10 @@ suite('CommentService', () => {
 			patch: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
 			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+				throw new Error('Not implemented');
+			},
 		};
 		const service = new CommentService(client, { debug: () => undefined, error: () => undefined } as unknown as Logger);
 
@@ -155,7 +167,7 @@ suite('CommentService', () => {
 
 	test('creates a pull request conversation comment with body only', async () => {
 		const calls: Array<{ path: string; body: unknown }> = [];
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(path: string, body?: unknown): Promise<T> => {
 				calls.push({ path, body });
@@ -169,6 +181,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};
@@ -188,7 +204,7 @@ suite('CommentService', () => {
 
 	test('creates an inline diff comment with path position and text type', async () => {
 		const calls: unknown[] = [];
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(_path: string, body?: unknown): Promise<T> => {
 				calls.push(body);
@@ -198,6 +214,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};
@@ -221,7 +241,7 @@ suite('CommentService', () => {
 
 	test('omits position for binary file comments', async () => {
 		const calls: unknown[] = [];
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(_path: string, body?: unknown): Promise<T> => {
 				calls.push(body);
@@ -231,6 +251,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};
@@ -252,7 +276,7 @@ suite('CommentService', () => {
 
 	test('edits a pull request comment via PATCH with comment ID and body', async () => {
 		const calls: Array<{ path: string; body: unknown }> = [];
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
@@ -263,6 +287,9 @@ suite('CommentService', () => {
 			patch: async <T>(path: string, body?: unknown): Promise<T> => {
 				calls.push({ path, body });
 				return {} as T;
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 			},
 		};
 
@@ -280,7 +307,7 @@ suite('CommentService', () => {
 
 	test('editPullRequestComment rejects empty body', async () => {
 		let called = false;
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
@@ -289,6 +316,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				called = true;
 				return {} as T;
 			},
@@ -303,7 +334,7 @@ suite('CommentService', () => {
 	});
 
 	test('editPullRequestComment rejects empty commentId', async () => {
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(): Promise<T> => {
 				throw new Error('Not implemented');
@@ -312,6 +343,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};
@@ -325,7 +360,7 @@ suite('CommentService', () => {
 
 	test('rejects empty bodies before calling the API', async () => {
 		let called = false;
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(): Promise<T> => {
 				called = true;
@@ -335,6 +370,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};
@@ -349,7 +388,7 @@ suite('CommentService', () => {
 
 	test('replyPullRequestComment validates empty body and missing discussionId', async () => {
 		let posted = false;
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(): Promise<T> => {
 				posted = true;
@@ -359,6 +398,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};
@@ -380,7 +423,7 @@ suite('CommentService', () => {
 
 	test('replyPullRequestComment posts to the correct endpoint with body', async () => {
 		const calls: Array<{ path: string; body: unknown }> = [];
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(path: string, body?: unknown): Promise<T> => {
 				calls.push({ path, body });
@@ -394,6 +437,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};
@@ -413,7 +460,7 @@ suite('CommentService', () => {
 	});
 
 	test('replyPullRequestComment handles missing id in response', async () => {
-		const client: GitCodeWriteClient = {
+		const client: GitCodeDeleteClient = {
 			get: async <T>(): Promise<T> => [] as T,
 			post: async <T>(): Promise<T> => {
 				return { note_id: 1 } as T;
@@ -422,6 +469,10 @@ suite('CommentService', () => {
 				throw new Error('Not implemented');
 			},
 			patch: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
+			},
+			delete: async <T>(): Promise<T> => {
+				throw new Error('Not implemented');
 				throw new Error('Not implemented');
 			},
 		};

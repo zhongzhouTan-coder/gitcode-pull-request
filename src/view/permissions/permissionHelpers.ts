@@ -39,6 +39,7 @@ export function buildPullRequestOverviewPermissions(
 			canMergePullRequest: false,
 			canCreateComment: false,
 			canEditComment: false,
+			canDeleteComment: false,
 			canResolveComment: false,
 			canUpdateReviewers: false,
 			canUpdateTesters: false,
@@ -57,6 +58,7 @@ export function buildPullRequestOverviewPermissions(
 		canMergePullRequest: hasEffectivePermission(snapshot, { scope: 'pr', action: 'merge', message: () => '' }),
 		canCreateComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }),
 		canEditComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }), // note:update is not exposed by API
+		canDeleteComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'delete', message: () => '' }),
 		canResolveComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'resolve', message: () => '' }),
 		canUpdateReviewers: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
 		canUpdateTesters: hasEffectivePermission(snapshot, { scope: 'pr', action: 'update', message: () => '' }),
@@ -74,6 +76,7 @@ export function buildUnknownPullRequestOverviewPermissions(): PullRequestOvervie
 		canMergePullRequest: true,
 		canCreateComment: true,
 		canEditComment: true,
+		canDeleteComment: true,
 		canResolveComment: true,
 		canUpdateReviewers: true,
 		canUpdateTesters: true,

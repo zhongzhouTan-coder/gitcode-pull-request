@@ -20,6 +20,7 @@ export type PermissionOperation =
 	| 'pr.changeState'
 	| 'pr.comment.create'
 	| 'pr.comment.edit'
+	| 'pr.comment.delete'
 	| 'pr.comment.resolve'
 	| 'pr.reviewers.update'
 	| 'pr.testers.update'
@@ -80,6 +81,8 @@ export function operationToScopeAction(operation: PermissionOperation): { scope:
 			return { scope: 'note', action: 'create' };
 		case 'pr.comment.edit':
 			return { scope: 'note', action: 'create' }; // note:update not exposed
+		case 'pr.comment.delete':
+			return { scope: 'note', action: 'delete' };
 		case 'pr.comment.resolve':
 			return { scope: 'note', action: 'resolve' };
 		case 'pr.reviewers.update':

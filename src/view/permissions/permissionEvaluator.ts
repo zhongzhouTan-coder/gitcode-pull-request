@@ -7,6 +7,7 @@ import { PermissionDecision, PermissionOperation, operationToScopeAction } from 
 import {
 	canChangeOwnIssueState,
 	canChangeOwnPullRequestState,
+	canDeleteOwnComment,
 	canEditOwnComment,
 	canEditOwnIssue,
 	canEditOwnPullRequest,
@@ -125,6 +126,8 @@ export function resolveOwnershipRule(
 			return canChangeOwnPullRequestState(currentUserLogin, authorLogin);
 		case 'pr.comment.edit':
 			return canEditOwnComment(currentUserLogin, authorLogin);
+		case 'pr.comment.delete':
+			return canDeleteOwnComment(currentUserLogin, authorLogin);
 		default:
 			return false;
 	}

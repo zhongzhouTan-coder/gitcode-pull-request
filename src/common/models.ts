@@ -763,6 +763,7 @@ export interface PullRequestOverviewPermissions {
 	canMergePullRequest: boolean;
 	canCreateComment: boolean;
 	canEditComment: boolean;
+	canDeleteComment: boolean;
 	canResolveComment: boolean;
 	canUpdateReviewers: boolean;
 	canUpdateTesters: boolean;
@@ -804,6 +805,16 @@ export interface PullRequestCommentEditOperation {
 	commentId: string;
 	body: string;
 	status: 'pending' | 'failed';
+	error?: string;
+}
+
+export interface DeletePullRequestCommentInput {
+	commentId: string;
+}
+
+export interface PullRequestCommentDeleteOperation {
+	commentId: string;
+	status: 'confirming' | 'pending' | 'failed';
 	error?: string;
 }
 

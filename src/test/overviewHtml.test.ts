@@ -93,6 +93,37 @@ suite('OverviewHtml', () => {
 		assert.ok(html.indexOf('Existing comment') < html.indexOf('id="conversation-comment-input"'));
 	});
 
+	test('wires overview comment deletion through the inline webview script', () => {
+		const html = getOverviewWithCommentsHtml(
+			detail,
+			{
+				repositoryKey: 'org/repo',
+				pullRequestNumber: 2,
+				loadedAt: Date.now(),
+				comments: [{
+					kind: 'pullRequest',
+					id: 'comment-1',
+					discussionId: 'discussion-1',
+					body: 'Existing comment',
+					author: { id: '1', login: 'alice' },
+					createdAt: '2026-06-20T10:00:00+08:00',
+					updatedAt: '2026-06-20T10:00:00+08:00',
+					replies: [],
+				}],
+			},
+			'nonce',
+		);
+
+		assert.match(html, /class="edit-icon-btn delete-comment-btn" data-action="deletePullRequestComment" data-comment-id="comment-1"/);
+		assert.match(html, /data-delete-confirm="comment-1" style="display:none"/);
+		assert.match(html, /document\.querySelectorAll\('\.delete-comment-btn'\)\.forEach/);
+		assert.match(html, /showCommentDeleteConfirmation\(btn\.dataset\.commentId\)/);
+		assert.match(html, /document\.querySelectorAll\('\.btn-confirm-delete'\)\.forEach/);
+		assert.match(html, /command: 'deletePullRequestComment'[\s\S]*commentId: commentId/);
+		assert.match(html, /deletePullRequestCommentError/);
+		assert.match(html, /setCommentDeleteSaving\(msg\.commentId, false\)/);
+	});
+
 	test('renders comments and activity as one chronological timeline', () => {
 		const comments: PullRequestCommentsSnapshot = {
 			repositoryKey: 'org/repo',

@@ -220,6 +220,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		canMergePullRequest: false,
 		canCreateComment: false,
 		canEditComment: false,
+		canDeleteComment: false,
 		canResolveComment: false,
 		canUpdateReviewers: false,
 		canUpdateTesters: false,
@@ -290,6 +291,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'replyPullRequestComment' && typeof message.discussionId === 'string' && typeof message.body === 'string') {
 				await this.handleReplyPullRequestComment(message.discussionId, message.body);
+				return;
+			}
+
+			if (message.command === 'deletePullRequestComment' && typeof message.commentId === 'string') {
+				await this.handleDeletePullRequestComment(message.commentId);
 				return;
 			}
 
@@ -1049,6 +1055,71 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		// On success, reload to show refreshed comments from the store
+		if (PullRequestOverviewPanel.operationLogsStore) {
+			await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
+		}
+		this.commentsSnapshot = undefined;
+		this.operationLogsSnapshot = undefined;
+		await this.load(true);
+	}
+
+	private async handleDeletePullRequestComment(commentId: string): Promise<void> {
+		if (!commentId) {
+			this.panel.webview.postMessage({
+				command: 'deletePullRequestCommentError',
+				commentId,
+				message: 'Comment ID is required.',
+			});
+			return;
+		}
+
+		// Re-check permission before calling the write API
+		if (!this.commentsSnapshot) {
+			this.panel.webview.postMessage({
+				command: 'deletePullRequestCommentError',
+				commentId,
+				message: 'Comments are not loaded.',
+			});
+			return;
+		}
+
+		const targetComment = this.commentsSnapshot.comments.find((c) => c.id === commentId);
+		if (!targetComment) {
+			this.panel.webview.postMessage({
+				command: 'deletePullRequestCommentError',
+				commentId,
+				message: 'Comment not found.',
+			});
+			return;
+		}
+
+		// Check ownership — the comment author can delete their own comment
+		const currentUserLogin = await this.store.getCurrentUserLogin();
+		const canDeleteOwn = targetComment.author.login
+			? (currentUserLogin?.toLowerCase() === targetComment.author.login.toLowerCase())
+			: false;
+
+		const deniedMessage = `You do not have permission to delete comments in ${this.context.repository.fullName}.`;
+		if (!await this.checkWritePermission('note', 'delete', deniedMessage, canDeleteOwn)) {
+			return;
+		}
+
+		const result = await this.commentsStore.deleteComment(
+			this.context.repository,
+			this.context.pullRequestNumber,
+			{ commentId },
+		);
+
+		if (result.status === 'failed') {
+			this.panel.webview.postMessage({
+				command: 'deletePullRequestCommentError',
+				commentId,
+				message: result.error ?? 'Failed to delete comment.',
+			});
+			return;
+		}
+
+		// On success the store refreshes; reload to show updated comments
 		if (PullRequestOverviewPanel.operationLogsStore) {
 			await PullRequestOverviewPanel.operationLogsStore.refresh(this.context.repository.fullName, this.context.pullRequestNumber);
 		}
