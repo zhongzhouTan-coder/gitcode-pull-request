@@ -41,6 +41,10 @@ export function createCommentDeniedMessage(repository: GitCodeRepository): strin
 	return `You do not have permission to comment in ${repository.fullName}.`;
 }
 
+export function editCommentDeniedMessage(repository: GitCodeRepository): string {
+	return `You do not have permission to edit comments in ${repository.fullName}.`;
+}
+
 export function resolveCommentDeniedMessage(repository: GitCodeRepository): string {
 	return `You do not have permission to resolve comments in ${repository.fullName}.`;
 }

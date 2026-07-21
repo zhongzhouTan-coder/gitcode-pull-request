@@ -16,7 +16,7 @@ import { IssueTreeStore } from '../state/issueTreeStore';
 import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
 import { buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
-import { canEditOwnIssue, canDeleteOwnComment } from '../permissions/ownershipRules';
+import { canEditOwnIssue, canDeleteOwnComment, canEditOwnComment } from '../permissions/ownershipRules';
 
 interface IssueOverviewContext {
 	repository: GitCodeRepository;
@@ -262,6 +262,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		canCloseIssue: false,
 		canReopenIssue: false,
 		canCreateComment: false,
+		canEditComment: false,
 		canDeleteComment: false,
 	};
 
@@ -345,6 +346,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'deleteIssueComment') {
 				await this.handleDeleteIssueComment(message.commentId);
+			}
+
+			if (message.command === 'editIssueComment') {
+				await this.handleEditIssueComment(message.commentId, message.body);
 			}
 		});
 	}
@@ -848,6 +853,94 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		// On success the store refreshes; reload to show updated timeline
 		this.panel.webview.postMessage({
 			command: 'issueCommentDeleted',
+			commentId,
+		});
+
+		this.commentsSnapshot = undefined;
+		this.commentsError = undefined;
+		await this.load(true);
+	}
+
+	private async handleEditIssueComment(commentId: string | undefined, body: string | undefined): Promise<void> {
+		if (!commentId) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentEditError',
+				commentId: commentId ?? '',
+				message: 'Comment ID is required.',
+			});
+			return;
+		}
+
+		if (!body || !body.trim()) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentEditError',
+				commentId,
+				message: 'Comment body is required.',
+			});
+			return;
+		}
+
+		// Find the target comment in the current snapshot
+		if (!this.commentsSnapshot) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentEditError',
+				commentId,
+				message: 'Comments are not loaded.',
+			});
+			return;
+		}
+
+		const targetComment = this.commentsSnapshot.comments.find((c) => c.id === commentId);
+		if (!targetComment) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentEditError',
+				commentId,
+				message: 'Comment not found.',
+			});
+			return;
+		}
+
+		// Re-check permission before calling the write API
+		const currentUserLogin = await this.store.getCurrentUserLogin();
+		const ownsComment = canEditOwnComment(currentUserLogin, targetComment.author.login);
+		const permissionMessage = `You do not have permission to edit comments in ${this.context.repository.fullName}.`;
+
+		if (!await this.checkWritePermission('note', 'create',
+			permissionMessage,
+			ownsComment,
+		)) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentEditError',
+				commentId,
+				message: permissionMessage,
+			});
+			return;
+		}
+
+		// Notify webview editing is pending
+		this.panel.webview.postMessage({
+			command: 'issueCommentEditPending',
+			commentId,
+		});
+
+		const result = await this.commentsStore.editComment(
+			this.context.repository,
+			this.context.issueNumber,
+			{ commentId, body },
+		);
+
+		if (result.status === 'failed') {
+			this.panel.webview.postMessage({
+				command: 'issueCommentEditError',
+				commentId,
+				message: result.error ?? 'Failed to edit comment.',
+			});
+			return;
+		}
+
+		// On success the store refreshes; reload to show updated timeline
+		this.panel.webview.postMessage({
+			command: 'issueCommentEdited',
 			commentId,
 		});
 

@@ -350,4 +350,23 @@ suite('IssueOverviewHtml', () => {
 		assert.ok(showConfirmIndex > errorBranchIndex);
 		assert.ok(setErrorIndex > showConfirmIndex);
 	});
+
+	test('resets an open issue comment editor before switching to another comment', () => {
+		const html = getIssueOverviewHtml({
+			detail,
+			comments: commentsSnapshot,
+			operationLogs: operationLogsSnapshot,
+			nonce: 'test-nonce',
+		});
+
+		const cancelHelperIndex = html.indexOf('function cancelEditForm(commentId)');
+		const switchBranchIndex = html.indexOf("if (otherCommentId && otherCommentId !== btn.getAttribute('data-comment-id'))");
+		const cancelOnSwitchIndex = html.indexOf('cancelEditForm(otherCommentId);', switchBranchIndex);
+		const hideOnSwitchIndex = html.indexOf('hideEditForm(otherCommentId);', switchBranchIndex);
+
+		assert.ok(cancelHelperIndex > -1);
+		assert.ok(switchBranchIndex > -1);
+		assert.ok(cancelOnSwitchIndex > switchBranchIndex);
+		assert.strictEqual(hideOnSwitchIndex, -1);
+	});
 });

@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { EditIssueOptions, GitCodeRepository, IssueDetail } from '../common/models';
-import { isTrustedGitCodeUrl, resolveRelatedPullRequestRepository, validateIssueSectionInput, validateIssueStateChange } from '../view/issueOverview/issueOverviewPanel';
+import { EditIssueOptions, GitCodeRepository, IssueCommentsSnapshot, IssueDetail } from '../common/models';
+import { IssueOverviewPanel, isTrustedGitCodeUrl, resolveRelatedPullRequestRepository, validateIssueSectionInput, validateIssueStateChange } from '../view/issueOverview/issueOverviewPanel';
 
 suite('IssueOverviewPanel', () => {
 	const repository: GitCodeRepository = {
@@ -105,5 +105,73 @@ suite('IssueOverviewPanel', () => {
 		assert.deepStrictEqual(validateIssueStateChange('close', detail), []);
 		assert.deepStrictEqual(validateIssueStateChange('reopen', detail), ['Only closed issues can be reopened.']);
 		assert.deepStrictEqual(validateIssueStateChange('reopen', { ...detail, state: 'closed' }), []);
+	});
+
+	test('posts issue comment edit error when host permission check denies save', async () => {
+		const postedMessages: unknown[] = [];
+		const fakeWebviewPanel = {
+			webview: {
+				postMessage: async (message: unknown) => {
+					postedMessages.push(message);
+					return true;
+				},
+				onDidReceiveMessage: () => ({ dispose: () => undefined }),
+			},
+			onDidDispose: () => ({ dispose: () => undefined }),
+			onDidChangeViewState: () => ({ dispose: () => undefined }),
+		};
+		const fakeStore = {
+			getCurrentUserLogin: async () => 'bob',
+		};
+		const fakeCommentsStore = {
+			editComment: async () => {
+				throw new Error('editComment should not be called');
+			},
+		};
+		const fakeLogger = {
+			error: () => undefined,
+			warn: () => undefined,
+			info: () => undefined,
+			debug: () => undefined,
+		};
+		const panel = new (IssueOverviewPanel as unknown as {
+			new(...args: unknown[]): unknown;
+		})(
+			fakeWebviewPanel,
+			fakeStore,
+			fakeCommentsStore,
+			{},
+			{},
+			{},
+			{},
+			fakeLogger,
+			{ repository, issueNumber: detail.number },
+		) as {
+			commentsSnapshot?: IssueCommentsSnapshot;
+			checkWritePermission: () => Promise<boolean>;
+			handleEditIssueComment: (commentId: string, body: string) => Promise<void>;
+		};
+
+		panel.commentsSnapshot = {
+			repositoryKey: repository.fullName,
+			issueNumber: detail.number,
+			comments: [{
+				id: 'comment-1',
+				body: 'saved body',
+				author: { login: 'alice' },
+				createdAt: '2026-06-30T10:00:00+08:00',
+				updatedAt: '2026-06-30T10:00:00+08:00',
+			}],
+			loadedAt: Date.now(),
+		};
+		panel.checkWritePermission = async () => false;
+
+		await panel.handleEditIssueComment('comment-1', 'edited body');
+
+		assert.deepStrictEqual(postedMessages, [{
+			command: 'issueCommentEditError',
+			commentId: 'comment-1',
+			message: 'You do not have permission to edit comments in issue-org/issue-repo.',
+		}]);
 	});
 });

@@ -395,14 +395,23 @@ function renderIssueCommentTimelineItem(comment: IssueComment): string {
 		<span class="comment-time">${escapeHtml(formatActivityDate(comment.createdAt))}</span>
 		${updated}
 		<span class="comment-header-spacer"></span>
+		<button class="comment-edit-btn" data-comment-id="${escapeAttr(comment.id)}" title="Edit comment" aria-label="Edit comment">${PENCIL_ICON}</button>
 		<button class="comment-delete-btn" data-comment-id="${escapeAttr(comment.id)}" title="Delete comment" aria-label="Delete comment">${TRASH_ICON}</button>
 	</div>
-	<div class="comment-body description">${bodyHtml}</div>
+	<div class="comment-body description" data-comment-body="${escapeAttr(comment.id)}">${bodyHtml}</div>
+	<div class="comment-edit-form" data-comment-edit="${escapeAttr(comment.id)}" style="display:none">
+		<textarea class="comment-edit-textarea" data-comment-edit-textarea="${escapeAttr(comment.id)}" rows="3">${escapeHtml(comment.body)}</textarea>
+		<div class="comment-edit-actions">
+			<button class="btn-primary btn-edit-save" data-comment-id="${escapeAttr(comment.id)}" disabled>Save</button>
+			<button class="btn-secondary btn-edit-cancel" data-comment-id="${escapeAttr(comment.id)}">Cancel</button>
+			<span class="comment-edit-error" data-comment-edit-error="${escapeAttr(comment.id)}"></span>
+		</div>
+	</div>
 	<div class="comment-delete-confirm" data-comment-confirm="${escapeAttr(comment.id)}" style="display:none">
 		<span class="confirm-text">Delete this comment?</span>
 		<button class="btn-danger btn-confirm-delete" data-comment-id="${escapeAttr(comment.id)}">Delete</button>
 		<button class="btn-secondary btn-cancel-delete" data-comment-id="${escapeAttr(comment.id)}">Cancel</button>
-		<span class="comment-delete-error" data-comment-error="${escapeAttr(comment.id)}"></span>
+		<span class="comment-delete-error" data-comment-delete-error="${escapeAttr(comment.id)}"></span>
 	</div>
 </div>`;
 }
@@ -1361,6 +1370,66 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			cursor: not-allowed;
 			pointer-events: none;
 		}
+		.comment-edit-btn {
+			border: none;
+			background: none;
+			color: var(--muted);
+			cursor: pointer;
+			padding: 4px;
+			border-radius: 4px;
+			opacity: 0;
+			transition: opacity 0.15s;
+			flex-shrink: 0;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.timeline-comment:hover .comment-edit-btn:not(:disabled),
+		.comment-edit-btn:focus-visible {
+			opacity: 1;
+		}
+		.comment-edit-btn:hover:not(:disabled) {
+			color: var(--vscode-textLink-foreground);
+			background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent);
+		}
+		.comment-edit-btn:disabled {
+			opacity: 0;
+			cursor: not-allowed;
+			pointer-events: none;
+		}
+		.comment-edit-form {
+			margin-top: 12px;
+		}
+		.comment-edit-textarea {
+			width: 100%;
+			box-sizing: border-box;
+			min-height: 80px;
+			padding: 8px 12px;
+			font-family: inherit;
+			font-size: 13px;
+			line-height: 1.5;
+			color: var(--vscode-input-foreground);
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border, var(--border));
+			border-radius: 6px;
+			resize: vertical;
+		}
+		.comment-edit-textarea:focus {
+			outline: none;
+			border-color: var(--vscode-focusBorder);
+		}
+		.comment-edit-actions {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-top: 8px;
+			flex-wrap: wrap;
+		}
+		.comment-edit-error {
+			color: var(--danger);
+			font-size: 12px;
+			flex: 1 1 200px;
+		}
 		.comment-delete-confirm {
 			display: flex;
 			align-items: center;
@@ -1583,6 +1652,19 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				return false;
 			}
 
+			function canEditIssueComment(commentAuthorLogin) {
+				// Repository-level permission
+				if (hasIssuePermission('canEditComment')) {
+					return true;
+				}
+				// Ownership rule: comment author can edit their own comment
+				if (currentUserLogin && commentAuthorLogin
+					&& currentUserLogin.trim().toLowerCase() === commentAuthorLogin.trim().toLowerCase()) {
+					return true;
+				}
+				return false;
+			}
+
 			function getIssueEditPermission(section) {
 				switch (section) {
 					case 'title':
@@ -1644,6 +1726,19 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 						el.style.opacity = '0';
 						el.title = 'You do not have permission to delete this comment.';
 						el.setAttribute('aria-label', 'You do not have permission to delete this comment.');
+					}
+				});
+
+				document.querySelectorAll('.comment-edit-btn[data-comment-id]').forEach(function(el) {
+					var commentAuthor = el.closest('[data-comment-author]')
+						? el.closest('[data-comment-author]').getAttribute('data-comment-author')
+						: null;
+					var allowed = canEditIssueComment(commentAuthor);
+					if (!allowed) {
+						el.disabled = true;
+						el.style.opacity = '0';
+						el.title = 'You do not have permission to edit this comment.';
+						el.setAttribute('aria-label', 'You do not have permission to edit this comment.');
 					}
 				});
 			}
@@ -1898,7 +1993,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		}
 
 		function getDeleteErrorEl(commentId) {
-			return document.querySelector('[data-comment-error="' + commentId + '"]');
+			return document.querySelector('[data-comment-delete-error="' + commentId + '"]');
 		}
 
 		function setDeleteControlsDisabled(commentId, disabled) {
@@ -1959,6 +2054,167 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		document.querySelectorAll('.btn-cancel-delete[data-comment-id]').forEach(function(btn) {
 			btn.addEventListener('click', function() {
 				hideDeleteConfirm(btn.getAttribute('data-comment-id'));
+			});
+		});
+
+		// Edit issue comment handlers
+		function getEditFormEl(commentId) {
+			return document.querySelector('[data-comment-edit="' + commentId + '"]');
+		}
+
+		function getEditTextarea(commentId) {
+			return document.querySelector('[data-comment-edit-textarea="' + commentId + '"]');
+		}
+
+		function getEditErrorEl(commentId) {
+			return document.querySelector('[data-comment-edit-error="' + commentId + '"]');
+		}
+
+		function getCommentBodyEl(commentId) {
+			return document.querySelector('[data-comment-body="' + commentId + '"]');
+		}
+
+		function getEditSaveBtn(commentId) {
+			return document.querySelector('.btn-edit-save[data-comment-id="' + commentId + '"]');
+		}
+
+		function getEditCancelBtn(commentId) {
+			return document.querySelector('.btn-edit-cancel[data-comment-id="' + commentId + '"]');
+		}
+
+		function getEditBtn(commentId) {
+			return document.querySelector('.comment-edit-btn[data-comment-id="' + commentId + '"]');
+		}
+
+		function showEditForm(commentId) {
+			var formEl = getEditFormEl(commentId);
+			var bodyEl = getCommentBodyEl(commentId);
+			var textarea = getEditTextarea(commentId);
+			var saveBtn = getEditSaveBtn(commentId);
+			var errorEl = getEditErrorEl(commentId);
+
+			if (formEl) {
+				formEl.style.display = 'block';
+			}
+			if (bodyEl) {
+				bodyEl.style.display = 'none';
+			}
+			if (textarea) {
+				var originalBody = textarea.value;
+				textarea.setAttribute('data-original-body', originalBody);
+				textarea.disabled = false;
+				textarea.focus();
+			}
+			if (saveBtn) {
+				updateEditSaveState(commentId);
+			}
+			if (errorEl) {
+				errorEl.textContent = '';
+			}
+		}
+
+		function hideEditForm(commentId) {
+			var formEl = getEditFormEl(commentId);
+			var bodyEl = getCommentBodyEl(commentId);
+			if (formEl) {
+				formEl.style.display = 'none';
+			}
+			if (bodyEl) {
+				bodyEl.style.display = '';
+			}
+		}
+
+		function cancelEditForm(commentId) {
+			var textarea = getEditTextarea(commentId);
+			if (textarea) {
+				var originalBody = textarea.getAttribute('data-original-body') || textarea.value;
+				textarea.value = originalBody;
+			}
+			setEditControlsDisabled(commentId, false);
+			updateEditSaveState(commentId);
+			hideEditForm(commentId);
+		}
+
+		function setEditControlsDisabled(commentId, disabled) {
+			var editBtn = getEditBtn(commentId);
+			var saveBtn = getEditSaveBtn(commentId);
+			var cancelBtn = getEditCancelBtn(commentId);
+			var textarea = getEditTextarea(commentId);
+			if (editBtn) {
+				editBtn.disabled = disabled;
+			}
+			if (saveBtn) {
+				saveBtn.disabled = disabled;
+			}
+			if (cancelBtn) {
+				cancelBtn.disabled = disabled;
+			}
+			if (textarea) {
+				textarea.disabled = disabled;
+			}
+		}
+
+		function updateEditSaveState(commentId) {
+			var textarea = getEditTextarea(commentId);
+			var saveBtn = getEditSaveBtn(commentId);
+			if (!textarea || !saveBtn) {
+				return;
+			}
+			var trimmedBody = textarea.value.trim();
+			var originalBody = textarea.getAttribute('data-original-body') || '';
+			saveBtn.disabled = !trimmedBody || trimmedBody === originalBody;
+		}
+
+		// Edit button click: open inline editor
+		document.querySelectorAll('.comment-edit-btn[data-comment-id]').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				if (btn.disabled) {
+					return;
+				}
+				// Close any other open edit forms
+				document.querySelectorAll('.comment-edit-form[style*="display: block"]').forEach(function(form) {
+					var otherCommentId = form.getAttribute('data-comment-edit');
+					if (otherCommentId && otherCommentId !== btn.getAttribute('data-comment-id')) {
+						cancelEditForm(otherCommentId);
+					}
+				});
+				showEditForm(btn.getAttribute('data-comment-id'));
+			});
+		});
+
+		// Textarea input: update Save button state
+		document.querySelectorAll('.comment-edit-textarea').forEach(function(textarea) {
+			textarea.addEventListener('input', function() {
+				var commentId = textarea.getAttribute('data-comment-edit-textarea');
+				if (commentId) {
+					updateEditSaveState(commentId);
+				}
+			});
+		});
+
+		// Save edit
+		document.querySelectorAll('.btn-edit-save[data-comment-id]').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				var commentId = btn.getAttribute('data-comment-id');
+				var textarea = getEditTextarea(commentId);
+				if (!textarea || btn.disabled) {
+					return;
+				}
+				var body = textarea.value;
+				setEditControlsDisabled(commentId, true);
+				vscode.postMessage({
+					command: 'editIssueComment',
+					commentId: commentId,
+					body: body,
+				});
+			});
+		});
+
+		// Cancel edit
+		document.querySelectorAll('.btn-edit-cancel[data-comment-id]').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				var commentId = btn.getAttribute('data-comment-id');
+				cancelEditForm(commentId);
 			});
 		});
 
@@ -2036,6 +2292,20 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				var errorEl = getDeleteErrorEl(commentId);
 				if (errorEl) {
 					errorEl.textContent = msg.message || 'Failed to delete comment.';
+				}
+			}
+			if (msg.command === 'issueCommentEditPending') {
+				// Controls are already disabled via the save handler
+			}
+			if (msg.command === 'issueCommentEdited') {
+				// The panel will reload; no action needed here
+			}
+			if (msg.command === 'issueCommentEditError') {
+				var commentId = msg.commentId;
+				setEditControlsDisabled(commentId, false);
+				var errorEl = getEditErrorEl(commentId);
+				if (errorEl) {
+					errorEl.textContent = msg.message || 'Failed to edit comment.';
 				}
 			}
 		});

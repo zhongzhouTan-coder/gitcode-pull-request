@@ -1,4 +1,4 @@
-import { CreateIssueCommentInput, CreateIssueCommentResult, DeleteIssueCommentInput, GitCodeRepository, IssueComment } from '../../common/models';
+import { CreateIssueCommentInput, CreateIssueCommentResult, DeleteIssueCommentInput, EditIssueCommentInput, GitCodeRepository, IssueComment } from '../../common/models';
 import { GitCodeDeleteClient } from '../client/gitcodeClient';
 import { mapCreateIssueCommentResult, mapIssueComments } from '../mappers/issueCommentMapper';
 import { listPagedRecords } from './pagination';
@@ -53,6 +53,27 @@ export class IssueCommentService {
 
 		await this.client.delete(
 			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/comments/${encodeURIComponent(input.commentId)}`,
+		);
+	}
+
+	/**
+	 * Edit an issue comment.
+	 */
+	async editIssueComment(
+		repository: GitCodeRepository,
+		input: EditIssueCommentInput,
+	): Promise<void> {
+		if (!input.commentId) {
+			throw new Error('Comment ID is required.');
+		}
+
+		if (!input.body.trim()) {
+			throw new Error('Comment body is required.');
+		}
+
+		await this.client.patch(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/comments/${encodeURIComponent(input.commentId)}`,
+			{ body: input.body },
 		);
 	}
 }
