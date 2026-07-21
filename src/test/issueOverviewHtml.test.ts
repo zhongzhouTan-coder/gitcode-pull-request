@@ -96,7 +96,7 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /<strong>markdown<\/strong>/);
 		assert.match(html, /changed title from \*\*old\*\* to \*\*new\*\*/);
 		assert.doesNotMatch(html, /changed title from <strong>old<\/strong>/);
-		assert.match(html, /<div class="comment-card timeline-item timeline-comment">/);
+		assert.match(html, /<div class="comment-card timeline-item timeline-comment"[^>]*>/);
 	});
 
 	test('escapes author names in comments and log content', () => {
@@ -332,5 +332,22 @@ suite('IssueOverviewHtml', () => {
 
 		assert.match(html, /<div class="comment-composer-actions">[\s\S]*id="state-action-button"[\s\S]*type="submit" class="btn-primary">Comment<\/button>/);
 		assert.match(html, /<div class="comment-composer-feedback">[\s\S]*id="state-action-error"[\s\S]*class="comment-submit-error"/);
+	});
+
+	test('shows delete confirmation row again before rendering delete errors', () => {
+		const html = getIssueOverviewHtml({
+			detail,
+			comments: commentsSnapshot,
+			operationLogs: operationLogsSnapshot,
+			nonce: 'test-nonce',
+		});
+
+		const errorBranchIndex = html.indexOf("if (msg.command === 'issueCommentDeleteError')");
+		const showConfirmIndex = html.indexOf('showDeleteConfirm(commentId);', errorBranchIndex);
+		const setErrorIndex = html.indexOf("errorEl.textContent = msg.message || 'Failed to delete comment.';", errorBranchIndex);
+
+		assert.ok(errorBranchIndex > -1);
+		assert.ok(showConfirmIndex > errorBranchIndex);
+		assert.ok(setErrorIndex > showConfirmIndex);
 	});
 });

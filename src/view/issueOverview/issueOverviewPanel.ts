@@ -16,7 +16,7 @@ import { IssueTreeStore } from '../state/issueTreeStore';
 import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
 import { buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
-import { canEditOwnIssue } from '../permissions/ownershipRules';
+import { canEditOwnIssue, canDeleteOwnComment } from '../permissions/ownershipRules';
 
 interface IssueOverviewContext {
 	repository: GitCodeRepository;
@@ -262,6 +262,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		canCloseIssue: false,
 		canReopenIssue: false,
 		canCreateComment: false,
+		canDeleteComment: false,
 	};
 
 	private constructor(
@@ -298,6 +299,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			input?: EditIssueInput;
 			state?: string;
 			body?: string;
+			commentId?: string;
 		}) => {
 			if (message.command === 'refresh') {
 				await this.refresh();
@@ -339,6 +341,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'submitIssueComment') {
 				await this.handleSubmitIssueComment(message.body);
+			}
+
+			if (message.command === 'deleteIssueComment') {
+				await this.handleDeleteIssueComment(message.commentId);
 			}
 		});
 	}
@@ -400,6 +406,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		// Refresh permissions for this repository
 		await this.refreshPermissions();
 
+		const currentUserLogin = await this.store.getCurrentUserLogin();
+
 		this.panel.webview.html = getIssueOverviewHtml({
 			detail: this.detail,
 			comments: this.commentsSnapshot,
@@ -410,6 +418,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
 			permissions: this.permissions,
+			currentUserLogin,
 			nonce: createNonce(),
 		});
 
@@ -477,6 +486,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
 			permissions: this.permissions,
+			currentUserLogin,
 			nonce: createNonce(),
 		});
 	}
@@ -771,5 +781,78 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private async isCurrentUserIssueAuthor(): Promise<boolean> {
 		const currentUserLogin = await this.store.getCurrentUserLogin();
 		return canEditOwnIssue(currentUserLogin, this.detail?.author.login);
+	}
+
+	private async handleDeleteIssueComment(commentId: string | undefined): Promise<void> {
+		if (!commentId) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentDeleteError',
+				commentId: commentId ?? '',
+				message: 'Comment ID is required.',
+			});
+			return;
+		}
+
+		// Find the target comment in the current snapshot
+		if (!this.commentsSnapshot) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentDeleteError',
+				commentId,
+				message: 'Comments are not loaded.',
+			});
+			return;
+		}
+
+		const targetComment = this.commentsSnapshot.comments.find((c) => c.id === commentId);
+		if (!targetComment) {
+			this.panel.webview.postMessage({
+				command: 'issueCommentDeleteError',
+				commentId,
+				message: 'Comment not found.',
+			});
+			return;
+		}
+
+		// Re-check permission before calling the write API
+		const currentUserLogin = await this.store.getCurrentUserLogin();
+		const ownsComment = canDeleteOwnComment(currentUserLogin, targetComment.author.login);
+
+		if (!await this.checkWritePermission('note', 'delete',
+			`You do not have permission to delete comments in ${this.context.repository.fullName}.`,
+			ownsComment,
+		)) {
+			return;
+		}
+
+		// Notify webview deletion is pending
+		this.panel.webview.postMessage({
+			command: 'issueCommentDeletePending',
+			commentId,
+		});
+
+		const result = await this.commentsStore.deleteComment(
+			this.context.repository,
+			this.context.issueNumber,
+			{ commentId },
+		);
+
+		if (result.status === 'failed') {
+			this.panel.webview.postMessage({
+				command: 'issueCommentDeleteError',
+				commentId,
+				message: result.error ?? 'Failed to delete comment.',
+			});
+			return;
+		}
+
+		// On success the store refreshes; reload to show updated timeline
+		this.panel.webview.postMessage({
+			command: 'issueCommentDeleted',
+			commentId,
+		});
+
+		this.commentsSnapshot = undefined;
+		this.commentsError = undefined;
+		await this.load(true);
 	}
 }

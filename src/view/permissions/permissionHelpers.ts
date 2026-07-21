@@ -99,6 +99,7 @@ export function buildIssueOverviewPermissions(
 			canCloseIssue: false,
 			canReopenIssue: false,
 			canCreateComment: false,
+			canDeleteComment: false,
 		};
 	}
 
@@ -110,6 +111,7 @@ export function buildIssueOverviewPermissions(
 		canCloseIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'reopen', message: () => '' }, isAuthor),
 		canReopenIssue: hasEffectivePermission(snapshot, { scope: 'issue', action: 'reopen', message: () => '' }, isAuthor),
 		canCreateComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'create', message: () => '' }),
+		canDeleteComment: hasEffectivePermission(snapshot, { scope: 'note', action: 'delete', message: () => '' }),
 	};
 }
 
@@ -120,6 +122,7 @@ export function buildUnknownIssueOverviewPermissions(): IssueOverviewPermissions
 		canCloseIssue: true,
 		canReopenIssue: true,
 		canCreateComment: true,
+		canDeleteComment: true,
 	};
 }
 

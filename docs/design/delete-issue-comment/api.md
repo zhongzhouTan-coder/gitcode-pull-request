@@ -1,12 +1,12 @@
-# Delete Pull Request Comment API
+# Delete Issue Comment API
 
 ## API Description
 
-This API allows users to delete a comment from a pull request.
+This API allows users to delete a comment from an issue.
 ## Endpoints
 
 ```
-DELETE https://api.gitcode.com/api/v5/repos/:owner/:repo/pulls/comments/:id
+DELETE https://api.gitcode.com/api/v5/repos/:owner/:repo/issues/comments/:id
 ```
 
 ## Path Variables
@@ -20,11 +20,13 @@ DELETE https://api.gitcode.com/api/v5/repos/:owner/:repo/pulls/comments/:id
 - `access_token`: (Required) The access token for authentication.
 
 
+
 ## Example Request
 
 ```bash
 curl --request DELETE \
-  --url 'https://api.gitcode.com/api/v5/repos/tangxuanya/ai_test/pulls/comments/2?access_token=xxxxxxxxxxxxxxxxxx' 
+  --url 'https://api.gitcode.com/api/v5/repos/tangxuanya/ai_test/issues/comments/180799302' \
+  --header 'Authorization: Bearer xxxxxxxxxxxxxxxxxx' 
 ```
 
 ## Example Response

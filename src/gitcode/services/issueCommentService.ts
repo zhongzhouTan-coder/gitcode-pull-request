@@ -1,5 +1,5 @@
-import { CreateIssueCommentInput, CreateIssueCommentResult, GitCodeRepository, IssueComment } from '../../common/models';
-import { GitCodeWriteClient } from '../client/gitcodeClient';
+import { CreateIssueCommentInput, CreateIssueCommentResult, DeleteIssueCommentInput, GitCodeRepository, IssueComment } from '../../common/models';
+import { GitCodeDeleteClient } from '../client/gitcodeClient';
 import { mapCreateIssueCommentResult, mapIssueComments } from '../mappers/issueCommentMapper';
 import { listPagedRecords } from './pagination';
 
@@ -7,7 +7,7 @@ import { listPagedRecords } from './pagination';
  * Fetches issue comments from the GitCode API.
  */
 export class IssueCommentService {
-	constructor(private readonly client: GitCodeWriteClient) {}
+	constructor(private readonly client: GitCodeDeleteClient) {}
 
 	/**
 	 * List all comments for an issue.
@@ -38,5 +38,21 @@ export class IssueCommentService {
 		);
 
 		return mapCreateIssueCommentResult(response);
+	}
+
+	/**
+	 * Delete a comment from an issue.
+	 */
+	async deleteIssueComment(
+		repository: GitCodeRepository,
+		input: DeleteIssueCommentInput,
+	): Promise<void> {
+		if (!input.commentId) {
+			throw new Error('Comment ID is required.');
+		}
+
+		await this.client.delete(
+			`/api/v5/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/comments/${encodeURIComponent(input.commentId)}`,
+		);
 	}
 }

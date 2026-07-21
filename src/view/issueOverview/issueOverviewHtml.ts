@@ -89,6 +89,11 @@ const PENCIL_ICON = `<svg width="10" height="10" viewBox="0 0 16 16" fill="curre
 	<path d="M11.01 1.427a1.75 1.75 0 0 1 2.475 0l1.088 1.088a1.75 1.75 0 0 1 0 2.475l-8.5 8.5a1.75 1.75 0 0 1-.78.448l-3.08.88a.75.75 0 0 1-.927-.927l.88-3.08a1.75 1.75 0 0 1 .448-.78l8.5-8.5Zm1.414 1.06a.25.25 0 0 0-.353 0l-1.057 1.056 1.44 1.44 1.056-1.057a.25.25 0 0 0 0-.353l-1.086-1.086Zm-2.47 2.117L3.675 10.88a.25.25 0 0 0-.064.112l-.533 1.866 1.866-.533a.25.25 0 0 0 .112-.064l6.278-6.278-1.44-1.44Z"/>
 </svg>`;
 
+/** Trash/delete icon (14×14). */
+const TRASH_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+	<path d="M2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5ZM5.5 2a.5.5 0 0 0-.5.5v1h6v-1a.5.5 0 0 0-.5-.5h-5ZM3.5 6h1v6.5a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V6h1v6.5a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2V6Zm4 1.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V8a.5.5 0 0 1 .5-.5Zm2.5.5a.5.5 0 0 0-1 0v4a.5.5 0 0 0 1 0V8Z"/>
+</svg>`;
+
 function stateBadgeClass(state: 'open' | 'closed'): string {
 	return state === 'closed' ? 'badge-closed' : 'badge-open';
 }
@@ -327,6 +332,7 @@ export interface IssueOverviewHtmlOptions {
 	relatedPullRequestsError?: Error;
 	editOptions?: EditIssueOptions;
 	permissions?: IssueOverviewPermissions;
+	currentUserLogin?: string;
 	nonce: string;
 	includeScripts?: boolean;
 }
@@ -382,14 +388,22 @@ function renderIssueCommentTimelineItem(comment: IssueComment): string {
 		? `<span class="comment-edited" title="Edited ${escapeHtml(formatActivityDate(comment.updatedAt))}">· Edited</span>`
 		: '';
 
-	return `<div class="comment-card timeline-item timeline-comment">
+	return `<div class="comment-card timeline-item timeline-comment" data-comment-id="${escapeAttr(comment.id)}" data-comment-author="${escapeAttr(comment.author.login)}">
 	<div class="comment-header">
 		${renderCommentAvatar(comment.author)}
 		${renderCommentAuthor(comment.author)}
 		<span class="comment-time">${escapeHtml(formatActivityDate(comment.createdAt))}</span>
 		${updated}
+		<span class="comment-header-spacer"></span>
+		<button class="comment-delete-btn" data-comment-id="${escapeAttr(comment.id)}" title="Delete comment" aria-label="Delete comment">${TRASH_ICON}</button>
 	</div>
 	<div class="comment-body description">${bodyHtml}</div>
+	<div class="comment-delete-confirm" data-comment-confirm="${escapeAttr(comment.id)}" style="display:none">
+		<span class="confirm-text">Delete this comment?</span>
+		<button class="btn-danger btn-confirm-delete" data-comment-id="${escapeAttr(comment.id)}">Delete</button>
+		<button class="btn-secondary btn-cancel-delete" data-comment-id="${escapeAttr(comment.id)}">Cancel</button>
+		<span class="comment-delete-error" data-comment-error="${escapeAttr(comment.id)}"></span>
+	</div>
 </div>`;
 }
 
@@ -635,6 +649,9 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 	const permissions = options.permissions;
 	const permissionsJson = permissions
 		? serializeForInlineScript(permissions)
+		: 'null';
+	const currentUserLogin = options.currentUserLogin
+		? serializeForInlineScript(options.currentUserLogin)
 		: 'null';
 	const detailSnapshotJson = serializeForInlineScript({
 		title: detail.title,
@@ -1317,6 +1334,65 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		@media (max-width: 900px) {
 			.layout { grid-template-columns: 1fr; }
 		}
+		.comment-header-spacer {
+			flex: 1;
+		}
+		.comment-delete-btn {
+			border: none;
+			background: none;
+			color: var(--muted);
+			cursor: pointer;
+			padding: 4px;
+			border-radius: 4px;
+			opacity: 0;
+			transition: opacity 0.15s;
+			flex-shrink: 0;
+		}
+		.timeline-comment:hover .comment-delete-btn:not(:disabled),
+		.comment-delete-btn:focus-visible {
+			opacity: 1;
+		}
+		.comment-delete-btn:hover:not(:disabled) {
+			color: var(--danger);
+			background: color-mix(in srgb, var(--danger) 12%, transparent);
+		}
+		.comment-delete-btn:disabled {
+			opacity: 0;
+			cursor: not-allowed;
+			pointer-events: none;
+		}
+		.comment-delete-confirm {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-top: 12px;
+			padding: 10px 12px;
+			border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+			border-radius: 8px;
+			background: color-mix(in srgb, var(--danger) 6%, var(--card));
+			flex-wrap: wrap;
+		}
+		.confirm-text {
+			font-size: 13px;
+			color: var(--vscode-foreground);
+			flex: 1 1 140px;
+		}
+		.btn-danger {
+			background: var(--danger);
+			color: white;
+			border-color: var(--danger);
+			padding: 6px 12px;
+			font-size: 13px;
+		}
+		.btn-danger:hover:not(:disabled) {
+			background: color-mix(in srgb, var(--danger) 85%, black);
+		}
+		.comment-delete-error {
+			width: 100%;
+			color: var(--danger);
+			font-size: 12px;
+			margin-top: 4px;
+		}
 	</style>
 </head>
 <body>
@@ -1374,6 +1450,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			const vscode = acquireVsCodeApi();
 			const editOptions = ${editOptionsJson};
 			const issuePermissions = ${permissionsJson};
+			const currentUserLogin = ${currentUserLogin};
 			const detailSnapshot = ${detailSnapshotJson};
 			let activeSection = null;
 			let pendingStateAction = null;
@@ -1493,6 +1570,19 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				return !issuePermissions || issuePermissions[key] !== false;
 			}
 
+			function canDeleteIssueComment(commentAuthorLogin) {
+				// Repository-level permission
+				if (hasIssuePermission('canDeleteComment')) {
+					return true;
+				}
+				// Ownership rule: comment author can delete their own comment
+				if (currentUserLogin && commentAuthorLogin
+					&& currentUserLogin.trim().toLowerCase() === commentAuthorLogin.trim().toLowerCase()) {
+					return true;
+				}
+				return false;
+			}
+
 			function getIssueEditPermission(section) {
 				switch (section) {
 					case 'title':
@@ -1543,6 +1633,19 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 						setDisabledWithTooltip(el, true, 'You do not have permission to comment in this repository.');
 					});
 				}
+
+				document.querySelectorAll('.comment-delete-btn[data-comment-id]').forEach(function(el) {
+					var commentAuthor = el.closest('[data-comment-author]')
+						? el.closest('[data-comment-author]').getAttribute('data-comment-author')
+						: null;
+					var allowed = canDeleteIssueComment(commentAuthor);
+					if (!allowed) {
+						el.disabled = true;
+						el.style.opacity = '0';
+						el.title = 'You do not have permission to delete this comment.';
+						el.setAttribute('aria-label', 'You do not have permission to delete this comment.');
+					}
+				});
 			}
 
 			function resetSectionState(section) {
@@ -1788,6 +1891,77 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				});
 			});
 		});
+
+		// Delete issue comment handlers
+		function getDeleteConfirmRow(commentId) {
+			return document.querySelector('[data-comment-confirm="' + commentId + '"]');
+		}
+
+		function getDeleteErrorEl(commentId) {
+			return document.querySelector('[data-comment-error="' + commentId + '"]');
+		}
+
+		function setDeleteControlsDisabled(commentId, disabled) {
+			var deleteBtn = document.querySelector('.comment-delete-btn[data-comment-id="' + commentId + '"]');
+			var confirmRow = getDeleteConfirmRow(commentId);
+			if (deleteBtn) {
+				deleteBtn.disabled = disabled;
+			}
+			if (confirmRow) {
+				confirmRow.querySelectorAll('button').forEach(function(btn) {
+					btn.disabled = disabled;
+				});
+			}
+		}
+
+		function showDeleteConfirm(commentId) {
+			var confirmRow = getDeleteConfirmRow(commentId);
+			var errorEl = getDeleteErrorEl(commentId);
+			if (confirmRow) {
+				confirmRow.style.display = 'flex';
+			}
+			if (errorEl) {
+				errorEl.textContent = '';
+			}
+		}
+
+		function hideDeleteConfirm(commentId) {
+			var confirmRow = getDeleteConfirmRow(commentId);
+			if (confirmRow) {
+				confirmRow.style.display = 'none';
+			}
+		}
+
+		// Delete button click: show confirmation
+		document.querySelectorAll('.comment-delete-btn[data-comment-id]').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				if (btn.disabled) {
+					return;
+				}
+				showDeleteConfirm(btn.getAttribute('data-comment-id'));
+			});
+		});
+
+		// Confirm delete
+		document.querySelectorAll('.btn-confirm-delete[data-comment-id]').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				var commentId = btn.getAttribute('data-comment-id');
+				hideDeleteConfirm(commentId);
+				setDeleteControlsDisabled(commentId, true);
+				vscode.postMessage({
+					command: 'deleteIssueComment',
+					commentId: commentId,
+				});
+			});
+		});
+
+		// Cancel delete
+		document.querySelectorAll('.btn-cancel-delete[data-comment-id]').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				hideDeleteConfirm(btn.getAttribute('data-comment-id'));
+			});
+		});
+
 		applyPermissionControls();
 
 		window.addEventListener('message', (event) => {
@@ -1848,6 +2022,21 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				}
 				setActionError(msg.message || 'Unable to update issue state.');
 				pendingStateAction = null;
+			}
+			if (msg.command === 'issueCommentDeletePending') {
+				// Controls are already disabled via the confirm handler
+			}
+			if (msg.command === 'issueCommentDeleted') {
+				// The panel will reload; no action needed here
+			}
+			if (msg.command === 'issueCommentDeleteError') {
+				var commentId = msg.commentId;
+				setDeleteControlsDisabled(commentId, false);
+				showDeleteConfirm(commentId);
+				var errorEl = getDeleteErrorEl(commentId);
+				if (errorEl) {
+					errorEl.textContent = msg.message || 'Failed to delete comment.';
+				}
 			}
 		});
 	</script>` : ''}

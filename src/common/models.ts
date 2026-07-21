@@ -783,6 +783,7 @@ export interface IssueOverviewPermissions {
 	canCloseIssue: boolean;
 	canReopenIssue: boolean;
 	canCreateComment: boolean;
+	canDeleteComment: boolean;
 }
 
 export interface CreateIssuePermissions {
@@ -813,6 +814,16 @@ export interface DeletePullRequestCommentInput {
 }
 
 export interface PullRequestCommentDeleteOperation {
+	commentId: string;
+	status: 'confirming' | 'pending' | 'failed';
+	error?: string;
+}
+
+export interface DeleteIssueCommentInput {
+	commentId: string;
+}
+
+export interface IssueCommentDeleteOperation {
 	commentId: string;
 	status: 'confirming' | 'pending' | 'failed';
 	error?: string;

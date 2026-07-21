@@ -15,6 +15,7 @@ export type PermissionOperation =
 	| 'issue.editContent'
 	| 'issue.changeState'
 	| 'issue.comment.create'
+	| 'issue.comment.delete'
 	| 'pr.create'
 	| 'pr.editContent'
 	| 'pr.changeState'
@@ -71,6 +72,8 @@ export function operationToScopeAction(operation: PermissionOperation): { scope:
 			return { scope: 'issue', action: 'reopen' };
 		case 'issue.comment.create':
 			return { scope: 'note', action: 'create' };
+		case 'issue.comment.delete':
+			return { scope: 'note', action: 'delete' };
 		case 'pr.create':
 			return { scope: 'pr', action: 'create' };
 		case 'pr.editContent':
