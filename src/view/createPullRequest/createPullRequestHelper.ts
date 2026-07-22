@@ -141,6 +141,17 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 	}
 
 	handleCreateSuccess(repository: GitCodeRepository, prNumber: number): void {
+		const selected = this.copilotIssueContextStore.getSelected();
+		if (selected && selected.repository.fullName === repository.fullName) {
+			// Update the selection context to note the created PR
+			this.copilotIssueContextStore.select({
+				repository,
+				issueNumber: selected.issueNumber,
+				title: selected.title,
+				url: selected.url,
+			});
+		}
+
 		// Refresh the tree
 		this.treeStore.refreshRepository(repository.fullName).catch(() => {
 			// Fallback to full refresh

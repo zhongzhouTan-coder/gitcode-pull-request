@@ -39,6 +39,7 @@ import { CopilotIssueContextBuilder } from './copilot/copilotIssueContextBuilder
 import { registerCreatePullRequestCommands } from './commands/registerCreatePullRequestCommands';
 import { registerCopilotPullRequestParticipant } from './copilot/registerCopilotPullRequestParticipant';
 import { registerCopilotIssueParticipant } from './copilot/registerCopilotIssueParticipant';
+import { registerCopilotAgentTools } from './copilot/registerCopilotAgentTools';
 import { CreatePullRequestHelper } from './createPullRequest/createPullRequestHelper';
 import { CreatePullRequestViewProvider } from './createPullRequest/createPullRequestViewProvider';
 import { CreateIssueHelper } from './createIssue/createIssueHelper';
@@ -313,6 +314,14 @@ export class ViewController implements vscode.Disposable {
 				this.copilotIssueContextStore,
 				new CopilotIssueContextBuilder(issueService, issueCommentService, options.repositoryContext),
 			),
+			registerCopilotAgentTools(
+			this.copilotIssueContextStore,
+			this.copilotContextStore,
+			new CopilotIssueContextBuilder(issueService, issueCommentService, options.repositoryContext),
+			new CopilotPullRequestContextBuilder(options.pullRequestService, commentService),
+			options.pullRequestService,
+			commentService,
+		),
 			options.authService.onDidChangeSession(() => {
 				this.commentsStore.clear();
 				operationLogsStore.clear();

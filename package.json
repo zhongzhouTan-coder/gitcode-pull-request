@@ -2,7 +2,7 @@
   "name": "gitcode-pull-request",
   "displayName": "GitCode Pull Requests",
   "description": "GitCode pull request integration for Visual Studio Code",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "zhongzhoutan-coder",
   "license": "SEE LICENSE IN LICENSE",
   "preview": true,
@@ -344,7 +344,106 @@
         "id": "gitcode-issue.context",
         "name": "gitcodeIssue",
         "fullName": "GitCode Issue",
-        "description": "Analyzes and plans work for the selected GitCode issue when manually invoked."
+        "description": "Analyzes the selected GitCode issue when manually invoked."
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "gitcode_get_selected_issue",
+        "displayName": "Get Selected GitCode Issue",
+        "toolReferenceName": "gitcodeSelectedIssue",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(issues)",
+        "modelDescription": "Returns the currently selected GitCode issue identity and repository metadata. Use this first to check whether issue context is available before requesting larger context payloads. This tool does not edit files, commit, push, or create pull requests.",
+        "userDescription": "Get the currently selected GitCode issue identity.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "gitcode_get_selected_pull_request",
+        "displayName": "Get Selected GitCode Pull Request",
+        "toolReferenceName": "gitcodeSelectedPullRequest",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(git-pull-request)",
+        "modelDescription": "Returns the currently selected GitCode pull request identity and repository metadata. Use this first to check whether PR context is available before requesting larger context payloads. This tool does not edit files, commit, push, or create pull requests.",
+        "userDescription": "Get the currently selected GitCode pull request identity.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "gitcode_get_issue_context",
+        "displayName": "Get GitCode Issue Context",
+        "toolReferenceName": "gitcodeIssueContext",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(issues)",
+        "modelDescription": "Returns the currently selected GitCode issue context from the extension, including issue detail, comments, related pull requests, and repository metadata. Use this instead of web search or public issue pages when implementing a selected GitCode issue. This tool does not edit files, commit, push, or create pull requests.",
+        "userDescription": "Get selected GitCode issue context.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "gitcode_get_pull_request_context",
+        "displayName": "Get GitCode Pull Request Context",
+        "toolReferenceName": "gitcodePullRequestContext",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(git-pull-request)",
+        "modelDescription": "Returns the currently selected GitCode pull request context from the extension, including pull request detail, changed files, comments, review discussions, related issues, merge state, repository metadata, and permissions. Use this instead of web search or public pull request pages when reviewing or fixing a selected GitCode pull request. This tool does not edit files, commit, push, or create pull requests.",
+        "userDescription": "Get selected GitCode pull request context.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "includePatches": {
+              "type": "boolean",
+              "description": "Include bounded patch snippets for changed files."
+            }
+          }
+        }
+      },
+      {
+        "name": "gitcode_get_pull_request_files",
+        "displayName": "Get GitCode Pull Request Files",
+        "toolReferenceName": "gitcodePullRequestFiles",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(files)",
+        "modelDescription": "Returns changed-file summaries and optional patch snippets for the selected GitCode pull request. Use this when the agent needs to inspect specific file changes. This tool does not open local files or edit workspace files.",
+        "userDescription": "Get changed files for the selected GitCode pull request.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "includePatches": {
+              "type": "boolean",
+              "description": "Include bounded patch snippets."
+            },
+            "pathFilter": {
+              "type": "string",
+              "description": "Optional substring filter for changed file paths."
+            }
+          }
+        }
+      },
+      {
+        "name": "gitcode_get_pull_request_comments",
+        "displayName": "Get GitCode Pull Request Comments",
+        "toolReferenceName": "gitcodePullRequestComments",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(comment-discussion)",
+        "modelDescription": "Returns timeline comments and diff review discussions for the selected GitCode pull request. Use this when the agent needs review discussion detail. This tool does not create, resolve, or delete comments.",
+        "userDescription": "Get comments for the selected GitCode pull request.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "unresolvedOnly": {
+              "type": "boolean",
+              "description": "Return only unresolved review discussions when supported."
+            }
+          }
+        }
       }
     ],
     "configuration": {
