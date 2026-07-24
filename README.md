@@ -18,12 +18,16 @@ leaving VS Code.
   content, and review patch content inside VS Code.
 - Create and edit pull requests, including draft state, close or reopen state,
   merge preferences, and related issue links.
+- Prefill pull request bodies from `.gitcode/PULL_REQUEST_TEMPLATE.md` or
+  `.gitcode/PULL_REQUEST_TEMPLATE/*.md` templates.
 - Manage pull request participants, including reviewers, testers, and
   approvers, with permission-aware UI gating.
-- Create issues and create branches directly from issues.
-- Add, reply to, resolve, and unresolve pull request diff comments.
-- Send the selected pull request or issue into the contributed Copilot chat
-  participants for review, explanation, and planning help.
+- Create issues, create issue branches, and settle selected issues with Copilot
+  Agent mode.
+- Add, edit, delete, reply to, resolve, and unresolve pull request comments.
+- Add, edit, and delete issue comments.
+- Send the selected pull request or issue into GitCode Copilot context for
+  review, explanation, planning, and agent-assisted implementation.
 
 ## Requirements
 
@@ -81,6 +85,8 @@ Overview pages support:
 - Issue comments, related pull requests, and operation logs.
 - Permission-aware action buttons so unsupported edits stay visible but clearly
   disabled.
+- Per-comment edit and delete actions gated by current-user ownership and
+  repository permissions.
 
 ## Commands
 
@@ -98,12 +104,44 @@ Common commands:
 - `GitCode: Open Issue On Web`
 - `GitCode: Copy Issue URL`
 - `GitCode: Create Branch for Issue`
+- `GitCode: Settle Issue with Agent`
 - `GitCode: Use Pull Request as Copilot Context`
 - `GitCode: Use Issue as Copilot Context`
 
 Contextual commands are also available from tree items and pull request comment
 threads, including file open actions, issue URL copy, diff comment submit, and
-resolve or unresolve actions.
+resolve, unresolve, edit, or delete actions.
+
+## Copilot Integration
+
+The extension contributes a `@gitcode` chat participant and GitCode language
+model tools for authenticated repository context. Agent mode can search issues
+and pull requests, read selected issue or pull request context, inspect changed
+pull request files and bounded patches, and read pull request comments.
+
+Use `GitCode: Use Pull Request as Copilot Context`, `GitCode: Use Issue as
+Copilot Context`, or `GitCode: Settle Issue with Agent` from the GitCode views
+to provide explicit context.
+
+## Pull Request Templates
+
+Create pull requests can use templates from:
+
+```text
+.gitcode/PULL_REQUEST_TEMPLATE.md
+.gitcode/PULL_REQUEST_TEMPLATE/*.md
+```
+
+Supported placeholders are:
+
+```text
+{{issue_number}}
+{{issue_title}}
+{{issue_url}}
+{{source_branch}}
+{{target_branch}}
+{{repository}}
+```
 
 ## Extension Settings
 

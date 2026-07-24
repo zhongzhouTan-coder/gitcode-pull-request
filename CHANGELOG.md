@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-07-24
+
+### Added
+
+- Added pull request comment deletion from the pull request overview and diff
+  comment thread context menu, including inline confirmation, permission
+  checks, and comment refresh after successful deletion.
+- Added issue comment deletion from the issue overview timeline with inline
+  confirmation, ownership checks, and refreshed timeline state after deletion.
+- Added issue comment editing from the issue overview timeline with inline edit
+  controls, validation, ownership checks, and refreshed timeline state after
+  saving.
+- Added GitCode Copilot language model tools for searching issues and pull
+  requests, loading issue or pull request context, listing pull request files,
+  retrieving bounded file patches, reading pull request comments, and resolving
+  the selected issue or pull request identity.
+- Added `GitCode: Settle Issue with Agent`, which can select or create an issue
+  branch, store the issue as Copilot context, and open Agent mode with an
+  implementation prompt for the selected issue.
+- Added pull request template discovery for `.gitcode/PULL_REQUEST_TEMPLATE.md`
+  and `.gitcode/PULL_REQUEST_TEMPLATE/*.md`, including supported placeholders
+  for issue, branch, and repository metadata.
+
+### Changed
+
+- Renamed the Copilot chat participant from separate pull request and issue
+  participants to a single `@gitcode` participant focused on selected GitCode
+  context.
+- Streamlined issue and pull request tree inline actions by removing duplicate
+  open/copy/create-branch icons and surfacing web, Copilot context, and issue
+  settlement actions more prominently.
+- Updated create pull request initialization so explicit issue, repository,
+  source branch, and template body context can prefill the create flow.
+- Limited issue and pull request comment edit and delete controls to comments
+  authored by the current user, with per-comment permissions instead of only
+  page-level comment permissions.
+
+### Fixed
+
+- Fixed pull request comment edit permissions so users can only edit their own
+  comments, with the write permission rechecked before saving.
+- Improved source-branch publish errors in the create pull request flow by
+  formatting git push failures with the target remote name.
+
 ## [0.0.4] - 2026-07-06
 
 ### Changed

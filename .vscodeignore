@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+.codex/**
+.agents/**
 out/**
 test/**
 node_modules/**
