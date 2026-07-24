@@ -217,7 +217,7 @@
       {
         "command": "gitcode.settleIssueWithAgent",
         "title": "GitCode: Settle Issue with Agent",
-        "icon": "$(sparkle)"
+        "icon": "$(wand)"
       }
     ],
     "menus": {
@@ -260,24 +260,14 @@
       ],
       "view/item/context": [
         {
-          "command": "gitcode.openPullRequest",
-          "when": "view == pr:gitcode && viewItem == pullRequest",
-          "group": "inline@1"
-        },
-        {
           "command": "gitcode.openPullRequestOnWeb",
           "when": "view == pr:gitcode && viewItem == pullRequest",
-          "group": "inline@2"
-        },
-        {
-          "command": "gitcode.openPullRequestFile",
-          "when": "view == pr:gitcode && viewItem =~ /^pullRequestFile:/",
           "group": "inline@1"
         },
         {
           "command": "gitcode.openPullRequestFileOnWeb",
           "when": "view == pr:gitcode && viewItem =~ /^pullRequestFile:/",
-          "group": "inline@2"
+          "group": "inline@1"
         },
         {
           "command": "gitcode.refreshPullRequestFiles",
@@ -285,39 +275,24 @@
           "group": "inline@1"
         },
         {
-          "command": "gitcode.openIssue",
+          "command": "gitcode.openIssueOnWeb",
           "when": "view == issues:gitcode && viewItem == issue",
           "group": "inline@1"
         },
         {
-          "command": "gitcode.openIssueOnWeb",
+          "command": "gitcode.useIssueAsCopilotContext",
           "when": "view == issues:gitcode && viewItem == issue",
           "group": "inline@2"
         },
         {
-          "command": "gitcode.copyIssueUrl",
-          "when": "view == issues:gitcode && viewItem == issue",
-          "group": "inline@3"
-        },
-        {
-          "command": "gitcode.useIssueAsCopilotContext",
-          "when": "view == issues:gitcode && viewItem == issue",
-          "group": "inline@4"
-        },
-        {
-          "command": "gitcode.createBranchForIssue",
-          "when": "view == issues:gitcode && viewItem == issue",
-          "group": "inline@5"
-        },
-        {
           "command": "gitcode.settleIssueWithAgent",
           "when": "view == issues:gitcode && viewItem == issue",
-          "group": "inline@6"
+          "group": "inline@3"
         },
         {
           "command": "gitcode.usePullRequestAsCopilotContext",
           "when": "view == pr:gitcode && viewItem == pullRequest",
-          "group": "inline@3"
+          "group": "inline@2"
         }
       ],
       "comments/commentThread/context": [
