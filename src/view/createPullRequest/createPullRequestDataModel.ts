@@ -142,19 +142,32 @@ export class CreatePullRequestDataModel {
 		repository: GitCodeRepository,
 		sourceBranch: string,
 		issueContext?: CreatePullRequestInitialIssueContext,
+		initialBody?: string,
 	): Promise<CreatePullRequestDefaults>;
 	async initialize(
 		repositories: GitCodeRepository[],
 		targetRepository: GitCodeRepository,
 		sourceBranch: string,
 		issueContext?: CreatePullRequestInitialIssueContext,
+		initialBody?: string,
 	): Promise<CreatePullRequestDefaults>;
 	async initialize(
 		repositoriesOrRepository: GitCodeRepository[] | GitCodeRepository,
 		targetRepositoryOrSourceBranch: GitCodeRepository | string,
 		sourceBranchOrIssueContext?: string | CreatePullRequestInitialIssueContext,
-		issueContextArg?: CreatePullRequestInitialIssueContext,
+		issueContextArg?: CreatePullRequestInitialIssueContext | string,
+		initialBodyArg?: string,
 	): Promise<CreatePullRequestDefaults> {
+		// Disambiguate between the two public overloads:
+		//   Overload 1: initialize(repo, sourceBranch, issueContext?, initialBody?)
+		//   Overload 2: initialize(repos, targetRepo, sourceBranch, issueContext?, initialBody?)
+		// When repositoriesOrRepository is NOT an array (overload 1):
+		//   - targetRepositoryOrSourceBranch is the sourceBranch string
+		//   - sourceBranchOrIssueContext may be the issueContext object
+		//   - issueContextArg may be the initialBody string
+		// When repositoriesOrRepository IS an array (overload 2):
+		//   - issueContextArg is the issueContext object (4th param)
+		//   - initialBodyArg is the initialBody string (5th param)
 		const repositories = Array.isArray(repositoriesOrRepository)
 			? repositoriesOrRepository
 			: [repositoriesOrRepository];
@@ -164,9 +177,12 @@ export class CreatePullRequestDataModel {
 		const sourceBranch = Array.isArray(repositoriesOrRepository)
 			? (typeof sourceBranchOrIssueContext === 'string' ? sourceBranchOrIssueContext : '')
 			: targetRepositoryOrSourceBranch as string;
-		const issueContext = Array.isArray(repositoriesOrRepository)
-			? issueContextArg
+		const issueContext: CreatePullRequestInitialIssueContext | undefined = Array.isArray(repositoriesOrRepository)
+			? (typeof issueContextArg === 'object' ? issueContextArg : undefined)
 			: (typeof sourceBranchOrIssueContext === 'object' ? sourceBranchOrIssueContext : undefined);
+		const initialBody = Array.isArray(repositoriesOrRepository)
+			? initialBodyArg
+			: (typeof issueContextArg === 'string' ? issueContextArg : undefined);
 		const sourceRepository = this.defaultSourceRepository(repositories, targetRepository);
 
 		this._repositories = repositories.length ? repositories : [targetRepository];
@@ -195,7 +211,7 @@ export class CreatePullRequestDataModel {
 		this._targetBranch = defaultTargetBranch;
 
 		this._title = this.buildTitle(sourceBranch, issueContext);
-		this._body = this.buildBody(issueContext);
+		this._body = initialBody ?? this.buildBody(issueContext);
 
 		// Check for duplicate PRs
 		try {

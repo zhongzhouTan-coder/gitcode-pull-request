@@ -36,12 +36,15 @@ import { CopilotPullRequestContextStore } from './copilot/copilotPullRequestCont
 import { CopilotPullRequestContextBuilder } from './copilot/copilotPullRequestContextBuilder';
 import { CopilotIssueContextStore } from './copilot/copilotIssueContextStore';
 import { CopilotIssueContextBuilder } from './copilot/copilotIssueContextBuilder';
+import { SettlementNextActionResolver } from './copilot/settlementNextActionResolver';
 import { registerCreatePullRequestCommands } from './commands/registerCreatePullRequestCommands';
+import { registerSettleIssueCommands } from './commands/registerSettleIssueCommands';
 import { registerCopilotPullRequestParticipant } from './copilot/registerCopilotPullRequestParticipant';
 import { registerCopilotIssueParticipant } from './copilot/registerCopilotIssueParticipant';
 import { registerCopilotAgentTools } from './copilot/registerCopilotAgentTools';
 import { CreatePullRequestHelper } from './createPullRequest/createPullRequestHelper';
 import { CreatePullRequestViewProvider } from './createPullRequest/createPullRequestViewProvider';
+import { PullRequestTemplateService } from './createPullRequest/prTemplateService';
 import { CreateIssueHelper } from './createIssue/createIssueHelper';
 import { NodeFactory } from './tree/nodeFactory';
 import { PullRequestTreeDataProvider } from './tree/pullRequestTreeDataProvider';
@@ -172,6 +175,10 @@ export class ViewController implements vscode.Disposable {
 		this.permissionStore = new PermissionStore(permissionService, options.logger);
 		PullRequestOverviewPanel.setPermissionStore(this.permissionStore);
 		IssueOverviewPanel.setPermissionStore(this.permissionStore);
+		IssueOverviewPanel.setSettleDependencies(
+			this.copilotIssueContextStore,
+			new SettlementNextActionResolver(),
+		);
 
 		// Operation logs store
 		const operationLogsStore = new PullRequestOperationLogsStore(
@@ -209,6 +216,7 @@ export class ViewController implements vscode.Disposable {
 			this.copilotIssueContextStore,
 			this.permissionStore,
 			options.logger,
+			new PullRequestTemplateService(),
 		);
 
 		// Issue components
@@ -306,6 +314,11 @@ export class ViewController implements vscode.Disposable {
 				logger: options.logger,
 			}),
 			registerCreatePullRequestCommands(this.createPullRequestHelper),
+			registerSettleIssueCommands({
+				copilotIssueContextStore: this.copilotIssueContextStore,
+				repositoryContext: options.repositoryContext,
+				logger: options.logger,
+			}),
 			registerCopilotPullRequestParticipant(
 				this.copilotContextStore,
 				new CopilotPullRequestContextBuilder(options.pullRequestService, commentService),
@@ -320,7 +333,9 @@ export class ViewController implements vscode.Disposable {
 			new CopilotIssueContextBuilder(issueService, issueCommentService, options.repositoryContext),
 			new CopilotPullRequestContextBuilder(options.pullRequestService, commentService),
 			options.pullRequestService,
+			issueService,
 			commentService,
+			options.repositoryResolver,
 		),
 			options.authService.onDidChangeSession(() => {
 				this.commentsStore.clear();

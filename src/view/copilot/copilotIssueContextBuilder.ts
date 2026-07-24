@@ -26,6 +26,7 @@ export class CopilotIssueContextBuilder {
 		selected: SelectedCopilotIssue,
 		token: vscode.CancellationToken,
 		budget: CopilotPromptBudget = DEFAULT_COPILOT_PROMPT_BUDGET,
+		commentLimit: number = MAX_COMMENTS,
 	): Promise<string> {
 		const { repository, issueNumber } = selected;
 		const writer = new BudgetedContextWriter(budget.maxContextChars);
@@ -92,7 +93,7 @@ export class CopilotIssueContextBuilder {
 			writer.appendLine();
 		}
 
-		appendIssueComments(writer, commentsResult, budget);
+		appendIssueComments(writer, commentsResult, budget, commentLimit);
 		appendRelatedPullRequests(writer, relatedPrsResult);
 		appendWorkspace(writer, workspaceResult);
 
@@ -104,6 +105,7 @@ function appendIssueComments(
 	writer: BudgetedContextWriter,
 	result: Result<IssueComment[]>,
 	budget: CopilotPromptBudget,
+	limit: number = MAX_COMMENTS,
 ): void {
 	if (!result.ok) {
 		writer.appendLine('### Comments');
@@ -114,7 +116,7 @@ function appendIssueComments(
 
 	const comments = [...result.value]
 		.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-	const selected = comments.slice(0, MAX_COMMENTS);
+	const selected = comments.slice(0, limit);
 
 	if (selected.length === 0) {
 		return;

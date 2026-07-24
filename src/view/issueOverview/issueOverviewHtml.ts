@@ -11,6 +11,7 @@ import {
 	IssueRelatedPullRequestsSnapshot,
 	IssueUser,
 } from '../../common/models';
+import { SettlementAction } from '../copilot/settlementNextActionResolver';
 import { renderMarkdown } from '../webview/markdown';
 
 function escapeHtml(value: string): string {
@@ -335,6 +336,7 @@ export interface IssueOverviewHtmlOptions {
 	currentUserLogin?: string;
 	nonce: string;
 	includeScripts?: boolean;
+	settleAction?: SettlementAction;
 }
 
 function renderCommentAvatar(author: IssueComment['author']): string {
@@ -648,6 +650,9 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		: '<div class="empty">No description provided.</div>';
 
 	const openOnWebDisabled = detail.url ? '' : 'disabled';
+	const settleJson = options.settleAction
+		? serializeForInlineScript(options.settleAction)
+		: 'null';
 	const editOptionsJson = editOptions
 		? serializeForInlineScript({
 			assignees: editOptions.assignees.map((user) => ({ login: user.login, name: user.name })),
@@ -1489,6 +1494,9 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			${detail.updatedAt && detail.updatedAt !== detail.createdAt ? `<span>· Updated ${escapeHtml(formatDate(detail.updatedAt))}</span>` : ''}
 		</div>
 			<div class="actions">
+				<div id="settle-bar" style="display:none">
+					<button id="settle-primary-button" class="btn-primary" data-settle-command="">Settle with Agent</button>
+				</div>
 				<button id="refresh-button" class="secondary" title="Refresh" aria-label="Refresh issue">Refresh</button>
 				<button id="create-branch-button" class="secondary">${BRANCH_ICON} Create Branch</button>
 				<button id="open-web-button" class="secondary" ${openOnWebDisabled}>${EXTERNAL_LINK_ICON} Open on GitCode</button>
@@ -1878,6 +1886,23 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		document.getElementById('create-branch-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'createBranch' });
 		});
+		// Settle action bar
+		const settleData = ${settleJson};
+		const settleBar = document.getElementById('settle-bar');
+		const settlePrimaryBtn = document.getElementById('settle-primary-button');
+		if (settleData && settleBar && settlePrimaryBtn) {
+			settleBar.style.display = 'flex';
+			settleBar.style.gap = '12px';
+			settleBar.style.flexWrap = 'wrap';
+			settlePrimaryBtn.textContent = settleData.label;
+			settlePrimaryBtn.setAttribute('data-settle-command', settleData.commandId);
+			settlePrimaryBtn.addEventListener('click', () => {
+				const cmd = settlePrimaryBtn.getAttribute('data-settle-command');
+				if (cmd) {
+					vscode.postMessage({ command: 'settleAction', action: cmd });
+				}
+			});
+		}
 		document.getElementById('open-web-button')?.addEventListener('click', () => {
 			vscode.postMessage({ command: 'openOnWeb' });
 		});

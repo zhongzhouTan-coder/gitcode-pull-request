@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Logger } from '../../common/logger';
-import { GitCodeRepository, CreatePullRequestInitialIssueContext, CreatePullRequestPermissions } from '../../common/models';
+import { GitCodeRepository, CreatePullRequestInitialIssueContext, CreatePullRequestInitialContext, CreatePullRequestPermissions } from '../../common/models';
 import { RepositoryContextService } from '../../common/git/repositoryContext';
 import { GitCodeRepositoryResolver } from '../../gitcode/resolver/gitcodeRepositoryResolver';
 import { PullRequestService } from '../../gitcode/services/pullRequestService';
@@ -13,6 +13,7 @@ import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
 import { createBranchDeniedMessage, createPullRequestDeniedMessage, updatePullRequestDeniedMessage } from '../permissions/permissionMessages';
 import { CreatePullRequestViewProvider } from './createPullRequestViewProvider';
+import { PullRequestTemplateService } from './prTemplateService';
 
 export class CreatePullRequestHelper implements vscode.Disposable {
 	constructor(
@@ -26,9 +27,16 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 		private readonly copilotIssueContextStore: CopilotIssueContextStore,
 		private readonly permissionStore: PermissionStore,
 		private readonly logger: Logger,
+		private readonly templateService: PullRequestTemplateService = new PullRequestTemplateService(),
 	) {}
 
-	async create(): Promise<void> {
+	async create(initialContext?: CreatePullRequestInitialContext): Promise<void> {
+		// If explicit context is provided, use it
+		if (initialContext?.repository && initialContext.sourceBranch) {
+			await this.createWithContext(initialContext);
+			return;
+		}
+
 		// Resolve the repository
 		let repositories: GitCodeRepository[];
 		try {
@@ -90,7 +98,7 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 		}
 
 		// Build issue context if a matching issue is selected
-		const issueContext = this.buildIssueContext(repository);
+		const issueContext = initialContext?.issue ?? this.buildIssueContext(repository);
 
 		const sourceRepository = repositories.find((r) => r.remoteName === 'origin') ?? repository;
 
@@ -124,7 +132,7 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 		}
 
 		// Initialize the sidebar provider with the resolved data
-		await this.provider.initialize(repositories, repository, sourceBranch, gitRepo, issueContext, permissions);
+		await this.provider.initialize(repositories, repository, sourceBranch, gitRepo, issueContext, undefined, permissions);
 	}
 
 	private buildIssueContext(repository: GitCodeRepository): CreatePullRequestInitialIssueContext | undefined {
@@ -138,6 +146,97 @@ export class CreatePullRequestHelper implements vscode.Disposable {
 			issueTitle: selected.title,
 			issueUrl: selected.url,
 		};
+	}
+
+	private async createWithContext(initialContext: CreatePullRequestInitialContext): Promise<void> {
+		const { repository, sourceBranch, issue } = initialContext;
+		// Prefer explicitly provided localGitRepository, otherwise try to resolve
+		// from VS Code's active git repository to enable template body building
+		const localGitRepository = initialContext.localGitRepository
+			?? await this.resolveActiveGitRepository();
+		if (!repository || !sourceBranch) {
+			vscode.window.showErrorMessage('Cannot create pull request: missing repository or branch context.');
+			return;
+		}
+
+		// Resolve all repositories for permission checks
+		let repositories: GitCodeRepository[];
+		try {
+			repositories = await this.repositoryResolver.resolveAll();
+		} catch {
+			repositories = [repository];
+		}
+
+		await this.permissionStore.refreshAll(repositories);
+
+		const sourceRepository = repositories.find((r) => r.remoteName === 'origin') ?? repository;
+
+		let permissions: CreatePullRequestPermissions = {
+			canCreatePullRequest: true,
+			canEditPullRequest: true,
+			canCreateBranch: false,
+		};
+		try {
+			const [canCreatePullRequest, canEditPullRequest, canCreateBranch] = await Promise.all([
+				checkPermission(this.permissionStore, sourceRepository, {
+					scope: 'pr',
+					action: 'create',
+					message: createPullRequestDeniedMessage,
+				}),
+				checkPermission(this.permissionStore, repository, {
+					scope: 'pr',
+					action: 'update',
+					message: updatePullRequestDeniedMessage,
+				}),
+				checkPermission(this.permissionStore, sourceRepository, {
+					scope: 'branch',
+					action: 'create',
+					message: createBranchDeniedMessage,
+				}),
+			]);
+			permissions = { canCreatePullRequest, canEditPullRequest, canCreateBranch };
+		} catch {
+			// If we can't check, default to enabled
+		}
+
+		const issueContext: CreatePullRequestInitialIssueContext | undefined = issue ?? this.buildIssueContext(repository);
+		const initialBody = initialContext.body
+			?? await this.buildTemplateBody(localGitRepository, issueContext, sourceBranch, undefined, repository);
+
+		await this.provider.initialize(repositories, repository, sourceBranch, localGitRepository, issueContext, initialBody, permissions);
+	}
+
+	private async resolveActiveGitRepository(): Promise<import('../../common/git/gitTypes').GitRepository | undefined> {
+		try {
+			return await this.repositoryContext.getActiveRepository();
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async buildTemplateBody(
+		localGitRepository: import('../../common/git/gitTypes').GitRepository | undefined,
+		issueContext: CreatePullRequestInitialIssueContext | undefined,
+		sourceBranch: string,
+		targetBranch: string | undefined,
+		repository: GitCodeRepository,
+	): Promise<string | undefined> {
+		if (!localGitRepository) {
+			return undefined;
+		}
+
+		const workspaceFolder = vscode.workspace.getWorkspaceFolder(localGitRepository.rootUri);
+		if (!workspaceFolder) {
+			return undefined;
+		}
+
+		return this.templateService.buildPrBodyFromTemplate(
+			workspaceFolder,
+			issueContext,
+			sourceBranch,
+			targetBranch,
+			repository.fullName,
+		);
 	}
 
 	handleCreateSuccess(repository: GitCodeRepository, prNumber: number): void {

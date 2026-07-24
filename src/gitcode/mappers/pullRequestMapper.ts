@@ -15,6 +15,7 @@ export function mapPullRequest(dto: any): PullRequestSummary {
 		id: Number(dto.id ?? dto.number ?? dto.iid ?? 0),
 		number: Number(dto.number ?? dto.iid ?? dto.id ?? 0),
 		title: String(dto.title ?? 'Untitled pull request'),
+		state: resolvePullRequestState(dto),
 		author: pickUserName(dto.user ?? dto.author),
 		updatedAt: String(dto.updated_at ?? dto.updatedAt ?? ''),
 		sourceBranch: dto.head?.ref ?? dto.head_branch ?? dto.source_branch,
@@ -22,6 +23,17 @@ export function mapPullRequest(dto: any): PullRequestSummary {
 		url: dto.html_url ?? dto.web_url ?? dto.url,
 		isDraft: Boolean(dto.draft),
 	};
+}
+
+function resolvePullRequestState(dto: any): 'open' | 'closed' | 'merged' {
+	const state = String(dto?.state ?? '').toLowerCase();
+	if (state === 'merged' || dto?.merged_at) {
+		return 'merged';
+	}
+	if (state === 'closed') {
+		return 'closed';
+	}
+	return 'open';
 }
 
 export function mapCreatePullRequestInput(input: CreatePullRequestInput): Record<string, unknown> {

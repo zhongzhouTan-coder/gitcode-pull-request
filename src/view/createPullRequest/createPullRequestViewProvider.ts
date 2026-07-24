@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from '../../authentication/authService';
 import { getApiRequestErrorMessage } from '../../common/errors';
+import { formatGitPushErrorMessage } from '../../common/git/gitErrorMessages';
 import { CreatePullRequestInput, CreatePullRequestInitialIssueContext, CreatePullRequestPermissions, GitCodeRepository } from '../../common/models';
 import { Logger } from '../../common/logger';
 import { GitRepository } from '../../common/git/gitTypes';
@@ -44,6 +45,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		sourceBranch: string;
 		localGitRepository?: GitRepository;
 		issueContext?: CreatePullRequestInitialIssueContext;
+		initialBody?: string;
 		permissions?: CreatePullRequestPermissions;
 	};
 
@@ -87,11 +89,12 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 		sourceBranch: string,
 		localGitRepository?: GitRepository,
 		issueContext?: CreatePullRequestInitialIssueContext,
+		initialBody?: string,
 		permissions?: CreatePullRequestPermissions,
 	): Promise<void> {
 		// If the view isn't ready yet, store the request
 		if (!this.view) {
-			this.pendingInitialize = { repositories, repository, sourceBranch, localGitRepository, issueContext, permissions };
+			this.pendingInitialize = { repositories, repository, sourceBranch, localGitRepository, issueContext, initialBody, permissions };
 			await this.revealView();
 			return;
 		}
@@ -118,7 +121,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			currentUserLogin,
 		);
 
-		const defaults = await this.dataModel.initialize(repositories, repository, sourceBranch, issueContext);
+		const defaults = await this.dataModel.initialize(repositories, repository, sourceBranch, issueContext, initialBody);
 		this.permissions = await this.buildPermissions(defaults.sourceRepository, defaults.targetRepository);
 		this.postMessage({ command: 'initialize', defaults, permissions: this.permissions });
 	}
@@ -131,7 +134,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 				if (this.pendingInitialize) {
 					const pending = this.pendingInitialize;
 					this.pendingInitialize = undefined;
-					this.initialize(pending.repositories, pending.repository, pending.sourceBranch, pending.localGitRepository, pending.issueContext, pending.permissions);
+					this.initialize(pending.repositories, pending.repository, pending.sourceBranch, pending.localGitRepository, pending.issueContext, pending.initialBody, pending.permissions);
 				} else {
 					const defaults = this.getCurrentDefaults();
 					if (defaults) {
@@ -479,7 +482,7 @@ export class CreatePullRequestViewProvider implements vscode.WebviewViewProvider
 			return true;
 		} catch (error) {
 			vscode.window.showErrorMessage(
-				`Failed to publish source branch: ${getApiRequestErrorMessage(error)}`,
+				formatGitPushErrorMessage(error, this.publishRemoteName),
 			);
 			return false;
 		}

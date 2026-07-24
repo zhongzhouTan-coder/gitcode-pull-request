@@ -10,6 +10,7 @@ export interface PullRequestSummary {
 	id: number;
 	number: number;
 	title: string;
+	state: 'open' | 'closed' | 'merged';
 	author: string;
 	updatedAt: string;
 	sourceBranch?: string;
@@ -571,6 +572,14 @@ export interface CreatePullRequestInitialIssueContext {
 	issueNumber: number;
 	issueTitle: string;
 	issueUrl?: string;
+}
+
+export interface CreatePullRequestInitialContext {
+	repository?: GitCodeRepository;
+	sourceBranch?: string;
+	localGitRepository?: import('./git/gitTypes').GitRepository;
+	issue?: CreatePullRequestInitialIssueContext;
+	body?: string;
 }
 
 // ---- Create Issue Types ----

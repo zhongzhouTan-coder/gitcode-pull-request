@@ -213,6 +213,11 @@
       {
         "command": "gitcode.pullRequest.removeRelatedIssue",
         "title": "GitCode: Unlink Related Issue from Pull Request"
+      },
+      {
+        "command": "gitcode.settleIssueWithAgent",
+        "title": "GitCode: Settle Issue with Agent",
+        "icon": "$(sparkle)"
       }
     ],
     "menus": {
@@ -305,6 +310,11 @@
           "group": "inline@5"
         },
         {
+          "command": "gitcode.settleIssueWithAgent",
+          "when": "view == issues:gitcode && viewItem == issue",
+          "group": "inline@6"
+        },
+        {
           "command": "gitcode.usePullRequestAsCopilotContext",
           "when": "view == pr:gitcode && viewItem == pullRequest",
           "group": "inline@3"
@@ -349,13 +359,265 @@
     ],
     "languageModelTools": [
       {
+        "name": "gitcode_search_issues",
+        "displayName": "Search GitCode Issues",
+        "toolReferenceName": "gitcodeSearchIssues",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "modelDescription": "This tool searches issues in a GitCode repository by keywords, title, author, state, or label. Use it when the user refers to an issue by keywords and the issue number is unknown. Do not use it when the issue number is already known; use gitcode_get_issue_context instead. The tool returns compact identity rows (number, title, state, author, labels, updated time, URL) and never returns full issue bodies or comments. It is read-only and does not edit issues, branches, or files.",
+        "userDescription": "Search GitCode issues by keywords and filters.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "The repository parameter specifies the GitCode repository in owner/repo form. If omitted, the current workspace repository is used only when it can be resolved unambiguously."
+            },
+            "query": {
+              "type": "string",
+              "description": "The query parameter specifies keywords to search in issue titles and bodies. It should be a concise search phrase, not a full implementation prompt."
+            },
+            "state": {
+              "type": "string",
+              "enum": ["open", "closed", "all"],
+              "description": "The state parameter narrows results by issue state. Use open by default for implementation work."
+            },
+            "page": {
+              "type": "number",
+              "description": "The page parameter specifies the 1-based result page to return. It defaults to 1."
+            },
+            "page_size": {
+              "type": "number",
+              "description": "The page_size parameter controls how many issues are returned. It defaults to 20 and must not exceed 50."
+            }
+          }
+        }
+      },
+      {
+        "name": "gitcode_search_pull_requests",
+        "displayName": "Search GitCode Pull Requests",
+        "toolReferenceName": "gitcodeSearchPullRequests",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "modelDescription": "This tool searches pull requests in a GitCode repository by keywords, branch, author, or state. Use it when the user refers to a PR by keywords and the PR number is unknown. Do not use it when the PR number is already known; use gitcode_get_pull_request_context instead. The tool returns compact identity rows (number, title, state, source branch, target branch, author, updated time, URL) and never returns full PR bodies, comments, file lists, or patches. It is read-only and does not edit comments, branches, or pull requests.",
+        "userDescription": "Search GitCode pull requests by keywords and filters.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "The repository parameter specifies the GitCode repository in owner/repo form. If omitted, the current workspace repository is used only when it can be resolved unambiguously."
+            },
+            "query": {
+              "type": "string",
+              "description": "The query parameter specifies keywords to search in pull request titles, bodies, or branch names. It should be concise."
+            },
+            "state": {
+              "type": "string",
+              "enum": ["open", "closed", "merged", "all"],
+              "description": "The state parameter narrows results by pull request state. Use open by default for review and fix work."
+            },
+            "page": {
+              "type": "number",
+              "description": "The page parameter specifies the 1-based result page to return. It defaults to 1."
+            },
+            "page_size": {
+              "type": "number",
+              "description": "The page_size parameter controls how many pull requests are returned. It defaults to 20 and must not exceed 50."
+            }
+          }
+        }
+      },
+      {
+        "name": "gitcode_get_issue_context",
+        "displayName": "Get GitCode Issue Context",
+        "toolReferenceName": "gitcodeIssueContext",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(issues)",
+        "modelDescription": "This tool retrieves curated authenticated context for one GitCode issue, including issue detail, bounded comments, related pull requests, and repository metadata. Use it when an agent needs enough issue information to implement, explain, or triage the issue. Prefer passing explicit repository and issue_number inputs from the Agent prompt or user request. Do not use it for pull request review details, changed file patches, workspace edits, commits, pushes, or pull request creation. The output is prompt-budgeted and throws a clear error if the issue cannot be resolved.",
+        "userDescription": "Get authenticated context for a GitCode issue.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "The repository parameter specifies the GitCode repository in owner/repo form. If omitted, the current workspace or selected issue repository is used only when it can be resolved unambiguously."
+            },
+            "issue_number": {
+              "type": "number",
+              "description": "The issue_number parameter specifies the GitCode issue number to retrieve. Prefer passing it explicitly from the Agent prompt or user request."
+            },
+            "comment_limit": {
+              "type": "number",
+              "description": "The comment_limit parameter controls how many issue comments are included. It defaults to 20 and must not exceed 50."
+            }
+          }
+        }
+      },
+      {
+        "name": "gitcode_get_pull_request_context",
+        "displayName": "Get GitCode Pull Request Context",
+        "toolReferenceName": "gitcodePullRequestContext",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(git-pull-request)",
+        "modelDescription": "This tool retrieves curated authenticated context for one GitCode pull request. Use it when an agent needs a review-ready or fix-ready PR overview. This should be the default PR tool for agent tasks. Prefer passing explicit repository and pull_request_number inputs. Do not use it to fetch all patches for a large PR; use gitcode_list_pull_request_files and gitcode_get_pull_request_file_patch for drill-down. The output includes PR detail, file summary, review summary, related issues, merge state, and repository metadata. It is read-only and does not edit comments, resolve discussions, push branches, or create PRs.",
+        "userDescription": "Get authenticated context for a GitCode pull request.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "The repository parameter specifies the GitCode repository in owner/repo form. If omitted, the current workspace or selected pull request repository is used only when it can be resolved unambiguously."
+            },
+            "pull_request_number": {
+              "type": "number",
+              "description": "The pull_request_number parameter specifies the GitCode pull request number to retrieve. Prefer passing it explicitly from the Agent prompt or user request."
+            },
+            "include_patch_summary": {
+              "type": "boolean",
+              "description": "The include_patch_summary parameter controls whether a compact patch summary is included for the most relevant changed files. It does not return full patches."
+            },
+            "comment_limit": {
+              "type": "number",
+              "description": "The comment_limit parameter controls how many review or timeline comments are included. It defaults to 20 and must not exceed 50."
+            },
+            "file_limit": {
+              "type": "number",
+              "description": "The file_limit parameter controls how many changed-file summaries are included. It defaults to 50 and must not exceed 100."
+            }
+          }
+        }
+      },
+      {
+        "name": "gitcode_get_pull_request_files",
+        "displayName": "Get GitCode Pull Request Files",
+        "toolReferenceName": "gitcodeGetPullRequestFiles",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(files)",
+        "modelDescription": "Legacy alias for gitcode_list_pull_request_files. This tool returns the changed files for the selected GitCode pull request without patches. Prefer gitcode_list_pull_request_files for new prompts.",
+        "userDescription": "List changed files for the selected GitCode pull request.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "gitcode_list_pull_request_files",
+        "displayName": "List GitCode Pull Request Files",
+        "toolReferenceName": "gitcodeListPullRequestFiles",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(files)",
+        "modelDescription": "This tool returns a paged changed-file list for one GitCode pull request without patches. Use it when the PR context says files were omitted, when the agent needs to inspect a directory or file type, or when a large PR needs incremental review. Do not use it for patch content; use gitcode_get_pull_request_file_patch. The tool returns status counts, file entries with path, status, additions, deletions, and truncation notes. It sorts important files first. It is read-only and does not edit files or pull requests.",
+        "userDescription": "List changed files for a GitCode pull request without patches.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "The repository parameter specifies the GitCode repository in owner/repo form. If omitted, the current workspace or selected pull request repository is used only when it can be resolved unambiguously."
+            },
+            "pull_request_number": {
+              "type": "number",
+              "description": "The pull_request_number parameter specifies the GitCode pull request number whose changed files should be listed."
+            },
+            "path_filter": {
+              "type": "string",
+              "description": "The path_filter parameter narrows results to changed file paths containing this case-insensitive substring. It is not a regular expression or glob pattern."
+            },
+            "status_filter": {
+              "type": "string",
+              "enum": ["added", "modified", "deleted", "renamed", "all"],
+              "description": "The status_filter parameter narrows results by changed-file status. Use all when no status narrowing is needed."
+            },
+            "page": {
+              "type": "number",
+              "description": "The page parameter specifies the 1-based result page to return. It defaults to 1."
+            },
+            "page_size": {
+              "type": "number",
+              "description": "The page_size parameter controls how many files are returned. It defaults to 50 and must not exceed 100."
+            }
+          }
+        }
+      },
+      {
+        "name": "gitcode_get_pull_request_file_patch",
+        "displayName": "Get GitCode Pull Request File Patch",
+        "toolReferenceName": "gitcodePullRequestFilePatch",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(diff)",
+        "modelDescription": "This tool returns bounded patch detail for one file or a small explicit file list in a GitCode pull request. Use it only after gitcode_get_pull_request_context or gitcode_list_pull_request_files identifies specific paths that need patch inspection. Do not use it with broad path filters or for an entire large PR. The tool requires exact changed file paths, rejects more than 10 paths, and limits patch output per file. It is read-only and does not edit files, comments, branches, or pull requests.",
+        "userDescription": "Get bounded patch detail for selected pull request files.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "The repository parameter specifies the GitCode repository in owner/repo form. If omitted, the current workspace or selected pull request repository is used only when it can be resolved unambiguously."
+            },
+            "pull_request_number": {
+              "type": "number",
+              "description": "The pull_request_number parameter specifies the GitCode pull request number whose patch should be retrieved."
+            },
+            "file_paths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "The file_paths parameter specifies one or more exact changed file paths to retrieve patches for. It must contain no more than 10 paths."
+            },
+            "max_patch_lines_per_file": {
+              "type": "number",
+              "description": "The max_patch_lines_per_file parameter limits patch output per file. It defaults to 120 and must not exceed 300."
+            }
+          },
+          "required": ["file_paths"]
+        }
+      },
+      {
+        "name": "gitcode_get_pull_request_comments",
+        "displayName": "Get GitCode Pull Request Comments",
+        "toolReferenceName": "gitcodePullRequestComments",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(comment-discussion)",
+        "modelDescription": "This tool returns bounded and filterable pull request timeline comments and review discussions. Use it when the primary PR context omitted comment detail or when the agent needs unresolved review feedback. Do not use it to create, edit, resolve, unresolve, or delete comments. The tool returns author, timestamp, resolved state, outdated state, file location, bounded body, bounded replies, and truncation notes. It sorts unresolved diff comments first then newest activity. It is read-only.",
+        "userDescription": "Get comments for a GitCode pull request.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "The repository parameter specifies the GitCode repository in owner/repo form. If omitted, the current workspace or selected pull request repository is used only when it can be resolved unambiguously."
+            },
+            "pull_request_number": {
+              "type": "number",
+              "description": "The pull_request_number parameter specifies the GitCode pull request number whose comments should be retrieved."
+            },
+            "unresolved_only": {
+              "type": "boolean",
+              "description": "The unresolved_only parameter controls whether only unresolved diff review discussions are returned."
+            },
+            "path_filter": {
+              "type": "string",
+              "description": "The path_filter parameter narrows diff review discussions to paths containing this case-insensitive substring. It does not affect general timeline comments unless unresolved_only is false."
+            },
+            "page": {
+              "type": "number",
+              "description": "The page parameter specifies the 1-based result page to return. It defaults to 1."
+            },
+            "page_size": {
+              "type": "number",
+              "description": "The page_size parameter controls how many comments are returned. It defaults to 30 and must not exceed 50."
+            }
+          }
+        }
+      },
+      {
         "name": "gitcode_get_selected_issue",
         "displayName": "Get Selected GitCode Issue",
         "toolReferenceName": "gitcodeSelectedIssue",
         "canBeReferencedInPrompt": true,
         "icon": "$(issues)",
-        "modelDescription": "Returns the currently selected GitCode issue identity and repository metadata. Use this first to check whether issue context is available before requesting larger context payloads. This tool does not edit files, commit, push, or create pull requests.",
-        "userDescription": "Get the currently selected GitCode issue identity.",
+        "modelDescription": "This fallback tool returns the currently selected GitCode issue identity and repository metadata from the extension context store. Use it only when explicit issue input is unavailable and selected context may help orient the agent. Do not use it as the primary issue workflow mechanism. It only returns the selected issue snapshot and throws a clear error if no GitCode issue is selected.",
+        "userDescription": "Get the currently selected GitCode issue identity from the extension.",
         "inputSchema": {
           "type": "object",
           "properties": {}
@@ -367,82 +629,11 @@
         "toolReferenceName": "gitcodeSelectedPullRequest",
         "canBeReferencedInPrompt": true,
         "icon": "$(git-pull-request)",
-        "modelDescription": "Returns the currently selected GitCode pull request identity and repository metadata. Use this first to check whether PR context is available before requesting larger context payloads. This tool does not edit files, commit, push, or create pull requests.",
-        "userDescription": "Get the currently selected GitCode pull request identity.",
+        "modelDescription": "This fallback tool returns the currently selected GitCode pull request identity and repository metadata from the extension context store. Use it only when explicit pull request input is unavailable and selected context may help orient the agent. Do not use it as the primary PR review or fix mechanism. It only returns the selected pull request snapshot and throws a clear error if no GitCode pull request is selected.",
+        "userDescription": "Get the currently selected GitCode pull request identity from the extension.",
         "inputSchema": {
           "type": "object",
           "properties": {}
-        }
-      },
-      {
-        "name": "gitcode_get_issue_context",
-        "displayName": "Get GitCode Issue Context",
-        "toolReferenceName": "gitcodeIssueContext",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(issues)",
-        "modelDescription": "Returns the currently selected GitCode issue context from the extension, including issue detail, comments, related pull requests, and repository metadata. Use this instead of web search or public issue pages when implementing a selected GitCode issue. This tool does not edit files, commit, push, or create pull requests.",
-        "userDescription": "Get selected GitCode issue context.",
-        "inputSchema": {
-          "type": "object",
-          "properties": {}
-        }
-      },
-      {
-        "name": "gitcode_get_pull_request_context",
-        "displayName": "Get GitCode Pull Request Context",
-        "toolReferenceName": "gitcodePullRequestContext",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(git-pull-request)",
-        "modelDescription": "Returns the currently selected GitCode pull request context from the extension, including pull request detail, changed files, comments, review discussions, related issues, merge state, repository metadata, and permissions. Use this instead of web search or public pull request pages when reviewing or fixing a selected GitCode pull request. This tool does not edit files, commit, push, or create pull requests.",
-        "userDescription": "Get selected GitCode pull request context.",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "includePatches": {
-              "type": "boolean",
-              "description": "Include bounded patch snippets for changed files."
-            }
-          }
-        }
-      },
-      {
-        "name": "gitcode_get_pull_request_files",
-        "displayName": "Get GitCode Pull Request Files",
-        "toolReferenceName": "gitcodePullRequestFiles",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(files)",
-        "modelDescription": "Returns changed-file summaries and optional patch snippets for the selected GitCode pull request. Use this when the agent needs to inspect specific file changes. This tool does not open local files or edit workspace files.",
-        "userDescription": "Get changed files for the selected GitCode pull request.",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "includePatches": {
-              "type": "boolean",
-              "description": "Include bounded patch snippets."
-            },
-            "pathFilter": {
-              "type": "string",
-              "description": "Optional substring filter for changed file paths."
-            }
-          }
-        }
-      },
-      {
-        "name": "gitcode_get_pull_request_comments",
-        "displayName": "Get GitCode Pull Request Comments",
-        "toolReferenceName": "gitcodePullRequestComments",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(comment-discussion)",
-        "modelDescription": "Returns timeline comments and diff review discussions for the selected GitCode pull request. Use this when the agent needs review discussion detail. This tool does not create, resolve, or delete comments.",
-        "userDescription": "Get comments for the selected GitCode pull request.",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "unresolvedOnly": {
-              "type": "boolean",
-              "description": "Return only unresolved review discussions when supported."
-            }
-          }
         }
       }
     ],

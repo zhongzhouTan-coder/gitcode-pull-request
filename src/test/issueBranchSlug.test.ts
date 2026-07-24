@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { formatGitPushErrorMessage } from '../common/git/gitErrorMessages';
 import { issueBranchSlug } from '../common/git/localGitService';
 
 suite('issueBranchSlug', () => {
@@ -27,5 +28,26 @@ suite('issueBranchSlug', () => {
 	test('handles special characters', () => {
 		const result = issueBranchSlug(5, 'Fix: "special" characters & symbols!');
 		assert.strictEqual(result, 'issue/5-fix-special-characters-symbols');
+	});
+});
+
+suite('settle issue command helpers', () => {
+	test('formats GitCode HTTPS username push failures with credential guidance', () => {
+		const message = formatGitPushErrorMessage(
+			new Error("fatal: could not read Username for 'https://gitcode.com': No such device or address"),
+			'origin',
+		);
+
+		assert.ok(message.includes('Failed to push for remote "origin"'));
+		assert.ok(message.includes('Git credentials are not configured for https://gitcode.com'));
+		assert.ok(message.includes('credential helper or personal access token'));
+		assert.ok(message.includes('SSH'));
+	});
+
+	test('preserves unexpected push errors', () => {
+		assert.strictEqual(
+			formatGitPushErrorMessage(new Error('remote rejected the update'), 'gitcode'),
+			'Failed to push for remote "gitcode": remote rejected the update',
+		);
 	});
 });

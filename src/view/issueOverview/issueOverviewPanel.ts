@@ -14,6 +14,8 @@ import { PullRequestOverviewStore } from '../overview/pullRequestOverviewStore';
 import { PullRequestCommentsStore } from '../state/pullRequestCommentsStore';
 import { IssueTreeStore } from '../state/issueTreeStore';
 import { PermissionStore } from '../state/permissionStore';
+import { CopilotIssueContextStore } from '../copilot/copilotIssueContextStore';
+import { SettlementNextActionResolver, SettlementAction } from '../copilot/settlementNextActionResolver';
 import { checkPermission } from '../permissions/permissionChecks';
 import { buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
 import { canEditOwnIssue, canDeleteOwnComment, canEditOwnComment } from '../permissions/ownershipRules';
@@ -46,6 +48,10 @@ function parseCsvValues(value: string | undefined): string[] {
 	}
 
 	return result;
+}
+
+function isSettlementCommand(commandId: string | undefined): commandId is string {
+	return commandId === COMMAND_ID.settleIssueWithAgent;
 }
 
 export function validateIssueSectionInput(
@@ -188,6 +194,8 @@ export class IssueOverviewPanel implements vscode.Disposable {
 	private static activePanel: IssueOverviewPanel | undefined;
 	private static treeStore: IssueTreeStore | undefined;
 	private static permissionStore: PermissionStore | undefined;
+	private static issueContextStore: CopilotIssueContextStore | undefined;
+	private static settleResolver: SettlementNextActionResolver | undefined;
 
 	static setEditDependencies(treeStore: IssueTreeStore): void {
 		this.treeStore = treeStore;
@@ -195,6 +203,14 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 	static setPermissionStore(store: PermissionStore): void {
 		this.permissionStore = store;
+	}
+
+	static setSettleDependencies(
+		issueStore: CopilotIssueContextStore,
+		resolver: SettlementNextActionResolver,
+	): void {
+		this.issueContextStore = issueStore;
+		this.settleResolver = resolver;
 	}
 
 	static async createOrShow(
@@ -299,6 +315,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			section?: EditIssueSection;
 			input?: EditIssueInput;
 			state?: string;
+			action?: string;
 			body?: string;
 			commentId?: string;
 		}) => {
@@ -329,6 +346,16 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 			if (message.command === 'changeIssueState' && message.state) {
 				await this.handleChangeIssueState(message.state);
+				return;
+			}
+
+			if (message.command === 'settleAction' && isSettlementCommand(message.action)) {
+				await vscode.commands.executeCommand(message.action, {
+					repository: this.context.repository,
+					issueNumber: this.detail?.number ?? this.context.issueNumber,
+					title: this.detail?.title ?? `Issue ${this.context.issueNumber}`,
+					url: this.detail?.url ?? this.context.url,
+				});
 				return;
 			}
 
@@ -413,6 +440,9 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 		const currentUserLogin = await this.store.getCurrentUserLogin();
 
+		// Compute settle action for initial render
+		const initialSettleAction = await this.computeSettleAction();
+
 		this.panel.webview.html = getIssueOverviewHtml({
 			detail: this.detail,
 			comments: this.commentsSnapshot,
@@ -425,6 +455,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			permissions: this.permissions,
 			currentUserLogin,
 			nonce: createNonce(),
+			settleAction: initialSettleAction,
 		});
 
 		const commentsPromise = this.commentsStore.getComments(this.context.repository, this.context.issueNumber);
@@ -481,6 +512,9 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			this.editOptions = undefined;
 		}
 
+		// Recompute settle action with latest data
+		const finalSettleAction = await this.computeSettleAction();
+
 		this.panel.webview.html = getIssueOverviewHtml({
 			detail: this.detail,
 			comments: this.commentsSnapshot,
@@ -493,7 +527,26 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			permissions: this.permissions,
 			currentUserLogin,
 			nonce: createNonce(),
+			settleAction: finalSettleAction,
 		});
+	}
+
+	private async computeSettleAction(): Promise<SettlementAction | undefined> {
+		if (!IssueOverviewPanel.issueContextStore || !IssueOverviewPanel.settleResolver) {
+			return undefined;
+		}
+		const storeSelected = IssueOverviewPanel.issueContextStore.getSelected();
+		const isSameIssue = storeSelected
+			&& storeSelected.repository.fullName === this.context.repository.fullName
+			&& storeSelected.issueNumber === this.context.issueNumber;
+		if (!isSameIssue || !storeSelected) {
+			return undefined;
+		}
+		try {
+			return await IssueOverviewPanel.settleResolver.resolve(storeSelected);
+		} catch {
+			return undefined;
+		}
 	}
 
 	private async handleSaveSection(section: EditIssueSection, input: EditIssueInput): Promise<void> {

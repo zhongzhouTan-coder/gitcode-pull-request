@@ -29,6 +29,9 @@ export class CopilotPullRequestContextBuilder {
 		selected: SelectedCopilotPullRequest,
 		token: vscode.CancellationToken,
 		budget: CopilotPromptBudget = DEFAULT_COPILOT_PROMPT_BUDGET,
+		includePatchSummary: boolean = false,
+		fileLimit: number = MAX_FILES,
+		commentLimit: number = MAX_DIFF_COMMENTS,
 	): Promise<string> {
 		const { repository, pullRequestNumber } = selected;
 		const writer = new BudgetedContextWriter(budget.maxContextChars);
@@ -75,25 +78,27 @@ export class CopilotPullRequestContextBuilder {
 			writer.appendLine();
 		}
 
-		appendFileManifest(writer, files);
+		appendFileManifest(writer, files, Math.min(fileLimit, MAX_FILES));
 
 		if (commentsResult.ok) {
-			appendComments(writer, commentsResult.value, budget);
+			appendComments(writer, commentsResult.value, budget, commentLimit);
 		} else {
 			writer.appendLine('### Pull Request Comments');
 			writer.appendLine(`_Unable to load comments: ${errorMessage(commentsResult.error)}_`);
 			writer.appendLine();
 		}
 
-		appendPatchExcerpts(writer, files, budget);
+		if (includePatchSummary) {
+			appendPatchExcerpts(writer, files, budget);
+		}
 
 		return writer.toString();
 	}
 }
 
-function appendFileManifest(writer: BudgetedContextWriter, files: readonly PullRequestFileChange[]): void {
-	const fileLimit = Math.min(files.length, MAX_FILES);
-	const truncated = files.length > MAX_FILES;
+function appendFileManifest(writer: BudgetedContextWriter, files: readonly PullRequestFileChange[], limit: number = MAX_FILES): void {
+	const fileLimit = Math.min(files.length, limit);
+	const truncated = files.length > limit;
 	writer.appendLine(`### Changed Files (${fileLimit}${truncated ? ` of ${files.length}` : ''})`);
 	writer.appendLine();
 
@@ -103,7 +108,7 @@ function appendFileManifest(writer: BudgetedContextWriter, files: readonly PullR
 	}
 
 	if (truncated) {
-		writer.appendLine(`[truncated: ${files.length - MAX_FILES} more files not shown]`);
+		writer.appendLine(`[truncated: ${files.length - limit} more files not shown. Use gitcode_list_pull_request_files to page through more files.]`);
 	}
 	writer.appendLine();
 }
@@ -112,11 +117,13 @@ function appendComments(
 	writer: BudgetedContextWriter,
 	comments: readonly PullRequestComment[],
 	budget: CopilotPromptBudget,
+	limit: number = MAX_DIFF_COMMENTS,
 ): void {
+	const cappedLimit = Math.min(limit, MAX_DIFF_COMMENTS);
 	const diffComments = comments
 		.filter((comment): comment is PullRequestDiffComment => comment.kind === 'diff')
 		.sort(compareDiffComments)
-		.slice(0, MAX_DIFF_COMMENTS);
+		.slice(0, cappedLimit);
 	const generalComments = comments
 		.filter((comment): comment is PullRequestGeneralComment => comment.kind === 'pullRequest')
 		.sort(compareNewestFirst)

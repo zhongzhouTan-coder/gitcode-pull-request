@@ -38,6 +38,7 @@ export const COMMAND_ID = {
 	removePullRequestAssignee: 'gitcode.pullRequest.removeAssignee',
 	addRelatedIssue: 'gitcode.pullRequest.addRelatedIssue',
 	removeRelatedIssue: 'gitcode.pullRequest.removeRelatedIssue',
+	settleIssueWithAgent: 'gitcode.settleIssueWithAgent',
 };
 
 export const VIEW_CONTAINER_ID = 'gitcode-pull-requests';

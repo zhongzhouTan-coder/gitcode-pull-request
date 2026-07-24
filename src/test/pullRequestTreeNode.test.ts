@@ -15,6 +15,7 @@ suite('PullRequestNode', () => {
 		id: 1,
 		number: 42,
 		title: 'Add feature',
+		state: 'open',
 		author: 'testuser',
 		updatedAt: '2026-07-01T00:00:00Z',
 	};
