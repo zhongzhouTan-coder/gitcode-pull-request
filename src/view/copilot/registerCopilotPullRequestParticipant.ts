@@ -3,7 +3,7 @@ import { CopilotPullRequestContextStore } from './copilotPullRequestContextStore
 import { CopilotPullRequestContextBuilder } from './copilotPullRequestContextBuilder';
 import { registerCopilotContextParticipant } from './registerCopilotContextParticipant';
 
-const PARTICIPANT_ID = 'gitcode-pull-request.context';
+const PARTICIPANT_ID = 'gitcode.context';
 
 const DEFAULT_SYSTEM_INSTRUCTION = `You are reviewing the selected GitCode pull request. Use the supplied PR details,
 file changes, and comments. Prioritize correctness bugs, regressions, security

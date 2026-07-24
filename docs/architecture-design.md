@@ -208,10 +208,9 @@ Views:
 - `gitcode:createPullRequestWebview` - create pull request webview.
 - `issues:gitcode` - issue tree.
 
-Chat participants:
+Chat participant:
 
-- `gitcode-pull-request.context`
-- `gitcode-issue.context`
+- `gitcode.context` ("@gitcode") — reviews the selected pull request
 
 Important URI schemes:
 

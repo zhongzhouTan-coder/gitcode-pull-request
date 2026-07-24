@@ -320,16 +320,10 @@
     },
     "chatParticipants": [
       {
-        "id": "gitcode-pull-request.context",
-        "name": "gitcodePullRequest",
-        "fullName": "GitCode Pull Request",
-        "description": "Reviews and explains the selected GitCode pull request when manually invoked."
-      },
-      {
-        "id": "gitcode-issue.context",
-        "name": "gitcodeIssue",
-        "fullName": "GitCode Issue",
-        "description": "Analyzes the selected GitCode issue when manually invoked."
+        "id": "gitcode.context",
+        "name": "gitcode",
+        "fullName": "GitCode",
+        "description": "Ask about the selected GitCode pull request."
       }
     ],
     "languageModelTools": [

@@ -40,7 +40,6 @@ import { SettlementNextActionResolver } from './copilot/settlementNextActionReso
 import { registerCreatePullRequestCommands } from './commands/registerCreatePullRequestCommands';
 import { registerSettleIssueCommands } from './commands/registerSettleIssueCommands';
 import { registerCopilotPullRequestParticipant } from './copilot/registerCopilotPullRequestParticipant';
-import { registerCopilotIssueParticipant } from './copilot/registerCopilotIssueParticipant';
 import { registerCopilotAgentTools } from './copilot/registerCopilotAgentTools';
 import { CreatePullRequestHelper } from './createPullRequest/createPullRequestHelper';
 import { CreatePullRequestViewProvider } from './createPullRequest/createPullRequestViewProvider';
@@ -322,10 +321,6 @@ export class ViewController implements vscode.Disposable {
 			registerCopilotPullRequestParticipant(
 				this.copilotContextStore,
 				new CopilotPullRequestContextBuilder(options.pullRequestService, commentService),
-			),
-			registerCopilotIssueParticipant(
-				this.copilotIssueContextStore,
-				new CopilotIssueContextBuilder(issueService, issueCommentService, options.repositoryContext),
 			),
 			registerCopilotAgentTools(
 			this.copilotIssueContextStore,
