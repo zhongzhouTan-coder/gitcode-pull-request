@@ -1,5 +1,7 @@
 import {
 	GitCodePermissionSnapshot,
+	CommentActionPermissions,
+	CommentActionPermissionsById,
 	IssueOverviewPermissions,
 	CreateIssuePermissions,
 	PullRequestOverviewPermissions,
@@ -8,8 +10,9 @@ import {
 	RolePermissionProfile,
 } from '../../common/models';
 import { getRolePermissionProfile } from './rolePermissionProfiles';
-import { hasEffectivePermission } from './permissionEvaluator';
+import { hasEffectivePermission, resolveOwnershipRule } from './permissionEvaluator';
 import { isSameLogin } from './ownershipRules';
+import { PermissionOperation } from './permissionOperations';
 
 export interface PermissionRoleViewModel {
 	key: GitCodeRoleKey;
@@ -22,6 +25,35 @@ export interface PermissionRoleViewModel {
 
 /** Re-export for consumers that previously imported from this module. */
 export { hasEffectivePermission };
+
+export function buildCommentActionPermissions(
+	currentUserLogin: string | undefined,
+	commentAuthorLogin: string | undefined,
+	operations: {
+		edit: PermissionOperation;
+		delete: PermissionOperation;
+	},
+): CommentActionPermissions {
+	return {
+		canEdit: resolveOwnershipRule(operations.edit, currentUserLogin, commentAuthorLogin),
+		canDelete: resolveOwnershipRule(operations.delete, currentUserLogin, commentAuthorLogin),
+	};
+}
+
+export function buildCommentActionPermissionsById<T extends { id: string; author: { login?: string } }>(
+	comments: readonly T[] | undefined,
+	currentUserLogin: string | undefined,
+	operations: {
+		edit: PermissionOperation;
+		delete: PermissionOperation;
+	},
+): CommentActionPermissionsById {
+	const permissions: CommentActionPermissionsById = {};
+	for (const comment of comments ?? []) {
+		permissions[comment.id] = buildCommentActionPermissions(currentUserLogin, comment.author.login, operations);
+	}
+	return permissions;
+}
 
 export function buildPullRequestOverviewPermissions(
 	snapshot: GitCodePermissionSnapshot | undefined,

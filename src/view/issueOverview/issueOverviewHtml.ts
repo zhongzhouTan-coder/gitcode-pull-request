@@ -1,5 +1,6 @@
 import {
 	EditIssueOptions,
+	CommentActionPermissionsById,
 	IssueComment,
 	IssueCommentsSnapshot,
 	IssueDetail,
@@ -333,7 +334,7 @@ export interface IssueOverviewHtmlOptions {
 	relatedPullRequestsError?: Error;
 	editOptions?: EditIssueOptions;
 	permissions?: IssueOverviewPermissions;
-	currentUserLogin?: string;
+	commentPermissions?: CommentActionPermissionsById;
 	nonce: string;
 	includeScripts?: boolean;
 	settleAction?: SettlementAction;
@@ -381,7 +382,7 @@ function renderTimelineActor(actor: IssueOperationLog['actor']): string {
 	return `<span class="timeline-actor">${display}</span>`;
 }
 
-function renderIssueCommentTimelineItem(comment: IssueComment): string {
+function renderIssueCommentTimelineItem(comment: IssueComment, commentPermissions?: CommentActionPermissionsById): string {
 	const bodyHtml = comment.body
 		? renderMarkdown(comment.body)
 		: '<div class="empty">No comment body provided.</div>';
@@ -389,6 +390,7 @@ function renderIssueCommentTimelineItem(comment: IssueComment): string {
 	const updated = comment.updatedAt && comment.updatedAt !== comment.createdAt
 		? `<span class="comment-edited" title="Edited ${escapeHtml(formatActivityDate(comment.updatedAt))}">· Edited</span>`
 		: '';
+	const actions = commentPermissions?.[comment.id];
 
 	return `<div class="comment-card timeline-item timeline-comment" data-comment-id="${escapeAttr(comment.id)}" data-comment-author="${escapeAttr(comment.author.login)}">
 	<div class="comment-header">
@@ -397,8 +399,8 @@ function renderIssueCommentTimelineItem(comment: IssueComment): string {
 		<span class="comment-time">${escapeHtml(formatActivityDate(comment.createdAt))}</span>
 		${updated}
 		<span class="comment-header-spacer"></span>
-		<button class="comment-edit-btn" data-comment-id="${escapeAttr(comment.id)}" title="Edit comment" aria-label="Edit comment">${PENCIL_ICON}</button>
-		<button class="comment-delete-btn" data-comment-id="${escapeAttr(comment.id)}" title="Delete comment" aria-label="Delete comment">${TRASH_ICON}</button>
+		${actions?.canEdit ? `<button class="comment-edit-btn" data-comment-id="${escapeAttr(comment.id)}" title="Edit comment" aria-label="Edit comment">${PENCIL_ICON}</button>` : ''}
+		${actions?.canDelete ? `<button class="comment-delete-btn" data-comment-id="${escapeAttr(comment.id)}" title="Delete comment" aria-label="Delete comment">${TRASH_ICON}</button>` : ''}
 	</div>
 	<div class="comment-body description" data-comment-body="${escapeAttr(comment.id)}">${bodyHtml}</div>
 	<div class="comment-edit-form" data-comment-edit="${escapeAttr(comment.id)}" style="display:none">
@@ -409,12 +411,12 @@ function renderIssueCommentTimelineItem(comment: IssueComment): string {
 			<span class="comment-edit-error" data-comment-edit-error="${escapeAttr(comment.id)}"></span>
 		</div>
 	</div>
-	<div class="comment-delete-confirm" data-comment-confirm="${escapeAttr(comment.id)}" style="display:none">
+	${actions?.canDelete ? `<div class="comment-delete-confirm" data-comment-confirm="${escapeAttr(comment.id)}" style="display:none">
 		<span class="confirm-text">Delete this comment?</span>
 		<button class="btn-danger btn-confirm-delete" data-comment-id="${escapeAttr(comment.id)}">Delete</button>
 		<button class="btn-secondary btn-cancel-delete" data-comment-id="${escapeAttr(comment.id)}">Cancel</button>
 		<span class="comment-delete-error" data-comment-delete-error="${escapeAttr(comment.id)}"></span>
-	</div>
+	</div>` : ''}
 </div>`;
 }
 
@@ -593,6 +595,7 @@ function renderTimeline(
 	operationLogs: readonly IssueOperationLog[] | undefined,
 	commentsError: Error | undefined,
 	operationLogsError: Error | undefined,
+	commentPermissions?: CommentActionPermissionsById,
 ): string {
 	const composerHtml = renderCommentComposer(detail);
 	const entries = mergeIssueTimelineEntries(comments, operationLogs);
@@ -602,7 +605,7 @@ function renderTimeline(
 
 	if (entries.length > 0) {
 		body.push(entries.map((entry) => entry.kind === 'comment'
-			? renderIssueCommentTimelineItem(entry.comment)
+			? renderIssueCommentTimelineItem(entry.comment, commentPermissions)
 			: renderIssueOperationLogTimelineItem(entry.log)).join(''));
 	}
 
@@ -664,9 +667,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 	const permissionsJson = permissions
 		? serializeForInlineScript(permissions)
 		: 'null';
-	const currentUserLogin = options.currentUserLogin
-		? serializeForInlineScript(options.currentUserLogin)
-		: 'null';
 	const detailSnapshotJson = serializeForInlineScript({
 		title: detail.title,
 		body: detail.body,
@@ -692,6 +692,7 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 		operationLogs?.logs,
 		commentsError,
 		operationLogsError,
+		options.commentPermissions,
 	);
 
 	const relatedPrsHtml = renderRelatedPullRequests(
@@ -1527,7 +1528,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 			const vscode = acquireVsCodeApi();
 			const editOptions = ${editOptionsJson};
 			const issuePermissions = ${permissionsJson};
-			const currentUserLogin = ${currentUserLogin};
 			const detailSnapshot = ${detailSnapshotJson};
 			let activeSection = null;
 			let pendingStateAction = null;
@@ -1647,32 +1647,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 				return !issuePermissions || issuePermissions[key] !== false;
 			}
 
-			function canDeleteIssueComment(commentAuthorLogin) {
-				// Repository-level permission
-				if (hasIssuePermission('canDeleteComment')) {
-					return true;
-				}
-				// Ownership rule: comment author can delete their own comment
-				if (currentUserLogin && commentAuthorLogin
-					&& currentUserLogin.trim().toLowerCase() === commentAuthorLogin.trim().toLowerCase()) {
-					return true;
-				}
-				return false;
-			}
-
-			function canEditIssueComment(commentAuthorLogin) {
-				// Repository-level permission
-				if (hasIssuePermission('canEditComment')) {
-					return true;
-				}
-				// Ownership rule: comment author can edit their own comment
-				if (currentUserLogin && commentAuthorLogin
-					&& currentUserLogin.trim().toLowerCase() === commentAuthorLogin.trim().toLowerCase()) {
-					return true;
-				}
-				return false;
-			}
-
 			function getIssueEditPermission(section) {
 				switch (section) {
 					case 'title':
@@ -1724,31 +1698,6 @@ export function getIssueOverviewHtml(options: IssueOverviewHtmlOptions): string 
 					});
 				}
 
-				document.querySelectorAll('.comment-delete-btn[data-comment-id]').forEach(function(el) {
-					var commentAuthor = el.closest('[data-comment-author]')
-						? el.closest('[data-comment-author]').getAttribute('data-comment-author')
-						: null;
-					var allowed = canDeleteIssueComment(commentAuthor);
-					if (!allowed) {
-						el.disabled = true;
-						el.style.opacity = '0';
-						el.title = 'You do not have permission to delete this comment.';
-						el.setAttribute('aria-label', 'You do not have permission to delete this comment.');
-					}
-				});
-
-				document.querySelectorAll('.comment-edit-btn[data-comment-id]').forEach(function(el) {
-					var commentAuthor = el.closest('[data-comment-author]')
-						? el.closest('[data-comment-author]').getAttribute('data-comment-author')
-						: null;
-					var allowed = canEditIssueComment(commentAuthor);
-					if (!allowed) {
-						el.disabled = true;
-						el.style.opacity = '0';
-						el.title = 'You do not have permission to edit this comment.';
-						el.setAttribute('aria-label', 'You do not have permission to edit this comment.');
-					}
-				});
 			}
 
 			function resetSectionState(section) {

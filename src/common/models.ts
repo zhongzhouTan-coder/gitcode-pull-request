@@ -780,6 +780,13 @@ export interface PullRequestOverviewPermissions {
 	canUpdateRelatedIssues: boolean;
 }
 
+export interface CommentActionPermissions {
+	canEdit: boolean;
+	canDelete: boolean;
+}
+
+export type CommentActionPermissionsById = Record<string, CommentActionPermissions>;
+
 export interface PullRequestMergeResult {
 	sha: string;
 	merged: boolean;

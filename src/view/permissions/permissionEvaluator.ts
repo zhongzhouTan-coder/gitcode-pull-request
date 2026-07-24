@@ -125,8 +125,10 @@ export function resolveOwnershipRule(
 		case 'pr.changeState':
 			return canChangeOwnPullRequestState(currentUserLogin, authorLogin);
 		case 'pr.comment.edit':
+		case 'issue.comment.edit':
 			return canEditOwnComment(currentUserLogin, authorLogin);
 		case 'pr.comment.delete':
+		case 'issue.comment.delete':
 			return canDeleteOwnComment(currentUserLogin, authorLogin);
 		default:
 			return false;

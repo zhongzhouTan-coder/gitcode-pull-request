@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { EditIssueOptions, IssueComment, IssueCommentsSnapshot, IssueDetail, IssueOperationLog, IssueOperationLogsSnapshot } from '../common/models';
 import { getIssueOverviewHtml } from '../view/issueOverview/issueOverviewHtml';
+import { buildCommentActionPermissionsById } from '../view/permissions/permissionHelpers';
 
 suite('IssueOverviewHtml', () => {
 	const detail: IssueDetail = {
@@ -97,6 +98,27 @@ suite('IssueOverviewHtml', () => {
 		assert.match(html, /changed title from \*\*old\*\* to \*\*new\*\*/);
 		assert.doesNotMatch(html, /changed title from <strong>old<\/strong>/);
 		assert.match(html, /<div class="comment-card timeline-item timeline-comment"[^>]*>/);
+	});
+
+	test('renders issue delete action only for the current user comment', () => {
+		const html = getIssueOverviewHtml({
+			detail,
+			comments: commentsSnapshot,
+			operationLogs: operationLogsSnapshot,
+			commentPermissions: buildCommentActionPermissionsById(commentsSnapshot.comments, 'anreywmh', {
+				edit: 'issue.comment.edit',
+				delete: 'issue.comment.delete',
+			}),
+			nonce: 'test-nonce',
+			includeScripts: false,
+		});
+
+		assert.match(html, /class="comment-edit-btn" data-comment-id="175866237"/);
+		assert.match(html, /class="comment-delete-btn" data-comment-id="175866237"/);
+		assert.match(html, /data-comment-confirm="175866237"/);
+		assert.doesNotMatch(html, /class="comment-edit-btn" data-comment-id="176194985"/);
+		assert.doesNotMatch(html, /class="comment-delete-btn" data-comment-id="176194985"/);
+		assert.doesNotMatch(html, /data-comment-confirm="176194985"/);
 	});
 
 	test('escapes author names in comments and log content', () => {

@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { EditPullRequestOptions, PullRequestCommentsSnapshot, PullRequestDetail, PullRequestOperationLogsSnapshot, PullRequestRelatedIssuesSnapshot } from '../common/models';
 import { getOverviewHtml, getOverviewWithCommentsHtml, getOverviewWithTimelineHtml, renderActivityError, renderActivityLoading, renderActivitySection, renderRelatedIssuesSection } from '../view/overview/overviewHtml';
+import { buildCommentActionPermissionsById } from '../view/permissions/permissionHelpers';
 
 suite('OverviewHtml', () => {
 	const detail: PullRequestDetail = {
@@ -94,24 +95,37 @@ suite('OverviewHtml', () => {
 	});
 
 	test('wires overview comment deletion through the inline webview script', () => {
+		const comments: PullRequestCommentsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			loadedAt: Date.now(),
+			comments: [{
+				kind: 'pullRequest',
+				id: 'comment-1',
+				discussionId: 'discussion-1',
+				body: 'Existing comment',
+				author: { id: '1', login: 'alice' },
+				createdAt: '2026-06-20T10:00:00+08:00',
+				updatedAt: '2026-06-20T10:00:00+08:00',
+				replies: [],
+			}],
+		};
 		const html = getOverviewWithCommentsHtml(
 			detail,
-			{
-				repositoryKey: 'org/repo',
-				pullRequestNumber: 2,
-				loadedAt: Date.now(),
-				comments: [{
-					kind: 'pullRequest',
-					id: 'comment-1',
-					discussionId: 'discussion-1',
-					body: 'Existing comment',
-					author: { id: '1', login: 'alice' },
-					createdAt: '2026-06-20T10:00:00+08:00',
-					updatedAt: '2026-06-20T10:00:00+08:00',
-					replies: [],
-				}],
-			},
+			comments,
 			'nonce',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			buildCommentActionPermissionsById(comments.comments, 'alice', {
+				edit: 'pr.comment.edit',
+				delete: 'pr.comment.delete',
+			}),
 		);
 
 		assert.match(html, /class="edit-icon-btn delete-comment-btn" data-action="deletePullRequestComment" data-comment-id="comment-1"/);
@@ -122,6 +136,61 @@ suite('OverviewHtml', () => {
 		assert.match(html, /command: 'deletePullRequestComment'[\s\S]*commentId: commentId/);
 		assert.match(html, /deletePullRequestCommentError/);
 		assert.match(html, /setCommentDeleteSaving\(msg\.commentId, false\)/);
+	});
+
+	test('renders pull request delete action only for the current user comment', () => {
+		const comments: PullRequestCommentsSnapshot = {
+			repositoryKey: 'org/repo',
+			pullRequestNumber: 2,
+			loadedAt: Date.now(),
+			comments: [
+				{
+					kind: 'pullRequest',
+					id: 'own-comment',
+					discussionId: 'own-discussion',
+					body: 'Own comment',
+					author: { id: '1', login: 'alice' },
+					createdAt: '2026-06-20T10:00:00+08:00',
+					updatedAt: '2026-06-20T10:00:00+08:00',
+					replies: [],
+				},
+				{
+					kind: 'pullRequest',
+					id: 'other-comment',
+					discussionId: 'other-discussion',
+					body: 'Other comment',
+					author: { id: '2', login: 'bob' },
+					createdAt: '2026-06-20T10:01:00+08:00',
+					updatedAt: '2026-06-20T10:01:00+08:00',
+					replies: [],
+				},
+			],
+		};
+		const html = getOverviewWithTimelineHtml(
+			detail,
+			comments,
+			'nonce',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			buildCommentActionPermissionsById(comments.comments, 'alice', {
+				edit: 'pr.comment.edit',
+				delete: 'pr.comment.delete',
+			}),
+		);
+
+		assert.match(html, /class="edit-icon-btn edit-comment-btn" data-comment-id="own-comment"/);
+		assert.match(html, /class="edit-icon-btn delete-comment-btn" data-action="deletePullRequestComment" data-comment-id="own-comment"/);
+		assert.match(html, /data-delete-confirm="own-comment"/);
+		assert.doesNotMatch(html, /class="edit-icon-btn edit-comment-btn" data-comment-id="other-comment"/);
+		assert.doesNotMatch(html, /class="edit-icon-btn delete-comment-btn" data-action="deletePullRequestComment" data-comment-id="other-comment"/);
+		assert.doesNotMatch(html, /data-delete-confirm="other-comment"/);
 	});
 
 	test('renders comments and activity as one chronological timeline', () => {

@@ -1,5 +1,6 @@
 import {
 	EditPullRequestOptions,
+	CommentActionPermissionsById,
 	IssueLabel,
 	PullRequestComment,
 	PullRequestCommentReply,
@@ -486,11 +487,11 @@ function renderReplyComposer(discussionId: string): string {
 	</div>`;
 }
 
-function renderConversationComment(comment: PullRequestComment, diffContexts?: ReadonlyMap<string, DiffCommentContext>): string {
+function renderConversationComment(comment: PullRequestComment, diffContexts?: ReadonlyMap<string, DiffCommentContext>, commentPermissions?: CommentActionPermissionsById): string {
 	if (comment.kind === 'pullRequest') {
-		return renderGeneralCommentCard(comment);
+		return renderGeneralCommentCard(comment, commentPermissions);
 	}
-	return renderDiffCommentCard(comment, diffContexts?.get(comment.id));
+	return renderDiffCommentCard(comment, diffContexts?.get(comment.id), commentPermissions);
 }
 
 function renderCommentEditIcon(commentId: string): string {
@@ -523,7 +524,8 @@ function renderCommentEditArea(commentId: string, body: string): string {
 	</div>`;
 }
 
-function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
+function renderGeneralCommentCard(comment: PullRequestGeneralComment, commentPermissions?: CommentActionPermissionsById): string {
+	const actions = commentPermissions?.[comment.id];
 	return `
 		<div class="comment-card" data-comment-id="${escapeAttr(comment.id)}">
 			<div class="comment-top-row">
@@ -532,14 +534,14 @@ function renderGeneralCommentCard(comment: PullRequestGeneralComment): string {
 					<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
 					<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
 					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
-					${renderCommentEditIcon(comment.id)}
-					${renderCommentDeleteIcon(comment.id)}
+					${actions?.canEdit ? renderCommentEditIcon(comment.id) : ''}
+					${actions?.canDelete ? renderCommentDeleteIcon(comment.id) : ''}
 				</div>
 				<div class="comment-top-actions">
 					${renderReplyAction(comment.discussionId)}
 				</div>
 			</div>
-			${renderCommentDeleteConfirmation(comment.id)}
+			${actions?.canDelete ? renderCommentDeleteConfirmation(comment.id) : ''}
 			<div class="comment-body">${renderCommentBody(comment.body)}</div>
 			${renderCommentEditArea(comment.id, comment.body)}
 			${renderConversationReplies(comment.replies)}
@@ -569,8 +571,9 @@ function renderDiffContext(context: DiffCommentContext | undefined): string {
 	</div>`;
 }
 
-function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: DiffCommentContext): string {
+function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: DiffCommentContext, commentPermissions?: CommentActionPermissionsById): string {
 	const badges = renderDiffCommentBadges(comment);
+	const actions = commentPermissions?.[comment.id];
 	return `
 		<div class="comment-card comment-card-diff" data-comment-id="${escapeAttr(comment.id)}">
 			<div class="comment-top-row">
@@ -579,15 +582,15 @@ function renderDiffCommentCard(comment: PullRequestDiffComment, diffContext?: Di
 					<span class="comment-author">${renderInlineAuthors([comment.author])}</span>
 					<span class="comment-time">${escapeHtml(formatDate(comment.createdAt))}</span>
 					${hasEditedMarker(comment) ? '<span class="edited-marker">edited</span>' : ''}
-					${renderCommentEditIcon(comment.id)}
-					${renderCommentDeleteIcon(comment.id)}
+					${actions?.canEdit ? renderCommentEditIcon(comment.id) : ''}
+					${actions?.canDelete ? renderCommentDeleteIcon(comment.id) : ''}
 				</div>
 				<div class="comment-top-actions">
 					${renderDiffCommentReviewStatus(comment)}
 					${renderReplyAction(comment.discussionId)}
 				</div>
 			</div>
-			${renderCommentDeleteConfirmation(comment.id)}
+			${actions?.canDelete ? renderCommentDeleteConfirmation(comment.id) : ''}
 			<div class="comment-meta">
 				<span class="comment-location">${renderDiffCommentLocation(comment)}</span>
 				${badges}
@@ -651,6 +654,7 @@ function renderConversationSection(
 	detail: PullRequestDetail,
 	snapshot: PullRequestCommentsSnapshot,
 	diffContexts?: ReadonlyMap<string, DiffCommentContext>,
+	commentPermissions?: CommentActionPermissionsById,
 ): string {
 	const comments = [...snapshot.comments].sort((a, b) => {
 		return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -665,7 +669,7 @@ function renderConversationSection(
 		<section>
 			<h2>Conversation (${countText})</h2>
 			<div class="conversation-list">
-				${comments.map((c) => renderConversationComment(c, diffContexts)).join('')}
+				${comments.map((c) => renderConversationComment(c, diffContexts, commentPermissions)).join('')}
 			</div>
 			${renderConversationComposer(detail)}
 		</section>
@@ -698,8 +702,8 @@ function renderTimelineActivityItem(log: PullRequestOperationLog): string {
 	return `<div class="timeline-entry timeline-entry-activity">${renderActivityItem(log)}</div>`;
 }
 
-function renderTimelineCommentItem(comment: PullRequestComment, diffContexts?: ReadonlyMap<string, DiffCommentContext>): string {
-	return `<div class="timeline-entry timeline-entry-comment">${renderConversationComment(comment, diffContexts)}</div>`;
+function renderTimelineCommentItem(comment: PullRequestComment, diffContexts?: ReadonlyMap<string, DiffCommentContext>, commentPermissions?: CommentActionPermissionsById): string {
+	return `<div class="timeline-entry timeline-entry-comment">${renderConversationComment(comment, diffContexts, commentPermissions)}</div>`;
 }
 
 export function renderTimelineSection(
@@ -707,6 +711,7 @@ export function renderTimelineSection(
 	commentsSnapshot: PullRequestCommentsSnapshot,
 	activitySnapshot?: PullRequestOperationLogsSnapshot,
 	options: TimelineRenderOptions = {},
+	commentPermissions?: CommentActionPermissionsById,
 ): string {
 	const entries: TimelineEntry[] = [
 		...commentsSnapshot.comments.map((comment): TimelineEntry => ({
@@ -734,7 +739,7 @@ export function renderTimelineSection(
 			<h2>Timeline (${entries.length})</h2>
 			<div class="timeline-list">
 				${entries.map((entry) => entry.kind === 'comment'
-		? renderTimelineCommentItem(entry.comment, options.diffContexts)
+		? renderTimelineCommentItem(entry.comment, options.diffContexts, commentPermissions)
 		: renderTimelineActivityItem(entry.log)).join('')}
 			</div>
 			${activityErrorHtml}
@@ -2938,12 +2943,6 @@ export function getOverviewHtml(
 				});
 			}
 
-			if (!overviewPermissions.canEditComment) {
-				document.querySelectorAll('.edit-comment-btn').forEach(function(el) {
-					setDisabledWithTooltip(el, true, 'You do not have permission to edit comments in this repository.');
-				});
-			}
-
 			if (!overviewPermissions.canResolveComment) {
 				document.querySelectorAll('.comment-toggle-input').forEach(function(el) {
 					setDisabledWithTooltip(el, true, 'You do not have permission to resolve comments in this repository.');
@@ -3129,9 +3128,6 @@ export function getOverviewHtml(
 		var editingCommentId = null;
 
 		function startCommentEdit(commentId) {
-			if (!hasOverviewPermission('canEditComment')) {
-				return;
-			}
 			if (editingCommentId && editingCommentId !== commentId) {
 				cancelCommentEdit(editingCommentId);
 			}
@@ -4013,8 +4009,9 @@ export function getOverviewWithCommentsHtml(
 	reviewerOptions?: ReviewersSectionOptions,
 	testerOptions?: TestersSectionOptions,
 	assigneeOptions?: AssigneesSectionOptions,
+	commentPermissions?: CommentActionPermissionsById,
 ): string {
-	return getOverviewHtml(detail, nonce, renderConversationSection(detail, snapshot, diffContexts), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions, assigneeOptions);
+	return getOverviewHtml(detail, nonce, renderConversationSection(detail, snapshot, diffContexts, commentPermissions), relatedIssuesHtml, editOptions, true, activityHtml, permissions, reviewerOptions, testerOptions, assigneeOptions);
 }
 
 export function getOverviewWithTimelineHtml(
@@ -4030,11 +4027,12 @@ export function getOverviewWithTimelineHtml(
 	reviewerOptions?: ReviewersSectionOptions,
 	testerOptions?: TestersSectionOptions,
 	assigneeOptions?: AssigneesSectionOptions,
+	commentPermissions?: CommentActionPermissionsById,
 ): string {
 	return getOverviewHtml(
 		detail,
 		nonce,
-		renderTimelineSection(detail, commentsSnapshot, activitySnapshot, { diffContexts, activityError }),
+		renderTimelineSection(detail, commentsSnapshot, activitySnapshot, { diffContexts, activityError }, commentPermissions),
 		relatedIssuesHtml,
 		editOptions,
 		true,

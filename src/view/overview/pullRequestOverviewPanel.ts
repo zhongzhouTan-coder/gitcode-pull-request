@@ -16,8 +16,8 @@ import { buildDiffCommentContexts, DiffCommentContext } from './diffCommentConte
 import { getPullRequestMergeBlockedReason } from './mergeability';
 import { PermissionStore } from '../state/permissionStore';
 import { checkPermission } from '../permissions/permissionChecks';
-import { buildPullRequestOverviewPermissions, buildUnknownPullRequestOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
-import { canEditOwnPullRequest, canChangeOwnPullRequestState } from '../permissions/ownershipRules';
+import { buildCommentActionPermissionsById, buildPullRequestOverviewPermissions, buildUnknownPullRequestOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
+import { canDeleteOwnComment, canEditOwnComment, canEditOwnPullRequest, canChangeOwnPullRequestState } from '../permissions/ownershipRules';
 
 interface PullRequestOverviewContext {
 	repository: GitCodeRepository;
@@ -445,6 +445,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Load permissions for this repository
 		await this.refreshPermissions();
+		const currentUserLogin = await this.store.getCurrentUserLogin();
 
 		// Render detail with loading timeline and related issues.
 		const relatedIssuesLoadingHtml = renderRelatedIssuesLoading(this.buildRelatedIssuesOptions());
@@ -573,7 +574,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				}
 			}
 
-			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions(), this.buildAssigneeOptions());
+			const commentPermissions = buildCommentActionPermissionsById(commentsSnapshot.comments, currentUserLogin, {
+				edit: 'pr.comment.edit',
+				delete: 'pr.comment.delete',
+			});
+			this.panel.webview.html = getOverviewWithTimelineHtml(this.detail, commentsSnapshot, createNonce(), relatedIssuesHtml, this.editOptions, diffContexts, operationLogsSnapshot, activityError, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions(), this.buildAssigneeOptions(), commentPermissions);
 		} else {
 			const errorMessage = commentsError ?? 'Unable to load comments.';
 			this.panel.webview.html = getOverviewWithCommentsErrorHtml(this.detail, errorMessage, createNonce(), relatedIssuesHtml, this.editOptions, undefined, this.permissions, this.buildReviewerOptions(), this.buildTesterOptions(), this.buildAssigneeOptions());
@@ -959,7 +964,39 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 			return;
 		}
 
-		if (!await this.checkWritePermission('note', 'create', `You do not have permission to edit comments in ${this.context.repository.fullName}.`)) {
+		if (!this.commentsSnapshot) {
+			this.panel.webview.postMessage({
+				command: 'editPullRequestCommentError',
+				commentId,
+				message: 'Comments are not loaded.',
+			});
+			return;
+		}
+
+		const targetComment = this.commentsSnapshot.comments.find((c) => c.id === commentId);
+		if (!targetComment) {
+			this.panel.webview.postMessage({
+				command: 'editPullRequestCommentError',
+				commentId,
+				message: 'Comment not found.',
+			});
+			return;
+		}
+
+		const currentUserLogin = await this.store.getCurrentUserLogin();
+		const canEditOwn = canEditOwnComment(currentUserLogin, targetComment.author.login);
+		if (!canEditOwn) {
+			const message = 'You can only edit your own comments.';
+			this.panel.webview.postMessage({
+				command: 'editPullRequestCommentError',
+				commentId,
+				message,
+			});
+			vscode.window.showWarningMessage(message);
+			return;
+		}
+
+		if (!await this.checkWritePermission('note', 'create', `You do not have permission to edit comments in ${this.context.repository.fullName}.`, canEditOwn)) {
 			return;
 		}
 
@@ -1095,9 +1132,17 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 
 		// Check ownership — the comment author can delete their own comment
 		const currentUserLogin = await this.store.getCurrentUserLogin();
-		const canDeleteOwn = targetComment.author.login
-			? (currentUserLogin?.toLowerCase() === targetComment.author.login.toLowerCase())
-			: false;
+		const canDeleteOwn = canDeleteOwnComment(currentUserLogin, targetComment.author.login);
+		if (!canDeleteOwn) {
+			const message = 'You can only delete your own comments.';
+			this.panel.webview.postMessage({
+				command: 'deletePullRequestCommentError',
+				commentId,
+				message,
+			});
+			vscode.window.showWarningMessage(message);
+			return;
+		}
 
 		const deniedMessage = `You do not have permission to delete comments in ${this.context.repository.fullName}.`;
 		if (!await this.checkWritePermission('note', 'delete', deniedMessage, canDeleteOwn)) {
@@ -2128,6 +2173,11 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 		}
 
 		if (this.commentsSnapshot) {
+			const currentUserLogin = await this.store.getCurrentUserLogin();
+			const commentPermissions = buildCommentActionPermissionsById(this.commentsSnapshot.comments, currentUserLogin, {
+				edit: 'pr.comment.edit',
+				delete: 'pr.comment.delete',
+			});
 			this.panel.webview.html = getOverviewWithTimelineHtml(
 				this.detail,
 				this.commentsSnapshot,
@@ -2141,6 +2191,7 @@ export class PullRequestOverviewPanel implements vscode.Disposable {
 				this.buildReviewerOptions(),
 				this.buildTesterOptions(),
 				this.buildAssigneeOptions(),
+				commentPermissions,
 			);
 		} else {
 			this.panel.webview.html = getOverviewWithCommentsLoadingHtml(

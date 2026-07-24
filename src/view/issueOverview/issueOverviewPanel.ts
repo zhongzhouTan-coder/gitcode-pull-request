@@ -17,7 +17,7 @@ import { PermissionStore } from '../state/permissionStore';
 import { CopilotIssueContextStore } from '../copilot/copilotIssueContextStore';
 import { SettlementNextActionResolver, SettlementAction } from '../copilot/settlementNextActionResolver';
 import { checkPermission } from '../permissions/permissionChecks';
-import { buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
+import { buildCommentActionPermissionsById, buildIssueOverviewPermissions, buildUnknownIssueOverviewPermissions, hasEffectivePermission } from '../permissions/permissionHelpers';
 import { canEditOwnIssue, canDeleteOwnComment, canEditOwnComment } from '../permissions/ownershipRules';
 
 interface IssueOverviewContext {
@@ -439,6 +439,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		await this.refreshPermissions();
 
 		const currentUserLogin = await this.store.getCurrentUserLogin();
+		const initialCommentPermissions = buildCommentActionPermissionsById(this.commentsSnapshot?.comments, currentUserLogin, {
+			edit: 'issue.comment.edit',
+			delete: 'issue.comment.delete',
+		});
 
 		// Compute settle action for initial render
 		const initialSettleAction = await this.computeSettleAction();
@@ -453,7 +457,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
 			permissions: this.permissions,
-			currentUserLogin,
+			commentPermissions: initialCommentPermissions,
 			nonce: createNonce(),
 			settleAction: initialSettleAction,
 		});
@@ -514,6 +518,10 @@ export class IssueOverviewPanel implements vscode.Disposable {
 
 		// Recompute settle action with latest data
 		const finalSettleAction = await this.computeSettleAction();
+		const finalCommentPermissions = buildCommentActionPermissionsById(this.commentsSnapshot?.comments, currentUserLogin, {
+			edit: 'issue.comment.edit',
+			delete: 'issue.comment.delete',
+		});
 
 		this.panel.webview.html = getIssueOverviewHtml({
 			detail: this.detail,
@@ -525,7 +533,7 @@ export class IssueOverviewPanel implements vscode.Disposable {
 			relatedPullRequestsError: this.relatedPullRequestsError,
 			editOptions: this.editOptions,
 			permissions: this.permissions,
-			currentUserLogin,
+			commentPermissions: finalCommentPermissions,
 			nonce: createNonce(),
 			settleAction: finalSettleAction,
 		});
@@ -874,6 +882,16 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		// Re-check permission before calling the write API
 		const currentUserLogin = await this.store.getCurrentUserLogin();
 		const ownsComment = canDeleteOwnComment(currentUserLogin, targetComment.author.login);
+		if (!ownsComment) {
+			const message = 'You can only delete your own comments.';
+			this.panel.webview.postMessage({
+				command: 'issueCommentDeleteError',
+				commentId,
+				message,
+			});
+			vscode.window.showWarningMessage(message);
+			return;
+		}
 
 		if (!await this.checkWritePermission('note', 'delete',
 			`You do not have permission to delete comments in ${this.context.repository.fullName}.`,
@@ -957,6 +975,16 @@ export class IssueOverviewPanel implements vscode.Disposable {
 		const currentUserLogin = await this.store.getCurrentUserLogin();
 		const ownsComment = canEditOwnComment(currentUserLogin, targetComment.author.login);
 		const permissionMessage = `You do not have permission to edit comments in ${this.context.repository.fullName}.`;
+		if (!ownsComment) {
+			const message = 'You can only edit your own comments.';
+			this.panel.webview.postMessage({
+				command: 'issueCommentEditError',
+				commentId,
+				message,
+			});
+			vscode.window.showWarningMessage(message);
+			return;
+		}
 
 		if (!await this.checkWritePermission('note', 'create',
 			permissionMessage,
